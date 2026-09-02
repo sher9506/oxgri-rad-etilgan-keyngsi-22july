@@ -6,7 +6,7 @@ import {
   ScanFace, X, User as UserIcon, FileText, GraduationCap,
   Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
   Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain,
-  BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy
+  BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang } from '@/contexts/LangContext';
@@ -87,6 +87,7 @@ function buildSections(userRol: string | undefined, ustozBotRuxsat: boolean, t: 
     { id: 'kurslar', label: t('nav.kurslar'), icon: BookMarked },
     { id: 'oqmatlar', label: t('nav.oqmatlar'), icon: Library },
     { id: 'savol_javob', label: t('nav.savol_javob'), icon: Layers },
+    { id: 'blog', label: 'Blog', icon: Newspaper },
   ];
 
   const sinovItems = [
@@ -106,6 +107,7 @@ function buildSections(userRol: string | undefined, ustozBotRuxsat: boolean, t: 
     { id: 'ustoz', label: 'Kazus kabineti', icon: UserCircle },
     { id: 'testlar', label: 'Test kabineti', icon: BookOpen },
     { id: 'oquvchilar', label: "O'quvchilarim", icon: GraduationCap },
+    { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
     ...(ustozBotRuxsat ? [{ id: 'bot_yangilik', label: 'Bot Yangilik', icon: Megaphone }] : []),
   ] : [];
 

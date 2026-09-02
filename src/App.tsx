@@ -44,6 +44,8 @@ const YordamSahifa = lazy(() => import('@/components/features/YordamSahifa'));
 const MentorChatBot = lazy(() => import('@/components/features/MentorChatBot'));
 const SmartTalim = lazy(() => import('@/components/features/SmartTalim'));
 const AdminChunking = lazy(() => import('@/components/features/AdminChunking'));
+const BlogList = lazy(() => import('@/components/features/BlogList'));
+const BlogYozish = lazy(() => import('@/components/features/BlogYozish'));
 
 // Admin Context
 interface AdminContextType {
@@ -309,7 +311,7 @@ function AppContent() {
   }, [pendingDeepLink, activeTab]);
 
   // Orqaga qaytish mumkin bo'lgan sahifalar (haqida sahifasiga qaytadi)
-  const BACK_TABS = ['sinov','natijalar','mavjud_testlar','mavjud_kazuslar','oqmatlar','savol_javob','profil','reyting','ustoz','testlar','royhat','oquvchilar','bot_yangilik','faceid'];
+  const BACK_TABS = ['sinov','natijalar','mavjud_testlar','mavjud_kazuslar','oqmatlar','savol_javob','profil','reyting','ustoz','testlar','royhat','oquvchilar','bot_yangilik','faceid','blog','blog_yozish'];
   const showBackBtn = BACK_TABS.includes(activeTab) && !isAdmin;
 
   const getPageTitle = () => {
@@ -350,6 +352,8 @@ function AppContent() {
       case 'oquvchilar': return <Suspense fallback={<LazyFallback />}><OquvchilarRoyhat ustozId={user?.ustoz_id} mode="ustoz" /></Suspense>;
       case 'bot_yangilik': return <Suspense fallback={<LazyFallback />}><BotXabarnomasi onlyView={true} /></Suspense>;
       case 'smart_talim': return <Suspense fallback={<LazyFallback />}><SmartTalim onNavigateToMaterial={(bolimId, bobId, materialId) => { handleTabChange('oqmatlar'); setTimeout(() => { window.dispatchEvent(new CustomEvent('deeplink-oqmat', { detail: { subPath: `${bolimId}/${bobId || ''}/${materialId || ''}` } })); }, 600); }} /></Suspense>;
+      case 'blog': return <Suspense fallback={<LazyFallback />}><BlogList /></Suspense>;
+      case 'blog_yozish': return <Suspense fallback={<LazyFallback />}><BlogYozish /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
       case 'faceid': return <Suspense fallback={<LazyFallback />}><FaceIdPanel /></Suspense>;
       default: return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
