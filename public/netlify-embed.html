@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FanFaster</title>
+  <meta name="description" content="FanFaster — Sun'iy intellekt bilan o'qish platformasi" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #ffffff;
+    }
+
+    iframe {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      border: none;
+      background: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <iframe
+    id="app"
+    src="https://fanfaster.onspace.build"
+    title="FanFaster"
+    allow="camera; microphone; fullscreen"
+    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+  ></iframe>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // ── SOZLAMALAR ──────────────────────────────────────────────────────────
+      var APP_URL = 'https://fanfaster.onspace.build';
+      var frame   = document.getElementById('app');
+
+      // ── PATH → TAB XARITASI ─────────────────────────────────────────────────
+      // Tashqaridan kelgan URL path segmenti → ichki activeTab
+      var PATH_TO_TAB = {
+        'haqida':           'haqida',
+        'sinov':            'sinov',
+        'natijalar':        'natijalar',
+        // Testlar — ommaviy ro'yxat yoki to'g'ridan-to'g'ri 5 xonali kod
+        'testlar':          'mavjud_testlar',
+        'test':             'mavjud_testlar',
+        // Kazuslar / Keyslar — ommaviy ro'yxat yoki 5 xonali kod
+        'kazuslar':         'mavjud_kazuslar',
+        'keyslar':          'mavjud_kazuslar',
+        'keys':             'mavjud_kazuslar',
+        // O'quv materiallari
+        'oqmatlar':         'oqmatlar',
+        'materiallar':      'oqmatlar',
+        // Savol-Javob (bo'lim/bob ID bilan)
+        'savol-javob':      'savol_javob',
+        'savol-javoblar':   'savol_javob',
+        'sj':               'savol_javob',
+        // Boshqa sahifalar
+        'profil':           'profil',
+        'reyting':          'reyting',
+        'ustoz':            'ustoz',
+        'testlar-kabineti': 'testlar',
+        'royhat':           'royhat',
+        'yordam':           'yordam',
+      };
+
+      // ── URL DAN ?tab= O'QISH ─────────────────────────────────────────────────
+      function getTabFromUrl() {
+        try {
+          var m = window.location.search.match(/[?&]tab=([^&]*)/);
+          return m ? decodeURIComponent(m[1]) : null;
+        } catch (e) { return null; }
+      }
+
+      // ── BRAUZER URL YANGILASH (jimgina) ──────────────────────────────────────
+      function updateUrl(tabPath) {
+        try {
+          var url = new URL(window.location.href);
+          // Onspace editor parametrlarini tozalash
+          url.searchParams.delete('_q');
+          url.searchParams.delete('_e');
+          if (!tabPath || tabPath === 'haqida') {
+            url.searchParams.delete('tab');
+          } else {
+            url.searchParams.set('tab', tabPath);
+          }
+          window.history.replaceState({ tab: tabPath }, '', url.toString());
+        } catch (e) {}
+      }
+
+      // ── TAB PARAMETRINI PARSE QILISH ──────────────────────────────────────────
+      // "testlar/12345" → { tab: 'mavjud_testlar', subPath: '12345', isAutoStart: true }
+      // "kazuslar/67890" → { tab: 'mavjud_kazuslar', subPath: '67890', isAutoStart: true }
+      // "savol-javob/bolim-id/bob-id" → { tab: 'savol_javob', subPath: 'bolim-id/bob-id' }
+      // "oqmatlar/bolim-id/bob-id" → { tab: 'oqmatlar', subPath: 'bolim-id/bob-id' }
+      function parseTabParam(tabParam) {
+        if (!tabParam) return null;
+        var parts = tabParam.split('/').filter(Boolean);
+        if (!parts.length) return null;
+
+        var root    = parts[0];
+        var rest    = parts.slice(1);
+        var subPath = rest.length > 0 ? rest.join('/') : null;
+        var tab     = PATH_TO_TAB[root] || root;
+
+        // Test/Kazus 5 xonali kod avtomatik start
+        var isAutoStart = false;
+        if ((tab === 'mavjud_testlar' || tab === 'mavjud_kazuslar') && subPath && /^\d{5}$/.test(subPath)) {
+          isAutoStart = true;
+        }
+
+        return { tab: tab, subPath: subPath, root: root, isAutoStart: isAutoStart };
+      }
+
+      // ── IFRAMEGA XABAR YUBORISH ───────────────────────────────────────────────
+      function sendMsg(payload) {
+        if (frame && frame.contentWindow) {
+          frame.contentWindow.postMessage(payload, APP_URL);
+        }
+      }
+
+      // Oddiy navigate (tab o'tish, subPath bilan)
+      function sendNavigate(tabParam) {
+        sendMsg({ type: 'navigate', tab: tabParam });
+      }
+
+      // Test/Kazus avtomatik boshlash
+      function sendAutoStart(kod, tur) {
+        // 1) Testlar/Kazuslar sahifasiga o'tish
+        sendNavigate(tur === 'test' ? 'testlar/' + kod : 'kazuslar/' + kod);
+        // 2) Avtomatik ishga tushirish eventi
+        setTimeout(function () {
+          sendMsg({ type: 'auto-start', kod: kod, tur: tur });
+        }, 800);
+      }
+
+      // Savol-Javob bo'lim/bob ochish
+      function sendSjOpen(bolimId, bobId) {
+        sendNavigate('savol-javob/' + (bobId ? bolimId + '/' + bobId : bolimId));
+        setTimeout(function () {
+          sendMsg({ type: 'deeplink-sj', bolimId: bolimId, bobId: bobId || null });
+        }, 700);
+      }
+
+      // ── IFRAME YUKLANGANDA DEEP LINK YUBORISH ─────────────────────────────────
+      var initialTab  = getTabFromUrl();
+      var parsed      = parseTabParam(initialTab);
+      var navigateSent = false;
+
+      frame.addEventListener('load', function () {
+        if (navigateSent || !parsed) return;
+        navigateSent = true;
+
+        setTimeout(function () {
+          if (parsed.isAutoStart) {
+            // Test yoki Kazus — 5 xonali kod bilan avtomatik boshlash
+            var tur = (parsed.tab === 'mavjud_kazuslar') ? 'kazus' : 'test';
+            sendAutoStart(parsed.subPath, tur);
+          } else if (parsed.tab === 'savol_javob' && parsed.subPath) {
+            // Savol-javob — bo'lim/bob ochish
+            var sjParts = parsed.subPath.split('/').filter(Boolean);
+            sendSjOpen(sjParts[0], sjParts[1] || null);
+          } else if (parsed.subPath) {
+            // Boshqa (materiallar va h.k.) — subPath bilan navigate
+            sendNavigate(parsed.root + '/' + parsed.subPath);
+          } else {
+            // Shunchaki tab o'tish
+            sendNavigate(parsed.root);
+          }
+        }, 900);
+      });
+
+      // ── IFRAMEDAGI SAYTDAN ROUTE-CHANGE XABARINI QABUL QILISH ────────────────
+      window.addEventListener('message', function (event) {
+        if (!event.data || typeof event.data !== 'object') return;
+
+        if (event.data.type === 'route-change') {
+          var newPath = event.data.tab || '';
+          // Onspace editor yoki uuid parametrlarini tozalash
+          newPath = newPath.replace(/[?&]_q=[^&]*/g, '').replace(/[?&]_e=[^&]*/g, '');
+          updateUrl(newPath);
+        }
+      });
+
+      // ── IFRAME SRC BOSHLANG'ICH ?tab BILAN SOZLASH ────────────────────────────
+      // iframe ni yuklab, keyin postMessage yuborish yetarli.
+      // Lekin agar ilova URL dagi ?tab= ni ham o'qisa — qo'shib qo'yamiz:
+      if (initialTab) {
+        try {
+          var iframeSrc = new URL(APP_URL);
+          // 5 xonali kod bo'lsa sinov tabiga yo'naltiramiz
+          if (parsed && parsed.isAutoStart) {
+            iframeSrc.searchParams.set('tab', parsed.tab === 'mavjud_kazuslar' ? 'kazuslar' : 'testlar');
+          } else if (initialTab) {
+            iframeSrc.searchParams.set('tab', initialTab);
+          }
+          frame.src = iframeSrc.toString();
+        } catch (e) {}
+      }
+
+    })();
+  </script>
+</body>
+</html>
