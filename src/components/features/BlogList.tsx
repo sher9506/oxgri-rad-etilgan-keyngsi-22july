@@ -1,10 +1,11 @@
 
 import { useState, useEffect } from 'react';
-import { Calendar, User, ArrowLeft, Search, BookOpen, Newspaper } from 'lucide-react';
+import { Calendar, Search, BookOpen, Newspaper, Clock, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { setDocumentTitle, setMetaDescription, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
+import { getInitials, estimateReadingTime, truncateText, formatDate, type AuthorInfo } from '@/lib/blogUtils';
 
 interface BlogPost {
   id: string;
@@ -15,12 +16,13 @@ interface BlogPost {
   rasm_url: string | null;
   status: string;
   slug: string;
+  views: number;
   created_at: string;
   updated_at: string;
 }
 
-interface AuthorSlugMap {
-  [ustoz_ismi: string]: string;
+interface AuthorMap {
+  [key: string]: AuthorInfo;
 }
 
 export default function BlogList() {
@@ -28,7 +30,7 @@ export default function BlogList() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [authorSlugs, setAuthorSlugs] = useState<AuthorSlugMap>({});
+  const [authorMap, setAuthorMap] = useState<AuthorMap>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -55,14 +57,12 @@ export default function BlogList() {
       if (ustozIds.length > 0) {
         const { data: authors } = await supabase
           .from('ustoz')
-          .select('id, full_name, muallif_slug')
+          .select('id, full_name, muallif_slug, face_photo_url, note')
           .in('id', ustozIds);
         if (authors) {
-          const slugMap: AuthorSlugMap = {};
-          authors.forEach(a => {
-            slugMap[a.full_name] = a.muallif_slug;
-          });
-          setAuthorSlugs(slugMap);
+          const map: AuthorMap = {};
+          authors.forEach(a => { map[a.id] = a; });
+          setAuthorMap(map);
         }
       }
 
@@ -70,25 +70,17 @@ export default function BlogList() {
       setMetaDescription("FanFaster blogida huquq sohasidagi maqolalar va nashrlar. Ustozlar tomonidan yozilgan professional maqolalar.");
     } catch (err) {
       console.error('Blog yuklash xatosi:', err);
-      toast({
-        title: 'Xatolik',
-        description: "Blog postlarni yuklab bo'lmadi",
-        variant: 'destructive',
-      });
+      toast({ title: 'Xatolik', description: "Blog postlarni yuklab bo'lmadi", variant: 'destructive' });
     } finally {
       setLoading(false);
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
-  const handleAuthorClick = (e: React.MouseEvent, ustozIsmi: string) => {
+  const handleAuthorClick = (e: React.MouseEvent, ustozId: string | null) => {
     e.stopPropagation();
-    const slug = authorSlugs[ustozIsmi];
-    if (slug) navigate(`/blog/muallif/${slug}`);
+    if (!ustozId) return;
+    const a = authorMap[ustozId];
+    if (a?.muallif_slug) navigate(`/blog/muallif/${a.muallif_slug}`);
   };
 
   const filteredPosts = posts.filter(p =>
@@ -97,9 +89,27 @@ export default function BlogList() {
     p.ustoz_ismi.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // ── Ro'yxat ko'rinish ────────────────────────────────────────────────────────
+  const renderAvatar = (author: AuthorInfo | undefined, size: string = 'w-8 h-8 text-[10px]') => {
+    if (author?.face_photo_url) {
+      return (
+        <img
+          src={author.face_photo_url}
+          alt={author.full_name}
+          className={`${size} rounded-full object-cover shrink-0`}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      );
+    }
+    const name = author?.full_name || '?';
+    return (
+      <div className={`${size} rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center font-bold shrink-0`}>
+        {getInitials(name)}
+      </div>
+    );
+  };
+
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       {/* Sarlavha */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
@@ -148,51 +158,71 @@ export default function BlogList() {
         </div>
       )}
 
-      {/* Postlar ro'yxati */}
+      {/* Postlar grid */}
       {!loading && filteredPosts.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {filteredPosts.map((post) => (
-            <button
-              key={post.id}
-              onClick={() => navigate(`/blog/${post.slug}`)}
-              className="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-blue-200 transition-all group"
-            >
-              {post.rasm_url && (
-                <div className="w-full h-40 overflow-hidden bg-gray-100">
-                  <img
-                    src={post.rasm_url}
-                    alt={post.sarlavha}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
-                  />
-                </div>
-              )}
-              <div className="p-5">
-                <div className="flex items-center gap-2 mb-2 text-[10px] text-gray-400">
-                  {post.ustoz_ismi && (
-                    <span
-                      className="flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors"
-                      onClick={(e) => handleAuthorClick(e, post.ustoz_ismi)}
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredPosts.map((post) => {
+            const author = post.ustoz_id ? authorMap[post.ustoz_id] : undefined;
+            return (
+              <button
+                key={post.id}
+                onClick={() => navigate(`/blog/${post.slug}`)}
+                className="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 hover:-translate-y-1 transition-all duration-300 group flex flex-col"
+              >
+                {post.rasm_url && (
+                  <div className="w-full h-44 overflow-hidden bg-gray-100">
+                    <img
+                      src={post.rasm_url}
+                      alt={post.sarlavha}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+                    />
+                  </div>
+                )}
+                <div className="p-5 flex flex-col flex-1">
+                  {/* Muallif + sana */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div
+                      className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={(e) => handleAuthorClick(e, post.ustoz_id)}
                     >
-                      <User className="h-3 w-3" />
-                      <span className="font-semibold text-gray-600">{post.ustoz_ismi}</span>
+                      {renderAvatar(author)}
+                      <span className="text-xs font-semibold text-gray-700 hover:text-blue-600 transition-colors">
+                        {post.ustoz_ismi || author?.full_name || 'Noma\'lum'}
+                      </span>
+                    </div>
+                    <span className="text-gray-300">·</span>
+                    <span className="flex items-center gap-1 text-[10px] text-gray-400">
+                      <Calendar className="h-3 w-3" />
+                      {formatDate(post.created_at)}
                     </span>
-                  )}
-                  <span>·</span>
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {formatDate(post.created_at)}
-                  </span>
+                  </div>
+
+                  {/* Sarlavha */}
+                  <h3 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors text-sm">
+                    {post.sarlavha}
+                  </h3>
+
+                  {/* Tavsif */}
+                  <p className="text-xs text-gray-500 line-clamp-3 leading-relaxed flex-1">
+                    {truncateText(post.mazmun, 180)}
+                  </p>
+
+                  {/* Meta */}
+                  <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-100 text-[10px] text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {estimateReadingTime(post.mazmun)} daqiqa o'qish
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Eye className="h-3 w-3" />
+                      {post.views || 0}
+                    </span>
+                  </div>
                 </div>
-                <h3 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
-                  {post.sarlavha}
-                </h3>
-                <p className="text-xs text-gray-500 line-clamp-3 leading-relaxed">
-                  {post.mazmun}
-                </p>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
