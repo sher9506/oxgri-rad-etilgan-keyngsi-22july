@@ -101,3 +101,12 @@
     background-size: 110%;
   }
 }
+a[href*="bolt.new"], 
+a[href*="bolt.host"],
+[class*="bolt-badge"],
+iframe[src*="bolt"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}

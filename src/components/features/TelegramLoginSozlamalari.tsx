@@ -70,8 +70,11 @@ export default function TelegramLoginSozlamalari() {
     if (!t) return false;
     setBotInfoYuklanyapti(true);
     try {
-      const res = await fetch(`https://api.telegram.org/bot${t}/getMe`);
-      const result = await res.json();
+      const { data, error } = await supabase.functions.invoke('telegram-api', {
+        body: { token: t, method: 'getMe' },
+      });
+      if (error) throw error;
+      const result = data;
       if (result.ok) {
         setBotInfo(result.result);
         return true;
@@ -92,25 +95,21 @@ export default function TelegramLoginSozlamalari() {
 
     if (eskiToken.trim() && eskiToken.trim() !== yangiToken.trim()) {
       try {
-        await fetch(`https://api.telegram.org/bot${eskiToken.trim()}/deleteWebhook`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ drop_pending_updates: true }),
+        await supabase.functions.invoke('telegram-api', {
+          body: { token: eskiToken.trim(), method: 'deleteWebhook', body: { drop_pending_updates: true } },
         });
       } catch {}
     }
 
     try {
-      const res = await fetch(`https://api.telegram.org/bot${yangiToken.trim()}/setWebhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: targetUrl,
-          allowed_updates: ['message', 'callback_query'],
-          drop_pending_updates: true,
-        }),
+      const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+        body: {
+          token: yangiToken.trim(),
+          method: 'setWebhook',
+          body: { url: targetUrl, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true },
+        },
       });
-      const result = await res.json();
+      if (error) throw error;
       if (result.ok) {
         await supabase.from('settings').upsert(
           { key: 'TELEGRAM_LOGIN_BOT_WEBHOOK_URL', text_value: targetUrl, value: true, tavsif: 'Login Bot Webhook URL' },
@@ -178,12 +177,14 @@ export default function TelegramLoginSozlamalari() {
     setWebhookStatus(null);
     try {
       const wUrl = AUTO_WEBHOOK_URL;
-      const res = await fetch(`https://api.telegram.org/bot${token.trim()}/setWebhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: wUrl, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true }),
+      const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+        body: {
+          token: token.trim(),
+          method: 'setWebhook',
+          body: { url: wUrl, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true },
+        },
       });
-      const result = await res.json();
+      if (error) throw error;
       if (result.ok) {
         await supabase.from('settings').upsert(
           { key: 'TELEGRAM_LOGIN_BOT_WEBHOOK_URL', text_value: wUrl, value: true },
@@ -208,8 +209,14 @@ export default function TelegramLoginSozlamalari() {
 
   const webhookHolat = async () => {
     if (!token.trim()) return;
-    const res = await fetch(`https://api.telegram.org/bot${token.trim()}/getWebhookInfo`);
-    const result = await res.json();
+    const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+      body: { token: token.trim(), method: 'getWebhookInfo' },
+    });
+    if (error) {
+      setWebhookStatus('error');
+      setWebhookInfo(error.message);
+      return;
+    }
     if (result.ok && result.result.url) {
       const info = result.result;
       setWebhookStatus('success');
@@ -224,12 +231,10 @@ export default function TelegramLoginSozlamalari() {
 
   const webhookOchirish = async () => {
     if (!token.trim()) return;
-    const res = await fetch(`https://api.telegram.org/bot${token.trim()}/deleteWebhook`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ drop_pending_updates: true }),
+    const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+      body: { token: token.trim(), method: 'deleteWebhook', body: { drop_pending_updates: true } },
     });
-    const result = await res.json();
+    if (error) return;
     if (result.ok) {
       setWebhookStatus(null);
       setWebhookInfo("O'chirildi");

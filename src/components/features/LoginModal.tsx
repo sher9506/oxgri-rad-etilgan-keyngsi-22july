@@ -307,10 +307,12 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       await supabase.from('parol_reset_kodlar').insert({ login_id: loginId, kod: otpKod, faol: true });
       const { data: tokenData } = await supabase.from('settings').select('text_value').eq('key', 'TELEGRAM_TOKEN').maybeSingle();
       if (!tokenData?.text_value) { toast({ title: 'Bot sozlanmagan', variant: 'destructive' }); setYuklanyapti(false); return; }
-      await fetch(`https://api.telegram.org/bot${tokenData.text_value}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: ustoz.telegram_chat_id, text: `🔐 <b>Parolni tiklash kodi (Ustoz)</b>\n\nKodingiz: <code>${otpKod}</code>\n\n⚠️ 10 daqiqa amal qiladi.`, parse_mode: 'HTML' }),
+      await supabase.functions.invoke('telegram-api', {
+        body: {
+          token: tokenData.text_value,
+          method: 'sendMessage',
+          body: { chat_id: ustoz.telegram_chat_id, text: `🔐 <b>Parolni tiklash kodi (Ustoz)</b>\n\nKodingiz: <code>${otpKod}</code>\n\n⚠️ 10 daqiqa amal qiladi.`, parse_mode: 'HTML' },
+        },
       });
       setUstozResetObj(ustoz);
       setUstozLoginBosqich('otp_kiriting');

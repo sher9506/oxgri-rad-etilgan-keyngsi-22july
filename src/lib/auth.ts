@@ -101,23 +101,23 @@ export async function sendUstozOtp(phone: string): Promise<{ success: boolean; m
   }
 
   // Bot orqali OTP yuborish
-  const msgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: botSession.chat_id,
-      parse_mode: 'HTML',
-      text:
-        `🔐 <b>Ustoz ro'yxatdan o'tish kodi</b>\n\n` +
-        `Sizning bir martalik kodni:\n\n` +
-        `<code>${otp}</code>\n\n` +
-        `⏱ Kod 10 daqiqa amal qiladi.\n` +
-        `❗️ Kodni hech kimga bermang!`,
-    }),
+  const { data: msgResult, error: msgErr } = await supabase.functions.invoke('telegram-api', {
+    body: {
+      token: botToken,
+      method: 'sendMessage',
+      body: {
+        chat_id: botSession.chat_id,
+        parse_mode: 'HTML',
+        text:
+          `🔐 <b>Ustoz ro'yxatdan o'tish kodi</b>\n\n` +
+          `Sizning bir martalik kodni:\n\n` +
+          `<code>${otp}</code>\n\n` +
+          `⏱ Kod 10 daqiqa amal qiladi.\n` +
+          `❗️ Kodni hech kimga bermang!`,
+      },
+    },
   });
-
-  const msgResult = await msgRes.json();
-  if (!msgResult.ok) {
+  if (msgErr || !msgResult?.ok) {
     throw new Error('Bot xabari yuborishda xatolik. Botga /start yuborgan bo\'lishingiz kerak.');
   }
 
@@ -185,13 +185,14 @@ export async function registerUstozWithOtp(params: {
 
     const botToken = tokenData?.text_value;
     if (botToken) {
-      const chatRes = await fetch(`https://api.telegram.org/bot${botToken}/getChat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: botSession.chat_id }),
+      const { data: chatData, error: chatErr } = await supabase.functions.invoke('telegram-api', {
+        body: {
+          token: botToken,
+          method: 'getChat',
+          body: { chat_id: botSession.chat_id },
+        },
       });
-      const chatData = await chatRes.json();
-      if (chatData.ok && chatData.result?.username) {
+      if (!chatErr && chatData?.ok && chatData.result?.username) {
         telegramUsername = '@' + chatData.result.username;
       }
     }

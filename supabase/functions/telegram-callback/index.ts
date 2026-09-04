@@ -20,9 +20,12 @@ async function getChannelId(): Promise<string> {
   const { data } = await supabaseAdmin
     .from('settings')
     .select('text_value')
-    .eq('key', 'TELEGRAM_CHANNEL_ID')
+    .in('key', ['TELEGRAM_CHANNEL_ID', 'TELEGRAM_CHANNEL_IDS'])
+    .order('key', { ascending: false })
+    .limit(1)
     .maybeSingle();
-  return data?.text_value || '';
+  const val = data?.text_value || '';
+  return val.split(',')[0].trim();
 }
 
 async function sendMessage(token: string, chatId: number | string, text: string, options: Record<string, unknown> = {}) {
@@ -65,6 +68,7 @@ function createLoginId(ism: string, familiya: string): string {
     .slice(0, 30);
 }
 
+// telegram-callback webhook — verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });

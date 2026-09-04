@@ -235,7 +235,7 @@ async function sendChannelCheck(chatId: number | string, notMember: string[], cf
   });
 }
 
-// ── WEBHOOK HANDLER ──────────────────────────────────────────────────────────
+// ── WEBHOOK HANDLER — verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 

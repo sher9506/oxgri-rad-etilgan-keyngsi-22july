@@ -438,17 +438,19 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
               : `❌ <b>Arizangiz rad etildi.</b>\n\n` +
                 `Qo'shimcha ma'lumot uchun admin bilan bog'laning.`;
 
-            await fetch(`https://api.telegram.org/bot${activeToken}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: ustozData.telegram_chat_id,
-                text: xabar,
-                parse_mode: 'HTML',
-                ...(status === 'approved' ? {
-                  reply_markup: { inline_keyboard: [[{ text: siteBtnText, url: siteUrl }]] }
-                } : {}),
-              }),
+            await supabase.functions.invoke('telegram-api', {
+              body: {
+                token: activeToken,
+                method: 'sendMessage',
+                body: {
+                  chat_id: ustozData.telegram_chat_id,
+                  text: xabar,
+                  parse_mode: 'HTML',
+                  ...(status === 'approved' ? {
+                    reply_markup: { inline_keyboard: [[{ text: siteBtnText, url: siteUrl }]] }
+                  } : {}),
+                },
+              },
             });
           }
         } catch (botErr) {

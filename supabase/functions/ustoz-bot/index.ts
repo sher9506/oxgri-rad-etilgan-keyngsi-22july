@@ -6,6 +6,7 @@ const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// Ustoz Bot webhook — verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 // ── Bot konfiguratsiya ──────────────────────────────────────────────────────
 interface BotConfig {
   token: string;

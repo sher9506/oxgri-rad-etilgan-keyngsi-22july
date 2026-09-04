@@ -1,0 +1,32 @@
+[functions.mentor-chat]
+verify_jwt = false
+
+[functions.baholash]
+verify_jwt = false
+
+[functions.chunk-material]
+verify_jwt = false
+
+[functions.rag-pipeline]
+verify_jwt = false
+
+[functions.telegram-bot]
+verify_jwt = false
+
+[functions.telegram-callback]
+verify_jwt = false
+
+[functions.telegram-login]
+verify_jwt = false
+
+[functions.ustoz-bot]
+verify_jwt = false
+
+[functions.onspace-ai-text]
+verify_jwt = false
+
+[functions.restore-backup]
+verify_jwt = false
+
+[functions.telegram-api]
+verify_jwt = false

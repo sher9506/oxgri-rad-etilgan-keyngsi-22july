@@ -1,3 +1,4 @@
+// Telegram Login Bot webhook — verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 

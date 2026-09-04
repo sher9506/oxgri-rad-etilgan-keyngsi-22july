@@ -9,6 +9,16 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
+interface JadvalNatija {
+  jadval: string;
+  backup_soni: number;
+  tiklandi: number;
+  xato: number;
+  xato_xabar: string;
+  holat: 'ok' | 'partial' | 'error' | 'empty' | 'no_table' | 'no_match';
+  ogohlantirishlar: string[];
+}
+
 // ── ZAHIRA v6.0 ──────────────────────────────────────────────────────────────
 // Barcha jadvallar + API kalitlar (settings orqali) + premium tizim + XP tizim
 
@@ -217,12 +227,6 @@ async function jadvalniYukla(key: string): Promise<any[]> {
   }
 }
 
-function conflictUstuni(key: string): string {
-  if (key === 'settings') return 'key';
-  if (key === 'chat_azolar') return 'id';
-  return 'id';
-}
-
 const COLOR_MAP: Record<string, string> = {
   blue: 'border-blue-400 bg-blue-50 text-blue-800',
   indigo: 'border-indigo-400 bg-indigo-50 text-indigo-800',
@@ -237,23 +241,6 @@ const COLOR_MAP: Record<string, string> = {
   sky: 'border-sky-400 bg-sky-50 text-sky-800',
 };
 
-// Tiklanish tartibi — jadvallar orasida bog'liqlik bor
-const TARTIB = [
-  'settings', 'yangiliklar',
-  'ustoz', 'talabalar',
-  'testlar', 'test_javoblar', 'test_sessiyalar',
-  'toplamlar', 'javoblar',
-  'om_bolimlar', 'om_boblar', 'om_materiallar', 'om_korishlar', 'om_chunks', 'ai_cache',
-  'sj_bolimlar', 'sj_boblar', 'sj_savollar', 'sj_natijalar',
-  'premium_bolimlar', 'premium_boblar', 'premium_kontent',
-  'xp_tarix',
-  'chatlar', 'chat_azolar', 'chat_habarlar',
-  'payments',
-  'bildirishnomalar', 'fraud_urinishlar', 'profil_tahrirlashlar',
-  'auto_start_signals', 'chaqiruvlar',
-  'yordam_xabarlar',
-];
-
 export default function ZahiraPanel() {
   const [yuklanmoqda, setYuklanmoqda] = useState(false);
   const [tiklanmoqda, setTiklanmoqda] = useState(false);
@@ -266,6 +253,7 @@ export default function ZahiraPanel() {
     xabar: string;
     tafsilotlar: string[];
     statistika?: Record<string, number>;
+    natijalar?: JadvalNatija[];
   } | null>(null);
   const [zahiraStatistika, setZahiraStatistika] = useState<Record<string, number> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -388,71 +376,46 @@ export default function ZahiraPanel() {
       const matn = await fayl.text();
       const backup = JSON.parse(matn);
 
-      if (!backup.database) throw new Error("Noto'g'ri zahira fayl formati");
+      if (!backup.database) throw new Error("Noto'g'ri zahira fayl formati — 'database' maydoni topilmadi");
 
-      const tafsilotlar: string[] = [];
-      const statistika: Record<string, number> = {};
-      const db = backup.database;
+      setJarayonXabari("Serverga yuborilmoqda — barcha jadvallar tiklanmoqda...");
+      setProgress(30);
 
-      // API kalitlar mavjud bo'lsa ular haqida ma'lumot
-      if (backup.apiKalitlar && Object.keys(backup.apiKalitlar).length > 0) {
-        tafsilotlar.push(`🔑 API kalitlar settings jadvalida saqlanadi — ${Object.keys(backup.apiKalitlar).length} ta kalit`);
-      }
+      const { data: responseData, error: fnError } = await supabase.functions.invoke('restore-backup', {
+        body: backup,
+      });
 
-      const barchaJadvallar = Object.keys(db);
-      let done = 0;
+      if (fnError) throw new Error(fnError.message);
 
-      const batchUpsert = async (key: string, data: any[], label: string) => {
-        if (!data?.length) {
-          tafsilotlar.push(`— ${label}: bo'sh`);
-          statistika[key] = 0;
-          return;
-        }
-        const BATCH = 50;
-        let ok = 0, err = 0;
-        for (let i = 0; i < data.length; i += BATCH) {
-          const qism = data.slice(i, i + BATCH);
-          const { error } = await supabase.from(key).upsert(qism, {
-            onConflict: conflictUstuni(key),
-            ignoreDuplicates: false,
-          });
-          if (error) { err += qism.length; console.error(`${key}:`, error.message); }
-          else ok += qism.length;
-        }
-        if (err > 0) tafsilotlar.push(`⚠️ ${label}: ${ok} ta tiklandi, ${err} ta xato`);
-        else tafsilotlar.push(`✅ ${ok} ta ${label}`);
-        statistika[key] = ok;
+      const result = responseData as {
+        muvaffaqiyat: boolean;
+        xabar: string;
+        tafsilotlar: string[];
+        natijalar: JadvalNatija[];
+        statistika: Record<string, number>;
       };
-
-      const tartibliJadvallar = [
-        ...TARTIB.filter(k => db[k] !== undefined),
-        ...barchaJadvallar.filter(k => !TARTIB.includes(k)),
-      ];
-
-      for (const key of tartibliJadvallar) {
-        const label = GURUHLAR.flatMap(g => g.jadvallar).find(j => j.key === key)?.nom || key;
-        setJarayonXabari(`${label} tiklanmoqda...`);
-        done++;
-        setProgress(Math.round((done / tartibliJadvallar.length) * 90));
-        await batchUpsert(key, db[key] || [], label);
-      }
 
       setProgress(100);
       setTiklashNatija({
-        muvaffaqiyat: true,
-        xabar: 'Baza muvaffaqiyatli yangilandi!',
-        tafsilotlar,
-        statistika,
+        muvaffaqiyat: result.muvaffaqiyat,
+        xabar: result.xabar,
+        tafsilotlar: result.tafsilotlar || [],
+        natijalar: result.natijalar || [],
+        statistika: result.statistika || {},
       });
 
-      toast({ title: '✅ Tiklash muvaffaqiyatli!', description: 'Sahifa 3 soniyada yangilanadi...' });
-      setTimeout(() => window.location.reload(), 3000);
+      if (result.muvaffaqiyat) {
+        toast({ title: '✅ Tiklash muvaffaqiyatli!', description: 'Sahifa 3 soniyada yangilanadi...' });
+        setTimeout(() => window.location.reload(), 3000);
+      } else {
+        toast({ title: '⚠️ Qisman tiklandi', description: 'Ba\'zi jadvallarda xatolar bor — hisobotni ko\'ring', variant: 'destructive' });
+      }
     } catch (err: any) {
       console.error('Tiklash xatosi:', err);
       setTiklashNatija({
         muvaffaqiyat: false,
         xabar: err.message || 'Tiklashda xatolik',
-        tafsilotlar: ["❌ Fayl formati noto'g'ri yoki buzilgan"],
+        tafsilotlar: [`❌ ${err.message || "Fayl formati noto'g'ri yoki buzilgan"}`],
       });
       toast({ title: 'Xato', description: err.message, variant: 'destructive' });
     } finally {
@@ -733,20 +696,56 @@ export default function ZahiraPanel() {
               </div>
             )}
 
-            <details className="cursor-pointer">
-              <summary className="text-sm font-bold text-gray-600 hover:text-gray-900">Batafsil ko'rish ({tiklashNatija.tafsilotlar.length} ta jadval)</summary>
-              <div className="mt-3 space-y-1.5 max-h-64 overflow-y-auto">
-                {tiklashNatija.tafsilotlar.map((t, i) => (
-                  <div key={i} className={`px-3 py-2 rounded-lg text-xs font-medium ${
-                    t.startsWith('✅') ? 'bg-green-100 text-green-800' :
-                    t.startsWith('⚠️') ? 'bg-yellow-100 text-yellow-800' :
-                    t.startsWith('🔑') ? 'bg-amber-100 text-amber-800' :
-                    t.startsWith('—') ? 'bg-gray-50 text-gray-500' :
-                    'bg-red-100 text-red-800'
-                  }`}>{t}</div>
-                ))}
+            {/* JADVAL BO'YICHA HISOBOT */}
+            {tiklashNatija.natijalar && tiklashNatija.natijalar.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-gray-700">Jadval bo'yicha hisobot:</h4>
+                <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                  {tiklashNatija.natijalar.map((r, i) => (
+                    <div key={i} className={`px-3 py-2.5 rounded-lg border text-xs ${
+                      r.holat === 'ok' ? 'bg-green-50 border-green-200' :
+                      r.holat === 'partial' ? 'bg-yellow-50 border-yellow-200' :
+                      r.holat === 'error' ? 'bg-red-50 border-red-200' :
+                      r.holat === 'no_table' ? 'bg-red-50 border-red-300' :
+                      r.holat === 'no_match' ? 'bg-orange-50 border-orange-200' :
+                      'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-800">
+                          {r.holat === 'ok' ? '✅' : r.holat === 'partial' ? '⚠️' : r.holat === 'empty' ? '—' : '❌'} {r.jadval}
+                        </span>
+                        <span className="font-mono text-gray-600">
+                          {r.backup_soni > 0 ? `${r.tiklandi}/${r.backup_soni} tiklandi` : 'bo\'sh'}
+                          {r.xato > 0 && <span className="text-red-600 font-bold ml-2">{r.xato} xato</span>}
+                        </span>
+                      </div>
+                      {r.xato_xabar && (
+                        <div className="mt-1 text-red-700 text-[11px] font-mono bg-red-100/50 px-2 py-1 rounded">
+                          {r.xato_xabar}
+                        </div>
+                      )}
+                      {r.ogohlantirishlar.length > 0 && (
+                        <div className="mt-1 text-amber-700 text-[11px]">
+                          {r.ogohlantirishlar.map((o, j) => <div key={j}>⚠ {o}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </details>
+            )}
+
+            {/* DIAGNOSTIK MA'LUMOTLAR */}
+            {tiklashNatija.tafsilotlar && tiklashNatija.tafsilotlar.length > 0 && (
+              <details className="cursor-pointer">
+                <summary className="text-sm font-bold text-gray-600 hover:text-gray-900">Diagnostika ma'lumotlari ({tiklashNatija.tafsilotlar.length})</summary>
+                <div className="mt-3 space-y-1.5 max-h-48 overflow-y-auto">
+                  {tiklashNatija.tafsilotlar.map((t, i) => (
+                    <div key={i} className="px-3 py-1.5 rounded-lg text-xs font-mono bg-gray-100 text-gray-700">{t}</div>
+                  ))}
+                </div>
+              </details>
+            )}
 
             {tiklashNatija.muvaffaqiyat && (
               <div className="bg-green-100 border border-green-200 rounded-xl p-4 flex items-center gap-3">

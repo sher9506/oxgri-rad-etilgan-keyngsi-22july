@@ -50,15 +50,17 @@ async function sendTelegramBroadcast(token: string, chatIds: number[], text: str
     const batch = chatIds.slice(i, i + batchSize);
     await Promise.allSettled(
       batch.map((chatId) =>
-        fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: 'HTML',
-            reply_markup: keyboard,
-          }),
+        supabase.functions.invoke('telegram-api', {
+          body: {
+            token,
+            method: 'sendMessage',
+            body: {
+              chat_id: chatId,
+              text,
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+            },
+          },
         }).catch(() => null)
       )
     );

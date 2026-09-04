@@ -75,19 +75,20 @@ export default function BotXabarnomasi({ onlyView = false }: BotXabarnomasiProps
       const batch = yuborilganlar.slice(i, i + batchSize);
       await Promise.all(batch.map(async (talaba) => {
         try {
-          const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: talaba.chat_id,
-              text: xabar,
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard },
-            }),
+          const { data: result, error: fnErr } = await supabase.functions.invoke('telegram-api', {
+            body: {
+              token,
+              method: 'sendMessage',
+              body: {
+                chat_id: talaba.chat_id,
+                text: xabar,
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard },
+              },
+            },
           });
-          const result = await res.json();
-          if (result.ok) ok++;
-          else xato++;
+          if (fnErr || !result?.ok) xato++;
+          else ok++;
         } catch {
           xato++;
         }

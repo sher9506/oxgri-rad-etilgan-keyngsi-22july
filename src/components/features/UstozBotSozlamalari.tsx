@@ -72,9 +72,11 @@ export default function UstozBotSozlamalari() {
     if (!tok) return false;
     setBotInfoYuklanyapti(true);
     try {
-      const res = await fetch(`https://api.telegram.org/bot${tok}/getMe`);
-      const result = await res.json();
-      if (result.ok) {
+      const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+        body: { token: tok, method: 'getMe' },
+      });
+      if (error) throw error;
+      if (result?.ok) {
         setBotInfo(result.result);
         return true;
       } else {
@@ -94,21 +96,21 @@ export default function UstozBotSozlamalari() {
     const targetUrl = autoWebhookUrl;
     if (eskiToken.trim() && eskiToken.trim() !== yangiToken.trim()) {
       try {
-        await fetch(`https://api.telegram.org/bot${eskiToken.trim()}/deleteWebhook`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ drop_pending_updates: true }),
+        await supabase.functions.invoke('telegram-api', {
+          body: { token: eskiToken.trim(), method: 'deleteWebhook', body: { drop_pending_updates: true } },
         });
       } catch {}
     }
     try {
-      const res = await fetch(`https://api.telegram.org/bot${yangiToken.trim()}/setWebhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true }),
+      const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+        body: {
+          token: yangiToken.trim(),
+          method: 'setWebhook',
+          body: { url: targetUrl, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true },
+        },
       });
-      const result = await res.json();
-      if (result.ok) {
+      if (error) throw error;
+      if (result?.ok) {
         await supabase.from('settings').upsert({ key: 'USTOZ_BOT_WEBHOOK_URL', text_value: targetUrl, value: true, tavsif: 'Ustoz Bot Webhook URL' }, { onConflict: 'key' });
         setWebhookUrl(targetUrl);
         setWebhookInfo(targetUrl);
@@ -173,13 +175,15 @@ export default function UstozBotSozlamalari() {
     setWebhookInfo('');
     try {
       const wUrl = webhookUrl.trim() || autoWebhookUrl;
-      const res = await fetch(`https://api.telegram.org/bot${token.trim()}/setWebhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: wUrl, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true }),
+      const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+        body: {
+          token: token.trim(),
+          method: 'setWebhook',
+          body: { url: wUrl, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true },
+        },
       });
-      const result = await res.json();
-      if (result.ok) {
+      if (error) throw error;
+      if (result?.ok) {
         await supabase.from('settings').upsert({ key: 'USTOZ_BOT_WEBHOOK_URL', text_value: wUrl, value: true, tavsif: 'Ustoz Bot Webhook URL' }, { onConflict: 'key' });
         setWebhookUrl(wUrl);
         setWebhookStatus('success');
@@ -201,9 +205,11 @@ export default function UstozBotSozlamalari() {
   const webhookHolat = async () => {
     if (!token.trim()) return;
     try {
-      const res = await fetch(`https://api.telegram.org/bot${token.trim()}/getWebhookInfo`);
-      const result = await res.json();
-      if (result.ok && result.result.url) {
+      const { data: result, error } = await supabase.functions.invoke('telegram-api', {
+        body: { token: token.trim(), method: 'getWebhookInfo' },
+      });
+      if (error) throw error;
+      if (result?.ok && result.result.url) {
         setWebhookStatus('success');
         setWebhookInfo(result.result.url);
         toast({ title: '✅ Webhook faol', description: `Pending: ${result.result.pending_update_count || 0}` });
@@ -220,7 +226,9 @@ export default function UstozBotSozlamalari() {
   const webhookOchirish = async () => {
     if (!token.trim()) return;
     try {
-      await fetch(`https://api.telegram.org/bot${token.trim()}/deleteWebhook`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drop_pending_updates: true }) });
+      await supabase.functions.invoke('telegram-api', {
+        body: { token: token.trim(), method: 'deleteWebhook', body: { drop_pending_updates: true } },
+      });
       setWebhookStatus(null);
       setWebhookInfo("O'chirildi");
       toast({ title: "Webhook o'chirildi" });
