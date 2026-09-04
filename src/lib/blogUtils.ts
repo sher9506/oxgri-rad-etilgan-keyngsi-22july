@@ -30,6 +30,10 @@ export interface AuthorInfo {
   full_name: string;
   face_photo_url: string | null;
   note: string | null;
+  telegram_username?: string | null;
+  phone?: string | null;
+  telegram_public?: boolean;
+  phone_public?: boolean;
 }
 
 export function extractErrorMessage(err: unknown, fallback: string): string {
@@ -39,4 +43,30 @@ export function extractErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
   return fallback;
+}
+
+export function isValidNote(note: string | null | undefined): boolean {
+  return !!note && note !== 'null' && note.trim() !== '';
+}
+
+const GRADIENTS = [
+  'from-blue-500 to-blue-700',
+  'from-blue-600 to-cyan-500',
+  'from-sky-500 to-blue-600',
+  'from-blue-400 to-indigo-500',
+  'from-cyan-500 to-blue-600',
+  'from-blue-500 to-teal-500',
+];
+
+export function gradientForSlug(slug: string): string {
+  let hash = 0;
+  for (let i = 0; i < slug.length; i++) {
+    hash = ((hash << 5) - hash) + slug.charCodeAt(i);
+    hash |= 0;
+  }
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
+}
+
+export function gradientForTitle(title: string): string {
+  return gradientForSlug(title.toLowerCase().replace(/\s+/g, '-'));
 }

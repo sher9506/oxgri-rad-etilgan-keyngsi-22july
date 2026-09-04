@@ -1,10 +1,10 @@
 
-import { useState, useEffect } from 'react';
-import { Calendar, User, ArrowLeft, BookOpen, Clock, Eye, Send, Link2, Check } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Calendar, User, ArrowLeft, BookOpen, Clock, Eye, Send, Link2, Check, Heart, Phone, MessageCircle, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { setDocumentTitle, setMetaDescription, setJsonLd, removeJsonLd, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
-import { getInitials, estimateReadingTime, formatDate, type AuthorInfo, extractErrorMessage } from '@/lib/blogUtils';
+import { getInitials, estimateReadingTime, formatDate, type AuthorInfo, extractErrorMessage, isValidNote, gradientForTitle } from '@/lib/blogUtils';
 
 interface BlogPost {
   id: string;
@@ -29,6 +29,12 @@ interface RelatedPost {
   created_at: string;
 }
 
+interface TocItem {
+  id: string;
+  text: string;
+  level: number;
+}
+
 export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
   const navigate = useNavigate();
   const slug = slugProp;
@@ -40,6 +46,13 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [helpfulVote, setHelpfulVote] = useState<'yes' | 'no' | null>(null);
+  const [readingProgress, setReadingProgress] = useState(0);
+  const [tocItems, setTocItems] = useState<TocItem[]>([]);
+  const [activeTocId, setActiveTocId] = useState<string>('');
+  const articleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!slug) {
@@ -54,6 +67,57 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
       resetMetaDescription();
     };
   }, [slug]);
+
+  // Reading progress + TOC scroll tracking
+  useEffect(() => {
+    if (!post) return;
+
+    const handleScroll = () => {
+      const article = articleRef.current;
+      if (!article) return;
+      const rect = article.getBoundingClientRect();
+      const articleTop = rect.top + window.scrollY;
+      const articleHeight = rect.height;
+      const scrollPos = window.scrollY - articleTop;
+      const progress = Math.min(100, Math.max(0, (scrollPos / articleHeight) * 100));
+      setReadingProgress(progress);
+
+      // Track active TOC heading
+      if (tocItems.length > 0) {
+        let current = '';
+        for (const item of tocItems) {
+          const el = document.getElementById(item.id);
+          if (el) {
+            const elRect = el.getBoundingClientRect();
+            if (elRect.top < 120) {
+              current = item.id;
+            }
+          }
+        }
+        if (current) setActiveTocId(current);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [post, tocItems]);
+
+  // Parse TOC from article content
+  useEffect(() => {
+    if (!post) return;
+    const article = articleRef.current;
+    if (!article) return;
+
+    const headings = article.querySelectorAll('h2, h3');
+    const items: TocItem[] = [];
+    headings.forEach((h, i) => {
+      const text = h.textContent || '';
+      const id = `heading-${i}`;
+      h.id = id;
+      items.push({ id, text, level: h.tagName === 'H2' ? 2 : 3 });
+    });
+    setTocItems(items);
+  }, [post]);
 
   const loadPost = async (slugParam: string) => {
     setLoading(true);
@@ -76,6 +140,14 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
 
       setPost(data);
 
+      // Load like count from localStorage as simple client-side counter
+      const storedLikes = localStorage.getItem(`blog-likes-${data.id}`);
+      setLikeCount(storedLikes ? parseInt(storedLikes) : 0);
+      const storedLiked = localStorage.getItem(`blog-liked-${data.id}`);
+      if (storedLiked === 'true') setLiked(true);
+      const storedHelpful = localStorage.getItem(`blog-helpful-${data.id}`);
+      if (storedHelpful) setHelpfulVote(storedHelpful as 'yes' | 'no');
+
       // Server-side view increment via SECURITY DEFINER function
       supabase.rpc('increment_blog_views', { p_slug: slugParam }).then(() => {});
 
@@ -84,14 +156,13 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
       if (data.ustoz_id) {
         const { data: aData } = await supabase
           .from('ustoz')
-          .select('muallif_slug, full_name, face_photo_url, note')
+          .select('id, muallif_slug, full_name, face_photo_url, note, telegram_username, phone, telegram_public, phone_public')
           .eq('id', data.ustoz_id)
           .maybeSingle();
         if (aData) {
           authorData = aData as AuthorInfo;
           setAuthor(authorData);
 
-          // Get author post count
           const { count } = await supabase
             .from('blog_posts')
             .select('*', { count: 'exact', head: true })
@@ -99,7 +170,6 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
             .eq('status', 'published');
           setAuthorPostCount(count || 0);
 
-          // Get related posts by same author
           const { data: related } = await supabase
             .from('blog_posts')
             .select('id, slug, sarlavha, mazmun, rasm_url, created_at')
@@ -151,6 +221,34 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
     const url = encodeURIComponent(window.location.href);
     const title = encodeURIComponent(post?.sarlavha || '');
     window.open(`https://t.me/share/url?url=${url}&text=${title}`, '_blank');
+  };
+
+  const handleLike = () => {
+    if (!post) return;
+    if (liked) {
+      setLiked(false);
+      setLikeCount(c => c - 1);
+      localStorage.setItem(`blog-likes-${post.id}`, String(likeCount - 1));
+      localStorage.setItem(`blog-liked-${post.id}`, 'false');
+    } else {
+      setLiked(true);
+      setLikeCount(c => c + 1);
+      localStorage.setItem(`blog-likes-${post.id}`, String(likeCount + 1));
+      localStorage.setItem(`blog-liked-${post.id}`, 'true');
+    }
+  };
+
+  const handleHelpful = (vote: 'yes' | 'no') => {
+    if (!post) return;
+    setHelpfulVote(vote);
+    localStorage.setItem(`blog-helpful-${post.id}`, vote);
+  };
+
+  const scrollToTocItem = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 100, behavior: 'smooth' });
+    }
   };
 
   const renderAvatar = (a: AuthorInfo | null, size: string = 'w-16 h-16 text-xl') => {
@@ -214,156 +312,322 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
 
   const authorName = post.ustoz_ismi || author?.full_name || '';
   const authorSlug = author?.muallif_slug || '';
+  const gradient = gradientForTitle(post.sarlavha);
+  const wordCount = post.mazmun.trim().split(/\s+/).length;
+  const hasToc = wordCount >= 500 && tocItems.length >= 2;
+  const showTelegram = author?.telegram_public && author?.telegram_username && author.telegram_username.trim() !== '';
+  const showPhone = author?.phone_public && author?.phone && author.phone.trim() !== '';
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <button onClick={() => navigate('/blog')} className="flex items-center gap-2 mb-6 text-sm font-bold text-gray-500 hover:text-blue-600 transition-all">
-        <ArrowLeft className="h-4 w-4" /> Blog ro'yxatiga qaytish
-      </button>
+    <>
+      {/* Reading progress bar */}
+      <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-gray-100">
+        <div
+          className="h-full bg-blue-600 transition-all duration-150 ease-out"
+          style={{ width: `${readingProgress}%` }}
+        />
+      </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* ASOSIY USTUN */}
-        <div className="flex-1 lg:max-w-[calc(70%-12px)]">
-          <article className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {post.rasm_url && (
-              <div className="w-full h-64 md:h-80 overflow-hidden bg-gray-100">
-                <img
-                  src={post.rasm_url}
-                  alt={post.sarlavha}
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
-                />
+      <div className="max-w-6xl mx-auto">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 mb-6 text-xs text-gray-400">
+          <button onClick={() => navigate('/blog')} className="hover:text-blue-600 transition-colors font-medium">
+            Blog
+          </button>
+          <ChevronRight className="h-3 w-3" />
+          <span className="text-gray-600 font-medium truncate max-w-[200px]">{post.sarlavha}</span>
+        </nav>
+
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* MAIN COLUMN */}
+          <div className="flex-1 lg:max-w-[calc(70%-16px)]">
+            <article className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              {/* Cover image or gradient */}
+              <div className="w-full h-64 md:h-96 overflow-hidden relative">
+                {post.rasm_url ? (
+                  <img
+                    src={post.rasm_url}
+                    alt={post.sarlavha}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                      const parent = (e.target as HTMLImageElement).parentElement;
+                      if (parent) parent.className = `w-full h-64 md:h-96 bg-gradient-to-br ${gradient}`;
+                    }}
+                  />
+                ) : (
+                  <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                    <div className="text-white/90 text-6xl font-black opacity-20 select-none">
+                      {post.sarlavha.charAt(0).toUpperCase()}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 md:p-10">
+                {/* Tag / category pill */}
+                <button
+                  onClick={() => navigate('/blog')}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[11px] font-bold mb-5 hover:bg-blue-100 transition-colors"
+                >
+                  <BookOpen className="h-3 w-3" />
+                  Huquq
+                </button>
+
+                {/* Title */}
+                <h1
+                  className="text-3xl md:text-[40px] font-extrabold text-gray-900 mb-6 leading-[1.15] tracking-tight"
+                >
+                  {post.sarlavha}
+                </h1>
+
+                {/* Byline — enhanced */}
+                <div className="flex items-center gap-3 pb-6 mb-6 border-b border-gray-100">
+                  {author && (
+                    <button
+                      onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
+                      className="flex items-center gap-2.5 group"
+                      disabled={!authorSlug}
+                    >
+                      {renderAvatar(author, 'w-10 h-10 text-sm')}
+                    </button>
+                  )}
+                  <div className="flex-1">
+                    {authorName && (
+                      <button
+                        onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
+                        className="block text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors text-left"
+                      >
+                        {authorName}
+                      </button>
+                    )}
+                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {formatDate(post.created_at)}
+                      </span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {estimateReadingTime(post.mazmun)} daqiqa o'qish
+                      </span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">
+                        <Eye className="h-3 w-3" />
+                        {(post.views || 0) + 1}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Article content */}
+                <div
+                  ref={articleRef}
+                  className="prose-content text-gray-700"
+                  style={{ maxWidth: '720px' }}
+                >
+                  <div
+                    className="whitespace-pre-wrap"
+                    style={{ fontSize: '18px', lineHeight: '1.8', marginBottom: '1.5em' }}
+                  >
+                    {post.mazmun}
+                  </div>
+                </div>
+
+                {/* Like + Share bar */}
+                <div className="flex items-center gap-3 mt-10 pt-6 border-t border-gray-100">
+                  <button
+                    onClick={handleLike}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                      liked
+                        ? 'bg-red-50 text-red-500 hover:bg-red-100'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Heart className={`h-4 w-4 ${liked ? 'fill-current' : ''}`} />
+                    {likeCount > 0 ? likeCount : 'Foydali'}
+                  </button>
+
+                  <div className="h-6 w-px bg-gray-200" />
+
+                  <span className="text-xs font-bold text-gray-400">Ulashish:</span>
+                  <button
+                    onClick={handleTelegramShare}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-all"
+                  >
+                    <Send className="h-3.5 w-3.5" /> Telegram
+                  </button>
+                  <button
+                    onClick={handleCopyLink}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-gray-50 text-gray-600 text-xs font-bold hover:bg-gray-100 transition-all"
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Link2 className="h-3.5 w-3.5" />}
+                    {copied ? 'Nusxalandi' : 'Havola'}
+                  </button>
+                </div>
+
+                {/* Helpful survey */}
+                <div className="mt-8 p-5 bg-gray-50 rounded-xl text-center">
+                  {helpfulVote ? (
+                    <p className="text-sm text-gray-500 font-medium">
+                      {helpfulVote === 'yes' ? 'Rahmat! Fikringiz uchun minnatdormiz.' : 'Rahmat! Yaxshilashga harakat qilamiz.'}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-gray-700 mb-3">Ushbu maqola foydali bo'ldimi?</p>
+                      <div className="flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => handleHelpful('yes')}
+                          className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-white border border-gray-200 text-sm font-bold text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-all"
+                        >
+                          <Heart className="h-4 w-4" /> Ha, foydali
+                        </button>
+                        <button
+                          onClick={() => handleHelpful('no')}
+                          className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-white border border-gray-200 text-sm font-bold text-gray-700 hover:border-gray-300 transition-all"
+                        >
+                          Yo'q
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </article>
+
+            {/* Related articles */}
+            {relatedPosts.length > 0 && (
+              <div className="mt-10">
+                <h2 className="text-xl font-bold text-gray-900 mb-5">O'xshash maqolalar</h2>
+                <div className="grid gap-5 sm:grid-cols-3">
+                  {relatedPosts.map((rp) => {
+                    const rpGradient = gradientForTitle(rp.sarlavha);
+                    return (
+                      <button
+                        key={rp.id}
+                        onClick={() => navigate(`/blog/${rp.slug}`)}
+                        className="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-blue-200 hover:-translate-y-0.5 transition-all duration-300 group"
+                      >
+                        <div className="w-full h-32 overflow-hidden bg-gray-100">
+                          {rp.rasm_url ? (
+                            <img
+                              src={rp.rasm_url}
+                              alt={rp.sarlavha}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                const parent = (e.target as HTMLImageElement).parentElement;
+                                if (parent) parent.className = `w-full h-32 bg-gradient-to-br ${rpGradient}`;
+                              }}
+                            />
+                          ) : (
+                            <div className={`w-full h-full bg-gradient-to-br ${rpGradient} flex items-center justify-center`}>
+                              <span className="text-white/30 text-3xl font-black select-none">
+                                {rp.sarlavha.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-4">
+                          <h3 className="font-bold text-gray-900 text-sm line-clamp-2 group-hover:text-blue-600 transition-colors mb-1">
+                            {rp.sarlavha}
+                          </h3>
+                          <p className="text-[11px] text-gray-400">{formatDate(rp.created_at)}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
+          </div>
 
-            <div className="p-6 md:p-8">
-              {/* Meta qator */}
-              <div className="flex flex-wrap items-center gap-3 mb-5 text-xs text-gray-500">
-                {authorName && (
+          {/* RIGHT COLUMN — Author block + TOC */}
+          <div className="lg:w-[30%] shrink-0">
+            <div className="lg:sticky lg:top-8 space-y-4" style={{ maxHeight: 'calc(100vh - 4rem)', overflowY: 'auto' }}>
+              {/* TOC for long articles */}
+              {hasToc && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                  <h4 className="text-xs font-black text-gray-900 mb-3 uppercase tracking-wide">Mundarija</h4>
+                  <nav className="space-y-1">
+                    {tocItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => scrollToTocItem(item.id)}
+                        className={`block text-left text-xs leading-relaxed transition-colors w-full ${
+                          activeTocId === item.id
+                            ? 'text-blue-600 font-bold'
+                            : 'text-gray-500 hover:text-blue-600'
+                        } ${item.level === 3 ? 'pl-4' : ''}`}
+                      >
+                        {item.text}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+              )}
+
+              {/* Author block */}
+              {author && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                  <div
+                    className="cursor-pointer"
+                    onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
+                  >
+                    {renderAvatar(author)}
+                    <h3 className="text-base font-bold text-gray-900 text-center mt-3 hover:text-blue-600 transition-colors">
+                      {author.full_name}
+                    </h3>
+                    {isValidNote(author.note) && (
+                      <p className="text-xs text-gray-500 text-center mt-1 leading-relaxed">
+                        {author.note}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-gray-100 text-center">
+                    <p className="text-2xl font-black text-blue-600">{authorPostCount}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">ta maqola</p>
+                  </div>
+
+                  {/* Telegram / Phone contact buttons */}
+                  {(showTelegram || showPhone) && (
+                    <div className="mt-4 space-y-2">
+                      {showTelegram && (
+                        <a
+                          href={`https://t.me/${author!.telegram_username!.replace('@', '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-all"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Telegram orqali bog'lanish
+                        </a>
+                      )}
+                      {showPhone && (
+                        <a
+                          href={`tel:${author!.phone!.replace(/\s+/g, '')}`}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-green-50 text-green-600 text-xs font-bold hover:bg-green-100 transition-all"
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                          {author!.phone}
+                        </a>
+                      )}
+                    </div>
+                  )}
+
                   <button
                     onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
-                    className="flex items-center gap-1.5 hover:text-blue-600 transition-colors"
-                    disabled={!authorSlug}
+                    className="w-full mt-4 px-4 py-2.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-all"
                   >
-                    <User className="h-3.5 w-3.5" />
-                    <span className="font-semibold text-gray-700 hover:text-blue-600">{authorName}</span>
+                    Barcha maqolalarini ko'rish
                   </button>
-                )}
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {formatDate(post.created_at)}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5" />
-                  {estimateReadingTime(post.mazmun)} daqiqa o'qish
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Eye className="h-3.5 w-3.5" />
-                  {(post.views || 0) + 1} ko'rishlar
-                </span>
-              </div>
-
-              {/* Sarlavha */}
-              <h1 className="text-2xl md:text-4xl font-black text-gray-900 mb-6 leading-tight">
-                {post.sarlavha}
-              </h1>
-
-              {/* Matn */}
-              <div
-                className="text-gray-700 whitespace-pre-wrap"
-                style={{ lineHeight: '1.75', maxWidth: '700px', fontSize: '15px' }}
-              >
-                {post.mazmun}
-              </div>
-
-              {/* Ulashish tugmalari */}
-              <div className="flex items-center gap-3 mt-8 pt-6 border-t border-gray-100">
-                <span className="text-xs font-bold text-gray-500 mr-1">Ulashish:</span>
-                <button
-                  onClick={handleTelegramShare}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-all"
-                >
-                  <Send className="h-3.5 w-3.5" /> Telegram
-                </button>
-                <button
-                  onClick={handleCopyLink}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-50 text-gray-600 text-xs font-bold hover:bg-gray-100 transition-all"
-                >
-                  {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Link2 className="h-3.5 w-3.5" />}
-                  {copied ? 'Nusxalandi' : 'Havolani nusxalash'}
-                </button>
-              </div>
-            </div>
-          </article>
-
-          {/* O'xshash maqolalar */}
-          {relatedPosts.length > 0 && (
-            <div className="mt-8">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">O'xshash maqolalar</h2>
-              <div className="grid gap-4 sm:grid-cols-3">
-                {relatedPosts.map((rp) => (
-                  <button
-                    key={rp.id}
-                    onClick={() => navigate(`/blog/${rp.slug}`)}
-                    className="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-blue-200 hover:-translate-y-0.5 transition-all duration-300 group"
-                  >
-                    {rp.rasm_url && (
-                      <div className="w-full h-28 overflow-hidden bg-gray-100">
-                        <img
-                          src={rp.rasm_url}
-                          alt={rp.sarlavha}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
-                        />
-                      </div>
-                    )}
-                    <div className="p-4">
-                      <h3 className="font-bold text-gray-900 text-xs line-clamp-2 group-hover:text-blue-600 transition-colors mb-1">
-                        {rp.sarlavha}
-                      </h3>
-                      <p className="text-[10px] text-gray-400">{formatDate(rp.created_at)}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* O'NG USTUN — Muallif bloki */}
-        {author && (
-          <div className="lg:w-[30%] shrink-0">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 lg:sticky lg:top-4">
-              <div
-                className="cursor-pointer"
-                onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
-              >
-                {renderAvatar(author)}
-                <h3 className="text-base font-bold text-gray-900 text-center mt-3 hover:text-blue-600 transition-colors">
-                  {author.full_name}
-                </h3>
-                {author.note && author.note !== 'null' && (
-                  <p className="text-xs text-gray-500 text-center mt-1 leading-relaxed">
-                    {author.note}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-gray-100 text-center">
-                <p className="text-2xl font-black text-blue-600">{authorPostCount}</p>
-                <p className="text-xs text-gray-500 mt-0.5">ta maqola</p>
-              </div>
-
-              <button
-                onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
-                className="w-full mt-4 px-4 py-2.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-all"
-              >
-                Barcha maqolalarini ko'rish
-              </button>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit3, Trash2, Eye, EyeOff, Save, X, Calendar, Newspaper, FileText } from 'lucide-react';
+import { Plus, Edit3, Trash2, Eye, EyeOff, Save, X, Calendar, Newspaper, FileText, MessageCircle, Phone, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -36,9 +36,62 @@ export default function BlogYozish() {
   const [status, setStatus] = useState<'draft' | 'published'>('published');
   const [saving, setSaving] = useState(false);
 
+  // Privacy toggle state
+  const [telegramPublic, setTelegramPublic] = useState(false);
+  const [phonePublic, setPhonePublic] = useState(false);
+  const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [phone, setPhone] = useState<string | null>(null);
+  const [privacyLoading, setPrivacyLoading] = useState(false);
+
   useEffect(() => {
     loadPosts();
+    loadPrivacySettings();
   }, []);
+
+  const loadPrivacySettings = async () => {
+    if (!user?.ustoz_id) return;
+    try {
+      const { data, error } = await supabase
+        .from('ustoz')
+        .select('telegram_public, phone_public, telegram_username, phone')
+        .eq('id', user.ustoz_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) {
+        setTelegramPublic(data.telegram_public ?? false);
+        setPhonePublic(data.phone_public ?? false);
+        setTelegramUsername(data.telegram_username || null);
+        setPhone(data.phone || null);
+      }
+    } catch (err) {
+      console.error('Privacy settings yuklash xatosi:', err);
+    }
+  };
+
+  const togglePrivacy = async (field: 'telegram_public' | 'phone_public', value: boolean) => {
+    if (!user?.ustoz_id) return;
+    setPrivacyLoading(true);
+    try {
+      const { error } = await supabase
+        .from('ustoz')
+        .update({ [field]: value })
+        .eq('id', user.ustoz_id);
+      if (error) throw error;
+      if (field === 'telegram_public') setTelegramPublic(value);
+      else setPhonePublic(value);
+      toast({
+        title: value ? 'Ruxsat berildi' : 'Ruxsat olib tashlandi',
+        description: value
+          ? 'Bu ma\'lumot blogingizda ochiq ko\'rinadi'
+          : 'Bu ma\'lumot blogingizda yashirin',
+      });
+    } catch (err) {
+      console.error('Privacy toggle xatosi:', err);
+      toast({ title: 'Xatolik', description: 'Sozlamani yangilab bo\'lmadi', variant: 'destructive' });
+    } finally {
+      setPrivacyLoading(false);
+    }
+  };
 
   const loadPosts = async () => {
     setLoading(true);
@@ -300,6 +353,81 @@ export default function BlogYozish() {
                 <EyeOff className="h-3.5 w-3.5" />
                 Qoralama
               </button>
+            </div>
+          </div>
+
+          {/* Blog privacy settings */}
+          <div className="pt-4 border-t border-gray-100">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+              <h3 className="text-xs font-black text-gray-700 uppercase tracking-wide">Blogda ko'rinadigan ma'lumotlar</h3>
+            </div>
+            <p className="text-[11px] text-gray-400 mb-4 leading-relaxed">
+              Quyidagi ruxsatlarni yoqsangiz, ma'lumotlaringiz blogingizda ochiq ko'rinadi. Ikki ruxsat mustaqil — birini yoqsangiz, ikkinchisi avtomatik yoqilmaydi.
+            </p>
+
+            <div className="space-y-3">
+              {/* Telegram toggle */}
+              <div className={`flex items-center justify-between p-3.5 rounded-xl border transition-all ${
+                telegramPublic ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    telegramPublic ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-400'
+                  }`}>
+                    <MessageCircle className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-700">Telegram username'imni ko'rsatish</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {telegramUsername
+                        ? `@${telegramUsername.replace('@', '')}`
+                        : 'Telegram username kiritilmagan'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => togglePrivacy('telegram_public', !telegramPublic)}
+                  disabled={privacyLoading || !telegramUsername}
+                  className={`relative w-11 h-6 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    telegramPublic ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
+                    telegramPublic ? 'translate-x-5' : ''
+                  }`} />
+                </button>
+              </div>
+
+              {/* Phone toggle */}
+              <div className={`flex items-center justify-between p-3.5 rounded-xl border transition-all ${
+                phonePublic ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    phonePublic ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-400'
+                  }`}>
+                    <Phone className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-700">Telefon raqamimni ko'rsatish</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {phone || 'Telefon raqam kiritilmagan'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => togglePrivacy('phone_public', !phonePublic)}
+                  disabled={privacyLoading || !phone}
+                  className={`relative w-11 h-6 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    phonePublic ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
+                    phonePublic ? 'translate-x-5' : ''
+                  }`} />
+                </button>
+              </div>
             </div>
           </div>
 
