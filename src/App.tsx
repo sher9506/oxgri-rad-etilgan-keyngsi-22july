@@ -46,6 +46,8 @@ const SmartTalim = lazy(() => import('@/components/features/SmartTalim'));
 const AdminChunking = lazy(() => import('@/components/features/AdminChunking'));
 const BlogList = lazy(() => import('@/components/features/BlogList'));
 const BlogYozish = lazy(() => import('@/components/features/BlogYozish'));
+const BlogPostDetail = lazy(() => import('@/components/features/BlogPostDetail'));
+const BlogMuallif = lazy(() => import('@/components/features/BlogMuallif'));
 
 // Admin Context
 interface AdminContextType {
@@ -515,6 +517,54 @@ function RouterRoot() {
       <AuthProvider>
         <TelegramCallback />
       </AuthProvider>
+    );
+  }
+  // /blog/:slug — blog post sahifasi (asosiy layout ichida)
+  const blogPostMatch = location.pathname.match(/^\/blog\/([^/]+)$/);
+  if (blogPostMatch && blogPostMatch[1] !== 'muallif') {
+    return (
+      <LangProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <div className="flex bg-[#F2F4F7] font-sans" style={{ height: '100dvh', minHeight: '-webkit-fill-available', overflow: 'hidden' }}>
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                <header className="h-12 bg-white border-b border-gray-200 flex items-center px-4 md:px-6 shrink-0 z-40">
+                  <h1 className="text-[13px] font-bold text-gray-800 uppercase tracking-tight">Blog</h1>
+                </header>
+                <main className="flex-1 overflow-auto p-4 md:p-6">
+                  <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}>
+                    <BlogPostDetail />
+                  </Suspense>
+                </main>
+              </div>
+            </div>
+          </NotificationProvider>
+        </AuthProvider>
+      </LangProvider>
+    );
+  }
+  // /blog/muallif/:muallif_slug — muallif sahifasi (asosiy layout ichida)
+  const muallifMatch = location.pathname.match(/^\/blog\/muallif\/([^/]+)$/);
+  if (muallifMatch) {
+    return (
+      <LangProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <div className="flex bg-[#F2F4F7] font-sans" style={{ height: '100dvh', minHeight: '-webkit-fill-available', overflow: 'hidden' }}>
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                <header className="h-12 bg-white border-b border-gray-200 flex items-center px-4 md:px-6 shrink-0 z-40">
+                  <h1 className="text-[13px] font-bold text-gray-800 uppercase tracking-tight">Muallif</h1>
+                </header>
+                <main className="flex-1 overflow-auto p-4 md:p-6">
+                  <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}>
+                    <BlogMuallif />
+                  </Suspense>
+                </main>
+              </div>
+            </div>
+          </NotificationProvider>
+        </AuthProvider>
+      </LangProvider>
     );
   }
   return (

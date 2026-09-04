@@ -13,6 +13,7 @@ interface BlogPost {
   mazmun: string;
   rasm_url: string | null;
   status: string;
+  slug: string;
   created_at: string;
   updated_at: string;
 }

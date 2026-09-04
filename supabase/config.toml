@@ -30,3 +30,6 @@ verify_jwt = false
 
 [functions.telegram-api]
 verify_jwt = false
+
+[functions.sitemap]
+verify_jwt = false

@@ -15,6 +15,12 @@
     Content-Security-Policy = "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co https://*.onspace.ai; worker-src 'self' blob:;"
 
 [[redirects]]
+  from = "/sitemap.xml"
+  to = "https://xzkkwcbynphthjchxzkk.backend.onspace.ai/functions/v1/sitemap"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

@@ -1,29 +1,42 @@
 
 import { useState, useEffect } from 'react';
 import { Calendar, User, ArrowLeft, Search, BookOpen, Newspaper } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { setDocumentTitle, setMetaDescription, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
 
 interface BlogPost {
   id: string;
+  ustoz_id: string | null;
   ustoz_ismi: string;
   sarlavha: string;
   mazmun: string;
   rasm_url: string | null;
   status: string;
+  slug: string;
   created_at: string;
   updated_at: string;
 }
 
+interface AuthorSlugMap {
+  [ustoz_ismi: string]: string;
+}
+
 export default function BlogList() {
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [authorSlugs, setAuthorSlugs] = useState<AuthorSlugMap>({});
   const { toast } = useToast();
 
   useEffect(() => {
     loadPosts();
+    return () => {
+      resetDocumentTitle();
+      resetMetaDescription();
+    };
   }, []);
 
   const loadPosts = async () => {
@@ -37,6 +50,24 @@ export default function BlogList() {
 
       if (error) throw error;
       setPosts(data || []);
+
+      const ustozIds = [...new Set((data || []).map(p => p.ustoz_id).filter(Boolean))] as string[];
+      if (ustozIds.length > 0) {
+        const { data: authors } = await supabase
+          .from('ustoz')
+          .select('id, full_name, muallif_slug')
+          .in('id', ustozIds);
+        if (authors) {
+          const slugMap: AuthorSlugMap = {};
+          authors.forEach(a => {
+            slugMap[a.full_name] = a.muallif_slug;
+          });
+          setAuthorSlugs(slugMap);
+        }
+      }
+
+      setDocumentTitle('Blog — FanFaster');
+      setMetaDescription("FanFaster blogida huquq sohasidagi maqolalar va nashrlar. Ustozlar tomonidan yozilgan professional maqolalar.");
     } catch (err) {
       console.error('Blog yuklash xatosi:', err);
       toast({
@@ -54,60 +85,17 @@ export default function BlogList() {
     return d.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
+  const handleAuthorClick = (e: React.MouseEvent, ustozIsmi: string) => {
+    e.stopPropagation();
+    const slug = authorSlugs[ustozIsmi];
+    if (slug) navigate(`/blog/muallif/${slug}`);
+  };
+
   const filteredPosts = posts.filter(p =>
     p.sarlavha.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.mazmun.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.ustoz_ismi.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  // ── Batafsil ko'rinish ──────────────────────────────────────────────────────
-  if (selectedPost) {
-    return (
-      <div className="max-w-3xl mx-auto">
-        <button
-          onClick={() => setSelectedPost(null)}
-          className="flex items-center gap-2 mb-6 text-sm font-bold text-gray-500 hover:text-blue-600 transition-all"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Orqaga
-        </button>
-
-        <article className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {selectedPost.rasm_url && (
-            <div className="w-full h-64 overflow-hidden bg-gray-100">
-              <img
-                src={selectedPost.rasm_url}
-                alt={selectedPost.sarlavha}
-                className="w-full h-full object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
-            </div>
-          )}
-
-          <div className="p-6 md:p-8">
-            <div className="flex items-center gap-3 mb-4 text-xs text-gray-500">
-              <span className="flex items-center gap-1.5">
-                <User className="h-3.5 w-3.5" />
-                <span className="font-semibold text-gray-700">{selectedPost.ustoz_ismi}</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" />
-                {formatDate(selectedPost.created_at)}
-              </span>
-            </div>
-
-            <h1 className="text-2xl md:text-3xl font-black text-gray-900 mb-4 leading-tight">
-              {selectedPost.sarlavha}
-            </h1>
-
-            <div className="prose prose-sm md:prose-base max-w-none text-gray-700 leading-relaxed whitespace-pre-wrap">
-              {selectedPost.mazmun}
-            </div>
-          </div>
-        </article>
-      </div>
-    );
-  }
 
   // ── Ro'yxat ko'rinish ────────────────────────────────────────────────────────
   return (
@@ -166,7 +154,7 @@ export default function BlogList() {
           {filteredPosts.map((post) => (
             <button
               key={post.id}
-              onClick={() => setSelectedPost(post)}
+              onClick={() => navigate(`/blog/${post.slug}`)}
               className="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-blue-200 transition-all group"
             >
               {post.rasm_url && (
@@ -181,10 +169,15 @@ export default function BlogList() {
               )}
               <div className="p-5">
                 <div className="flex items-center gap-2 mb-2 text-[10px] text-gray-400">
-                  <span className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    <span className="font-semibold text-gray-600">{post.ustoz_ismi}</span>
-                  </span>
+                  {post.ustoz_ismi && (
+                    <span
+                      className="flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors"
+                      onClick={(e) => handleAuthorClick(e, post.ustoz_ismi)}
+                    >
+                      <User className="h-3 w-3" />
+                      <span className="font-semibold text-gray-600">{post.ustoz_ismi}</span>
+                    </span>
+                  )}
                   <span>·</span>
                   <span className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
