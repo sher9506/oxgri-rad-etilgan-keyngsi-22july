@@ -533,7 +533,7 @@ function RouterRoot() {
                 </header>
                 <main className="flex-1 overflow-auto p-4 md:p-6">
                   <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}>
-                    <BlogPostDetail />
+                    <BlogPostDetail slug={blogPostMatch[1]} />
                   </Suspense>
                 </main>
               </div>
@@ -557,7 +557,7 @@ function RouterRoot() {
                 </header>
                 <main className="flex-1 overflow-auto p-4 md:p-6">
                   <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}>
-                    <BlogMuallif />
+                    <BlogMuallif muallif_slug={muallifMatch[1]} />
                   </Suspense>
                 </main>
               </div>

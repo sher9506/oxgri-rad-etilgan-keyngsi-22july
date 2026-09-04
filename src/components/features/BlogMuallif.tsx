@@ -1,9 +1,8 @@
 
 import { useState, useEffect } from 'react';
-import { Calendar, User, ArrowLeft, BookOpen, Newspaper } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Calendar, User, ArrowLeft, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { useToast } from '@/hooks/use-toast';
 import { setDocumentTitle, setMetaDescription, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
 
 interface BlogPost {
@@ -22,16 +21,21 @@ interface AuthorInfo {
   muallif_slug: string;
 }
 
-export default function BlogMuallif() {
-  const { muallif_slug } = useParams<{ muallif_slug: string }>();
+export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?: string }) {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const muallif_slug = slugProp;
   const [author, setAuthor] = useState<AuthorInfo | null>(null);
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!muallif_slug) return;
+    if (!muallif_slug) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
     loadAuthorAndPosts(muallif_slug);
     return () => {
       resetDocumentTitle();
@@ -50,8 +54,8 @@ export default function BlogMuallif() {
 
       if (authorError) throw authorError;
       if (!authorData) {
-        toast({ title: 'Topilmadi', description: 'Muallif topilmadi', variant: 'destructive' });
-        navigate('/blog');
+        setNotFound(true);
+        setLoading(false);
         return;
       }
 
@@ -70,7 +74,9 @@ export default function BlogMuallif() {
       setPosts(postData || []);
     } catch (err) {
       console.error('Muallif sahifasi xatosi:', err);
-      toast({ title: 'Xatolik', description: "Muallif sahifasini yuklab bo'lmadi", variant: 'destructive' });
+      const msg = err instanceof Error ? err.message : "Muallif sahifasini yuklab bo'lmadi";
+      setError(msg);
+      setLoading(false);
     } finally {
       setLoading(false);
     }
@@ -86,6 +92,45 @@ export default function BlogMuallif() {
       <div className="flex flex-col items-center justify-center py-20">
         <div className="h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
         <p className="text-sm text-gray-500">Yuklanmoqda...</p>
+      </div>
+    );
+  }
+
+  if (notFound || (!author && !error)) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <button
+          onClick={() => navigate('/blog')}
+          className="flex items-center gap-2 mb-6 text-sm font-bold text-gray-500 hover:text-blue-600 transition-all"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Blog ro'yxatiga qaytish
+        </button>
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-2xl border border-gray-100">
+          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <BookOpen className="h-8 w-8 text-gray-300" />
+          </div>
+          <p className="text-sm font-bold text-gray-400 mb-1">Muallif topilmadi</p>
+          <p className="text-xs text-gray-400">Bu muallif mavjud emas yoki o'chirilgan bo'lishi mumkin</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <button
+          onClick={() => navigate('/blog')}
+          className="flex items-center gap-2 mb-6 text-sm font-bold text-gray-500 hover:text-blue-600 transition-all"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Blog ro'yxatiga qaytish
+        </button>
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-2xl border border-gray-100">
+          <p className="text-sm font-bold text-red-400 mb-1">Xatolik yuz berdi</p>
+          <p className="text-xs text-gray-400">{error}</p>
+        </div>
       </div>
     );
   }
