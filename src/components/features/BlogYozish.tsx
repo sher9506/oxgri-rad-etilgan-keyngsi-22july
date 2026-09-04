@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { Plus, CreditCard as Edit3, Trash2, Eye, EyeOff, Save, X, Calendar, Newspaper, FileText } from 'lucide-react';
+import { Plus, Edit3, Trash2, Eye, EyeOff, Save, X, Calendar, Newspaper, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';

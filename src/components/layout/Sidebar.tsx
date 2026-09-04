@@ -1,6 +1,13 @@
 
 import { useState, useEffect } from 'react';
-import { Play, TrendingUp, CircleUser as UserCircle, ChevronLeft, ChevronRight, Scale, Users, Shield, Database, Bell, Search, BookOpen, ScanFace, X, User as UserIcon, FileText, GraduationCap, Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle, CreditCard as Edit, Lock, Info, Bot, Megaphone, CircleHelp as HelpCircle, ChartBar as BarChart2, Brain, BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper } from 'lucide-react';
+import {
+  Play, TrendingUp, UserCircle, ChevronLeft, ChevronRight,
+  Scale, Users, Shield, Database, Bell, Search, BookOpen,
+  ScanFace, X, User as UserIcon, FileText, GraduationCap,
+  Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
+  Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain,
+  BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang } from '@/contexts/LangContext';
 import { supabase } from '@/lib/supabase';
