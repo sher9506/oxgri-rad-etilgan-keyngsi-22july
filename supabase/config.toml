@@ -36,3 +36,9 @@ verify_jwt = false
 
 [functions.parse-blog-file]
 verify_jwt = false
+
+[functions.moot-court-chat]
+verify_jwt = false
+
+[functions.moot-court-evaluate]
+verify_jwt = false

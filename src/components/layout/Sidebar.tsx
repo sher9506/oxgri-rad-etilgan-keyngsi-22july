@@ -94,6 +94,7 @@ function buildSections(userRol: string | undefined, ustozBotRuxsat: boolean, t: 
     { id: 'sinov', label: t('nav.bilim_olish'), icon: Play, accent: true },
     { id: 'mavjud_testlar', label: t('nav.mavjud_testlar'), icon: FileText },
     { id: 'mavjud_kazuslar', label: t('nav.mavjud_kazuslar'), icon: GraduationCap },
+    { id: 'moot_court', label: 'Moot Court', icon: Scale },
   ];
 
   const bottomItems = [
@@ -108,6 +109,7 @@ function buildSections(userRol: string | undefined, ustozBotRuxsat: boolean, t: 
     { id: 'testlar', label: 'Test kabineti', icon: BookOpen },
     { id: 'oquvchilar', label: "O'quvchilarim", icon: GraduationCap },
     { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
+    { id: 'moot_court', label: 'Moot Court', icon: Scale },
     ...(ustozBotRuxsat ? [{ id: 'bot_yangilik', label: 'Bot Yangilik', icon: Megaphone }] : []),
   ] : [];
 
