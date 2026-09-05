@@ -12,9 +12,6 @@ interface ParseResult {
   error?: string;
 }
 
-/**
- * Extract plain text from HTML, stripping tags but keeping structure.
- */
 function htmlToText(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -32,21 +29,12 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-/**
- * Clean up HTML content from Word/HTML sources — remove inline styles,
- * comments, o:p tags, and normalize structure.
- */
 function cleanHtml(html: string): string {
   return html
     .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<o:p>[\s\S]*?<\/o:p>/gi, "")
-    .replace(/<o:p\s*\/?>/gi, "")
-    .replace(/<\/?(xml|w:wordDocument|o:documentProperties)[^>]*>/gi, "")
     .replace(/\s+style="[^"]*"/gi, "")
     .replace(/\s+class="[^"]*"/gi, "")
     .replace(/<span[^>]*>/gi, "<span>")
-    .replace(/<font[^>]*>/gi, "")
-    .replace(/<\/font>/gi, "")
     .replace(/<div[^>]*>/gi, "<div>")
     .replace(/<p[^>]*>/gi, "<p>")
     .replace(/<h([1-6])[^>]*>/gi, "<h$1>")
@@ -58,11 +46,171 @@ function cleanHtml(html: string): string {
     .trim();
 }
 
+function decodeXml(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)));
+}
+
 /**
- * Parse HTML file content — clean it up and return as-is.
+ * Minimal ZIP reader using Deno's native APIs — no npm dependencies.
+ * Reads a ZIP buffer and returns the decompressed content of a given entry name.
+ * Based on the ZIP format spec: https://en.wikipedia.org/wiki/ZIP_(file_format)
  */
+async function extractZipEntry(buffer: Uint8Array, entryName: string): Promise<string | null> {
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+
+  // Find End of Central Directory record (EOCD) — search backwards from end
+  let eocdOffset = -1;
+  for (let i = buffer.byteLength - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset === -1) return null;
+
+  const cdOffset = view.getUint32(eocdOffset + 16, true);
+  const cdEntries = view.getUint16(eocdOffset + 10, true);
+
+  let offset = cdOffset;
+  for (let i = 0; i < cdEntries; i++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break;
+
+    const compMethod = view.getUint16(offset + 10, true);
+    const compSize = view.getUint32(offset + 20, true);
+    const nameLen = view.getUint16(offset + 28, true);
+    const extraLen = view.getUint16(offset + 30, true);
+    const commentLen = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+
+    const name = new TextDecoder().decode(buffer.subarray(offset + 46, offset + 46 + nameLen));
+
+    if (name === entryName) {
+      const localNameLen = view.getUint16(localHeaderOffset + 26, true);
+      const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+      const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
+      const compData = buffer.subarray(dataStart, dataStart + compSize);
+
+      if (compMethod === 0) {
+        return new TextDecoder().decode(compData);
+      } else if (compMethod === 8) {
+        const ds = new DecompressionStream("deflate-raw");
+        const writer = ds.writable.getWriter();
+        writer.write(compData);
+        writer.close();
+        const reader = ds.readable.getReader();
+        const chunks: Uint8Array[] = [];
+        let totalLen = 0;
+        // deno-lint-ignore no-explicit-any
+        let result: any;
+        while (!(result = await reader.read()).done) {
+          chunks.push(result.value);
+          totalLen += result.value.byteLength;
+        }
+        const decompressed = new Uint8Array(totalLen);
+        let pos = 0;
+        for (const chunk of chunks) {
+          decompressed.set(chunk, pos);
+          pos += chunk.byteLength;
+        }
+        return new TextDecoder().decode(decompressed);
+      }
+      return null;
+    }
+
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return null;
+}
+
+/**
+ * Parse DOCX by extracting word/document.xml from the zip and converting
+ * OOXML <w:p> paragraphs to HTML with heading/bold/italic support.
+ * Uses native Deno ZIP extraction — no npm dependencies needed.
+ */
+async function parseDocx(fileBuffer: Uint8Array): Promise<ParseResult> {
+  try {
+    const xml = await extractZipEntry(fileBuffer, "word/document.xml");
+    if (!xml) {
+      return { html: "", text: "", error: "Word fayldan matnni ajratib bo'lmadi" };
+    }
+
+    let html = "";
+
+    // Use regex to find all <w:p> paragraphs and extract text with formatting
+    const paraRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gi;
+    let paraMatch;
+    while ((paraMatch = paraRegex.exec(xml)) !== null) {
+      const paraContent = paraMatch[1];
+
+      // Detect heading style
+      let paraStyle = "";
+      const styleMatch = paraContent.match(/<w:pStyle\s+w:val="([^"]+)"/i);
+      if (styleMatch) {
+        const style = styleMatch[1].toLowerCase();
+        if (style.includes("heading1") || style.includes("title")) paraStyle = "h1";
+        else if (style.includes("heading2") || style.includes("subtitle")) paraStyle = "h2";
+        else if (style.includes("heading3")) paraStyle = "h3";
+        else if (style.includes("heading4")) paraStyle = "h4";
+      }
+
+      // Extract runs with formatting
+      const runRegex = /<w:r\b[^>]*>([\s\S]*?)<\/w:r>/gi;
+      let runMatch;
+      let paraHtml = "";
+      while ((runMatch = runRegex.exec(paraContent)) !== null) {
+        const runContent = runMatch[1];
+        const isBold = /<w:b\s*\/?>/i.test(runContent);
+        const isItalic = /<w:i\s*\/?>/i.test(runContent);
+        const isUnderline = /<w:u\s[^>]*w:val="single"/i.test(runContent);
+
+        // Extract all <w:t> text content
+        let runText = "";
+        const textRegex = /<w:t[^>]*>([\s\S]*?)<\/w:t>/gi;
+        let textMatch;
+        while ((textMatch = textRegex.exec(runContent)) !== null) {
+          runText += decodeXml(textMatch[1]);
+        }
+        // Handle tabs and breaks
+        if (/<w:tab\s*\/?>/i.test(runContent)) runText += "\t";
+        if (/<w:br\s*\/?>/i.test(runContent)) runText += "<br>";
+
+        let wrapped = runText;
+        if (isUnderline) wrapped = `<u>${wrapped}</u>`;
+        if (isItalic) wrapped = `<em>${wrapped}</em>`;
+        if (isBold) wrapped = `<strong>${wrapped}</strong>`;
+        paraHtml += wrapped;
+      }
+
+      if (paraHtml.trim()) {
+        if (paraStyle) {
+          html += `<${paraStyle}>${paraHtml}</${paraStyle}>`;
+        } else {
+          html += `<p>${paraHtml}</p>`;
+        }
+      }
+    }
+
+    html = cleanHtml(html);
+    const text = htmlToText(html);
+
+    if (!text || text.trim().length < 10) {
+      return { html: "", text: "", error: "Word fayldan matnni ajratib bo'lmadi" };
+    }
+
+    return { html, text };
+  } catch (err) {
+    console.error("[parse-blog-file] DOCX parse error:", err?.message || err, err?.stack || "");
+    return { html: "", text: "", error: "Word fayldan matnni ajratib bo'lmadi" };
+  }
+}
+
 function parseHtml(content: string): ParseResult {
-  // Extract body if full HTML document
   const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   const bodyContent = bodyMatch ? bodyMatch[1] : content;
   const cleaned = cleanHtml(bodyContent);
@@ -70,40 +218,6 @@ function parseHtml(content: string): ParseResult {
   return { html: cleaned, text };
 }
 
-/**
- * Parse DOCX file using mammoth (npm package).
- * Converts .docx to clean HTML preserving headings, bold, italic, lists.
- */
-async function parseDocx(fileBuffer: Uint8Array): Promise<ParseResult> {
-  try {
-    // @ts-ignore - mammoth is imported from npm
-    const mammoth = await import("npm:mammoth@1.8.0");
-    const result = await mammoth.convertToHtml(
-      { arrayBuffer: fileBuffer.buffer },
-      {
-        styleMap: [
-          "p[style-name='Heading 1'] => h1:fresh",
-          "p[style-name='Heading 2'] => h2:fresh",
-          "p[style-name='Heading 3'] => h3:fresh",
-          "p[style-name='Heading 4'] => h4:fresh",
-          "p[style-name='Title'] => h1:fresh",
-          "p[style-name='Subtitle'] => h2:fresh",
-        ],
-      }
-    );
-    const html = cleanHtml(result.value || "");
-    const text = htmlToText(html);
-    return { html, text };
-  } catch (err) {
-    console.error("[parse-blog-file] DOCX parse error:", err);
-    return { html: "", text: "", error: "Word fayldan matnni ajratib bo'lmadi" };
-  }
-}
-
-/**
- * Parse PDF file using pdf-parse (npm package).
- * Extracts text content from PDF. Note: scanned PDFs without text layer will fail.
- */
 async function parsePdf(fileBuffer: Uint8Array): Promise<ParseResult> {
   try {
     // @ts-ignore - pdf-parse is imported from npm
@@ -120,7 +234,6 @@ async function parsePdf(fileBuffer: Uint8Array): Promise<ParseResult> {
       };
     }
 
-    // Convert plain text to simple HTML paragraphs
     const paragraphs = text
       .split(/\n\s*\n/)
       .map((p: string) => p.trim())
