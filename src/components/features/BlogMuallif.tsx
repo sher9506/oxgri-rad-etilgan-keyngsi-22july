@@ -17,6 +17,8 @@ interface BlogPost {
   slug: string;
   views: number;
   created_at: string;
+  meta_description?: string | null;
+  file_url?: string | null;
 }
 
 export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?: string }) {
@@ -238,7 +240,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
                     {post.sarlavha}
                   </h3>
                   <p className="text-xs text-gray-500 line-clamp-3 leading-relaxed flex-1">
-                    {truncateText(post.mazmun, 180)}
+                    {truncateText(post.meta_description || post.mazmun, 180)}
                   </p>
                   <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-100 text-[10px] text-gray-400">
                     <span className="flex items-center gap-1">

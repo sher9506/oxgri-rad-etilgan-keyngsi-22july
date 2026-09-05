@@ -19,6 +19,8 @@ interface BlogPost {
   views: number;
   created_at: string;
   updated_at: string;
+  meta_description?: string | null;
+  file_url?: string | null;
 }
 
 interface AuthorMap {
@@ -246,7 +248,7 @@ export default function BlogList() {
                   {featuredPost.sarlavha}
                 </h2>
                 <p className="text-sm text-gray-500 line-clamp-3 leading-relaxed mb-4">
-                  {truncateText(featuredPost.mazmun, 240)}
+                  {truncateText(featuredPost.meta_description || featuredPost.mazmun, 240)}
                 </p>
                 <div className="flex items-center gap-2">
                   <div
@@ -311,7 +313,7 @@ export default function BlogList() {
 
                       {/* Excerpt */}
                       <p className="text-xs text-gray-500 line-clamp-3 leading-relaxed flex-1">
-                        {truncateText(post.mazmun, 180)}
+                        {truncateText(post.meta_description || post.mazmun, 180)}
                       </p>
 
                       {/* Meta */}

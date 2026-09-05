@@ -33,3 +33,6 @@ verify_jwt = false
 
 [functions.sitemap]
 verify_jwt = false
+
+[functions.parse-blog-file]
+verify_jwt = false
