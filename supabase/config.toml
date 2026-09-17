@@ -42,3 +42,18 @@ verify_jwt = false
 
 [functions.moot-court-evaluate]
 verify_jwt = false
+
+[functions.fetch-legal-article]
+verify_jwt = false
+
+[functions.import-legal-code]
+verify_jwt = false
+
+[functions.find-relevant-articles]
+verify_jwt = false
+
+[functions.vectorize-articles]
+verify_jwt = false
+
+[functions.constitution-file-search]
+verify_jwt = false

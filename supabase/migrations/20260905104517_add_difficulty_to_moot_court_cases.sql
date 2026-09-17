@@ -1,0 +1,1 @@
+ALTER TABLE moot_court_cases ADD COLUMN IF NOT EXISTS difficulty text DEFAULT 'orta' CHECK (difficulty IN ('yengil', 'orta', 'qattiq'));

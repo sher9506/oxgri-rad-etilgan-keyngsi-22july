@@ -9,6 +9,8 @@ export interface User {
   login?: string;
   ustoz_id?: string; // Tasdiqlangan ustoz uchun ID
   faceIdTasdiqlangan?: boolean; // Face ID orqali ro'yxatdan o'tgan
+  blog_huquqi?: boolean; // Blog huquqi bilan tasdiqlangan
+  ustoz_huquqi?: boolean; // Ustoz huquqi bilan tasdiqlangan
 }
 
 interface AuthContextType {

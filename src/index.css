@@ -124,3 +124,35 @@ iframe[src*="bolt"] {
     opacity: 0 !important;
     pointer-events: none !important;
 }
+
+/* ── Moot Court animations ─────────────────────────────────────────────── */
+@keyframes mc-msg-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mc-msg-in { animation: mc-msg-in 220ms ease-out both; }
+
+@keyframes mc-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-4px); opacity: 1; }
+}
+.mc-typing-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #3b82f6;
+  animation: mc-typing-bounce 1.2s infinite ease-in-out;
+}
+.mc-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.mc-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes mc-ring-fill {
+  from { stroke-dashoffset: var(--mc-circumference); }
+  to   { stroke-dashoffset: var(--mc-offset); }
+}
+.mc-ring-circle {
+  animation: mc-ring-fill 800ms ease-out both;
+}
+
+@keyframes mc-score-count {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.mc-score-num { animation: mc-score-count 500ms ease-out 200ms both; }

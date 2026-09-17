@@ -1,8 +1,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Calendar, User, ArrowLeft, BookOpen, Clock, Eye, Send, Link2, Check, Heart, Phone, MessageCircle, ChevronRight, Download, FileText } from 'lucide-react';
+import { Calendar, User, ArrowLeft, BookOpen, Clock, Eye, Send, Link2, Check, Heart, Phone, MessageCircle, ChevronRight, Download, FileText, Flag, X, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/hooks/use-toast';
 import { setDocumentTitle, setMetaDescription, setJsonLd, removeJsonLd, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
 import { getInitials, estimateReadingTime, formatDate, type AuthorInfo, extractErrorMessage, isValidNote, gradientForTitle } from '@/lib/blogUtils';
 
@@ -39,6 +40,7 @@ interface TocItem {
 
 export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const slug = slugProp;
   const [post, setPost] = useState<BlogPost | null>(null);
   const [author, setAuthor] = useState<AuthorInfo | null>(null);
@@ -55,6 +57,11 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [activeTocId, setActiveTocId] = useState<string>('');
   const articleRef = useRef<HTMLDivElement>(null);
+  const [shikoyatModal, setShikoyatModal] = useState(false);
+  const [shikoyatIsm, setShikoyatIsm] = useState('');
+  const [shikoyatSabab, setShikoyatSabab] = useState('');
+  const [shikoyatIzoh, setShikoyatIzoh] = useState('');
+  const [shikoyatSending, setShikoyatSending] = useState(false);
 
   useEffect(() => {
     if (!slug) {
@@ -244,6 +251,35 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
     if (!post) return;
     setHelpfulVote(vote);
     localStorage.setItem(`blog-helpful-${post.id}`, vote);
+  };
+
+  const sendShikoyat = async () => {
+    if (!post) return;
+    if (!shikoyatSabab.trim()) {
+      toast({ title: 'Ogohlantirish', description: 'Shikoyat sababini tanlang', variant: 'destructive' });
+      return;
+    }
+    setShikoyatSending(true);
+    try {
+      const { error } = await supabase.from('blog_shikoyat').insert({
+        post_id: post.id,
+        post_sarlavha: post.sarlavha,
+        shikoyatchi_ismi: shikoyatIsm.trim() || null,
+        sabab: shikoyatSabab,
+        izoh: shikoyatIzoh.trim() || null,
+        status: 'pending',
+      });
+      if (error) throw error;
+      toast({ title: 'Yuborildi', description: "Shikoyatingiz qabul qilindi. Tez orada ko'rib chiqamiz." });
+      setShikoyatModal(false);
+      setShikoyatIsm('');
+      setShikoyatSabab('');
+      setShikoyatIzoh('');
+    } catch (err: any) {
+      toast({ title: 'Xatolik', description: err?.message || "Shikoyat yuborilmadi", variant: 'destructive' });
+    } finally {
+      setShikoyatSending(false);
+    }
   };
 
   const scrollToTocItem = (id: string) => {
@@ -513,6 +549,17 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
                     </>
                   )}
                 </div>
+
+                {/* Shikoyat qilish tugmasi */}
+                <div className="mt-6 flex justify-center">
+                  <button
+                    onClick={() => setShikoyatModal(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-bold border border-red-100 hover:bg-red-100 transition-all"
+                  >
+                    <Flag className="h-4 w-4" />
+                    Mualliflik huquqi buzilishi yoki noqonuniy kontent bo'yicha shikoyat qilish
+                  </button>
+                </div>
               </div>
             </article>
 
@@ -649,6 +696,80 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
           </div>
         </div>
       </div>
+
+      {/* Shikoyat modali */}
+      {shikoyatModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={() => setShikoyatModal(false)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-red-500 to-orange-500 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Flag className="h-5 w-5" />
+                <h2 className="text-base font-black">Shikoyat qilish</h2>
+              </div>
+              <button onClick={() => setShikoyatModal(false)} className="text-white/80 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1.5 block">Ismingiz (ixtiyoriy)</label>
+                <input
+                  type="text"
+                  value={shikoyatIsm}
+                  onChange={e => setShikoyatIsm(e.target.value)}
+                  placeholder="Ismingizni kiriting"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-red-400 focus:ring-1 focus:ring-red-400 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1.5 block">Shikoyat sababi *</label>
+                <select
+                  value={shikoyatSabab}
+                  onChange={e => setShikoyatSabab(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-red-400 focus:ring-1 focus:ring-red-400 outline-none"
+                >
+                  <option value="">Sababni tanlang</option>
+                  <option value="Mualliflik huquqi buzilgan">Mualliflik huquqi buzilgan</option>
+                  <option value="Haqoratli yoki kamsituvchi">Haqoratli yoki kamsituvchi</option>
+                  <option value="Qonunga zid material">Qonunga zid material</option>
+                  <option value="Firibgarlik yoki noto'g'ri ma'lumot">Firibgarlik yoki noto'g'ri ma'lumot</option>
+                  <option value="Boshqa">Boshqa</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1.5 block">Qo'shimcha izoh</label>
+                <textarea
+                  value={shikoyatIzoh}
+                  onChange={e => setShikoyatIzoh(e.target.value)}
+                  placeholder="Shikoyat haqida batafsil yozing..."
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-red-400 focus:ring-1 focus:ring-red-400 outline-none resize-none"
+                />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
+              <button
+                onClick={() => setShikoyatModal(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-all"
+              >
+                Bekor
+              </button>
+              <button
+                onClick={sendShikoyat}
+                disabled={shikoyatSending || !shikoyatSabab}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-500 text-white text-xs font-black hover:bg-red-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {shikoyatSending ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <><Flag className="h-3.5 w-3.5" /> Yuborish</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

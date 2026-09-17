@@ -34,6 +34,7 @@ export interface AuthorInfo {
   phone?: string | null;
   telegram_public?: boolean;
   phone_public?: boolean;
+  mutaxassislik?: string | null;
 }
 
 export function extractErrorMessage(err: unknown, fallback: string): string {

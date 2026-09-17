@@ -5,7 +5,7 @@ import {
   Loader2, AlertCircle, Star, CheckCircle,
   Clock, ArrowLeft, Send, X, LogOut,
   KeyRound, Eye, EyeOff, Lock, CheckCircle2, Save,
-  BookOpenCheck
+  BookOpenCheck, Scale
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,11 +59,19 @@ export default function ProfilSahifa() {
   // ── Ustoz holati ──────────────────────────────────────────────────────
   const [ustozStatus, setUstozStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
 
+  // ── Mutaxassislik (faqat ustoz) ───────────────────────────────────────
+  const [mutaxassislik, setMutaxassislik] = useState('');
+  const [mutaxassislikTahrirlash, setMutaxassislikTahrirlash] = useState(false);
+  const [mutaxassislikYuklanyapti, setMutaxassislikYuklanyapti] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     if (user.rol === 'ustoz' && user.ustoz_id) {
-      supabase.from('ustoz').select('status').eq('id', user.ustoz_id).maybeSingle()
-        .then(({ data }) => { if (data?.status) setUstozStatus(data.status); });
+      supabase.from('ustoz').select('status, mutaxassislik').eq('id', user.ustoz_id).maybeSingle()
+        .then(({ data }) => {
+          if (data?.status) setUstozStatus(data.status);
+          if (data?.mutaxassislik) setMutaxassislik(data.mutaxassislik);
+        });
       supabase.from('profil_tahrirlashlar').select('*').eq('murojaat_id', user.ustoz_id).eq('holat', 'pending').maybeSingle()
         .then(({ data }) => setMavjudTahrirlash(data));
     }
@@ -209,6 +217,25 @@ export default function ProfilSahifa() {
   };
 
   const yangiParolV = parolTekshir(yangiParol);
+
+  // ── Mutaxassislik saqlash ─────────────────────────────────────────────
+  const handleMutaxassislikSaqla = async () => {
+    if (!user?.ustoz_id) return;
+    setMutaxassislikYuklanyapti(true);
+    try {
+      const { error } = await supabase
+        .from('ustoz')
+        .update({ mutaxassislik: mutaxassislik.trim() || null })
+        .eq('id', user.ustoz_id);
+      if (error) throw error;
+      toast({ title: '✅ Saqlandi!', description: 'Mutaxassislik yo\'nalishlari yangilandi' });
+      setMutaxassislikTahrirlash(false);
+    } catch (e: any) {
+      toast({ title: 'Xato', description: e.message, variant: 'destructive' });
+    } finally {
+      setMutaxassislikYuklanyapti(false);
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
@@ -517,6 +544,63 @@ export default function ProfilSahifa() {
               <p className="text-amber-600 mb-0.5">Yangi ism</p>
               <p className="font-bold text-amber-900">{mavjudTahrirlash.yangi_familiya} {mavjudTahrirlash.yangi_ism}</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MUTAXASSISLIK (faqat ustoz) ─────────────────────────────── */}
+      {isUstoz && (
+        <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100 bg-gray-50">
+            <div className="flex items-center gap-2 text-gray-700 font-bold text-sm">
+              <Scale className="h-4 w-4 text-blue-500" />
+              Mutaxassislik yo'nalishlari
+              <span className="text-xs font-normal text-gray-400">(blog sahifangizda ko'rinadi)</span>
+            </div>
+            {!mutaxassislikTahrirlash && (
+              <button onClick={() => setMutaxassislikTahrirlash(true)}
+                className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1">
+                <Edit3 className="h-3.5 w-3.5" />{mutaxassislik ? 'O\'zgartirish' : 'Qo\'shish'}
+              </button>
+            )}
+          </div>
+          <div className="p-4">
+            {!mutaxassislikTahrirlash ? (
+              mutaxassislik ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {mutaxassislik.split(',').map((s) => s.trim()).filter(Boolean).map((tag, i) => (
+                    <span key={i} className="px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100">{tag}</span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-3 text-gray-400 text-sm">
+                  Hozircha mutaxassislik yo'nalishlari kiritilmagan.
+                </div>
+              )
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">
+                    Yo'nalishlar (vergul bilan ajrating)
+                  </label>
+                  <Input
+                    value={mutaxassislik}
+                    onChange={(e) => setMutaxassislik(e.target.value)}
+                    placeholder="Konstitutsiyaviy huquq, Jinoyat protsessi, Fuqarolik huquqi"
+                    className="border-2 h-9 text-sm"
+                  />
+                  <p className="mt-1.5 text-xs text-gray-400">
+                    Masalan: Konstitutsiyaviy huquq, Jinoyat huquqi, Meknat huquqi
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => { setMutaxassislikTahrirlash(false); }} variant="outline" size="sm" className="flex-1 h-9">Bekor</Button>
+                  <Button onClick={handleMutaxassislikSaqla} disabled={mutaxassislikYuklanyapti} size="sm" className="flex-1 h-9 bg-blue-600 hover:bg-blue-700 text-white">
+                    {mutaxassislikYuklanyapti ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />...</> : <><Save className="h-3.5 w-3.5 mr-1" />Saqlash</>}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

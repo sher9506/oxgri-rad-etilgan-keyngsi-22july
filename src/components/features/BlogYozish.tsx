@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Edit3, Trash2, Eye, EyeOff, Save, X, Calendar, Newspaper, FileText, MessageCircle, Phone, AlertCircle, Upload, File as FileIcon, Download, Loader2, Search } from 'lucide-react';
+import { Plus, Edit3, Trash2, Eye, EyeOff, Save, X, Calendar, Newspaper, FileText, MessageCircle, Phone, AlertCircle, Upload, File as FileIcon, Download, Loader2, Search, ShieldCheck, FileSignature } from 'lucide-react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -57,6 +57,8 @@ export default function BlogYozish() {
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
   const [phone, setPhone] = useState<string | null>(null);
   const [privacyLoading, setPrivacyLoading] = useState(false);
+  const [ofertaModal, setOfertaModal] = useState(false);
+  const [ofertaQabul, setOfertaQabul] = useState(false);
 
   useEffect(() => {
     loadPosts();
@@ -142,6 +144,7 @@ export default function BlogYozish() {
     setUploadedFile(null);
     setUploadedFileUrl(null);
     setParseError(null);
+    setOfertaQabul(false);
   };
 
   const startNew = () => {
@@ -261,6 +264,12 @@ export default function BlogYozish() {
     }
     if (!mazmun.trim()) {
       toast({ title: 'Ogohlantirish', description: 'Matn bo\'sh bo\'lishi mumkin emas', variant: 'destructive' });
+      return;
+    }
+
+    // Agar nashr qilinayotgan bo'lsa va oferta qabul qilinmagan bo'lsa — modal ko'rsatamiz
+    if (status === 'published' && !ofertaQabul) {
+      setOfertaModal(true);
       return;
     }
 
@@ -761,6 +770,70 @@ export default function BlogYozish() {
             </p>
           )}
         </div>
+
+        {/* Oferta (Foydalanish shartlari) modali */}
+        {ofertaModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={() => setOfertaModal(false)}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-5 flex items-center gap-3">
+                <FileSignature className="h-6 w-6 shrink-0" />
+                <div>
+                  <h2 className="text-lg font-black">Foydalanish shartlari (Oferta)</h2>
+                  <p className="text-sm text-blue-100 mt-0.5">Nashr qilishdan oldin quyidagi shartlarga rozilik bildiring</p>
+                </div>
+              </div>
+
+              <div className="px-6 py-5 overflow-y-auto space-y-4">
+                <div className="space-y-3 text-sm text-gray-700 leading-relaxed">
+                  <div className="flex items-start gap-3 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                    <ShieldCheck className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                    <p className="text-xs">Maqola muallifi o'zi yozgan matnning to'g'riligi va qonuniyligi uchun shaxsan javobgarligi.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-xl bg-red-50 border border-red-100">
+                    <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-xs">Mualliflik huquqini buzuvchi, haqoratli yoki qonunga zid materiallarni joylashtirish taqiqlanishi.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-100">
+                    <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-xs">Sayt ma'muriyati qonunga zid maqolalarni ogohlantirishsiz o'chirib tashlash huquqiga egaligi.</p>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-xl border-2 border-gray-200 hover:border-blue-300 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={ofertaQabul}
+                    onChange={e => setOfertaQabul(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded accent-blue-600"
+                  />
+                  <span className="text-xs font-bold text-gray-700">Yuqoridagi shartlarni o'qib chiqdim va to'liq rozilik bildiraman.</span>
+                </label>
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-100 flex gap-2">
+                <button
+                  onClick={() => setOfertaModal(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-all"
+                >
+                  Bekor
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!ofertaQabul) return;
+                    setOfertaModal(false);
+                    await handleSave();
+                  }}
+                  disabled={!ofertaQabul}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Roziman, nashr qilish
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

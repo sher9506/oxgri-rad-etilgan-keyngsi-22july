@@ -1,26 +1,30 @@
-[build]
-  publish = "dist"
-  command = "npm run build"
+[[edge_functions]]
+function = "blog-seo"
+path = "/blog/*"
 
 [[headers]]
-  for = "/*"
-  [headers.values]
-    # Kamera va mikrofon uchun ruxsat
-    Permissions-Policy = "camera=(self), microphone=(self)"
-    # HTTPS majburlash
-    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    # X-Frame-Options
-    X-Frame-Options = "SAMEORIGIN"
-    # Content Security Policy
-    Content-Security-Policy = "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co https://*.onspace.ai; worker-src 'self' blob:;"
+for = "/*"
+
+[headers.values]
+Permissions-Policy = "camera=(self), microphone=(self)"
+Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+X-Frame-Options = "SAMEORIGIN"
+Content-Security-Policy = "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co https://*.onspace.ai; worker-src 'self' blob:;"
 
 [[redirects]]
-  from = "/sitemap.xml"
-  to = "https://xzkkwcbynphthjchxzkk.backend.onspace.ai/functions/v1/sitemap"
-  status = 200
-  force = true
+from = "/sitemap.xml"
+to = "https://mrxdoeeyxawcwrndyrwp.supabase.co/functions/v1/sitemap"
+status = 200
+force = true
+
+[redirects.headers]
+Content-Type = "application/xml; charset=utf-8"
 
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+from = "/*"
+to = "https://sher9506-oxgri-rad-e-ipca.bolt.host/:splat"
+status = 200
+
+[build]
+command = "npm run build"
+publish = "dist"

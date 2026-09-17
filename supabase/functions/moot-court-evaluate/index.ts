@@ -1,24 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { callAIWithFallback } from '../_shared/ai-provider.ts';
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
-
-async function loadAiConfig(): Promise<{ apiUrl: string; apiKey: string; model: string }> {
-  const { data } = await supabaseAdmin
-    .from('settings')
-    .select('key, text_value')
-    .in('key', ['AI_MENTOR_API_URL', 'AI_MENTOR_API_KEY', 'AI_MENTOR_MODEL']);
-  const map: Record<string, string> = {};
-  (data || []).forEach((r: any) => { map[r.key] = r.text_value || ''; });
-  return {
-    apiUrl: map['AI_MENTOR_API_URL'] || '',
-    apiKey: map['AI_MENTOR_API_KEY'] || '',
-    model: map['AI_MENTOR_MODEL'] || 'gemini-3-flash-preview',
-  };
-}
 
 interface EvaluationCriteria {
   name: string;
@@ -33,7 +20,6 @@ interface EvaluationResult {
 }
 
 function extractJson(text: string): EvaluationResult | null {
-  // Try to find JSON in the response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
   try {
@@ -42,7 +28,6 @@ function extractJson(text: string): EvaluationResult | null {
       return parsed as EvaluationResult;
     }
   } catch {
-    // Try removing markdown code fences
     const cleaned = jsonMatch[0].replace(/```json\s*/g, '').replace(/```\s*/g, '');
     try {
       const parsed = JSON.parse(cleaned);
@@ -58,7 +43,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { sessionId } = await req.json() as { sessionId: string };
+    const { sessionId, debug } = await req.json() as { sessionId: string; debug?: boolean };
 
     if (!sessionId) {
       return new Response(
@@ -67,7 +52,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Load session with case details
     const { data: session, error: sessionErr } = await supabaseAdmin
       .from('moot_court_sessions')
       .select('id, case_id, messages, oquvchi_ismi, oquvchi_tomon')
@@ -83,7 +67,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: caseData } = await supabaseAdmin
       .from('moot_court_cases')
-      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol')
+      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol, difficulty')
       .eq('id', session.case_id)
       .maybeSingle();
 
@@ -94,6 +78,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const difficulty = caseData.difficulty || 'orta';
+    const difficultyLabels: Record<string, string> = {
+      yengil: 'Yengil',
+      orta: "O'rta",
+      qattiq: 'Qattiq',
+    };
+    const difficultyContext: Record<string, string> = {
+      yengil: "Bu YENGIL darajadagi sessiya bo'lgan — AI talabaga yordam beruvchi, yo'naltiruvchi bo'lgan. Shu sababli talabadan yuqori darajadagi mustaqillik kutilmagan. Baholashda shu kontekstni hisobga oling.",
+      orta: "Bu O'RTA darajadagi sessiya bo'lgan — AI standart professional darajada savol bergan va e'tiroz bildirgan. Standart baholash mezonlarini qo'llang.",
+      qattiq: "Bu QATTIQ darajadagi sessiya bo'lgan — AI juda qattiq, tajribali advokat/sudya kabi talabani qiynagan. Agar talaba past ball olsa, bu tabiiy — qattiq sharoitda ishlagan. overall_comment'da darajani hisobga oling (masalan 'Qattiq daraja sharoitida bu yaxshi natija' kabi).",
+    };
+
     const messages = (session.messages || []) as { role: string; text: string }[];
     if (messages.length === 0) {
       return new Response(
@@ -102,15 +98,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { apiUrl, apiKey, model } = await loadAiConfig();
-    if (!apiUrl || !apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'AI sozlanmagan' }),
-        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Build conversation transcript
     const transcript = messages.map(m => {
       const speaker = m.role === 'user' ? 'Talaba' : (caseData.ai_rol === 'sudya' ? 'Sudya (AI)' : 'Qarshi tomon (AI)');
       return `${speaker}: ${m.text}`;
@@ -131,6 +118,9 @@ ${session.oquvchi_tomon || 'Tanlanmagan'}
 
 ## Suhbat stenogrammasi:
 ${transcript}
+
+## Qiyinlik darajasi: ${difficultyLabels[difficulty] || difficultyLabels.orta}
+${difficultyContext[difficulty] || difficultyContext.orta}
 
 ## Baholash mezonlari (har biri 0-2 ball):
 1. Qonunga asoslanganlik (0-2): Talaba to'g'ri va aniq qonun moddalariga tayanib argument berganmi?
@@ -159,45 +149,32 @@ ${transcript}
   "overall_comment": "Umumiy yaxshi himoya, ayniqsa qonunga tayanish kuchli edi. Yakuniy xulosani yanada mustahkamlash tavsiya etiladi."
 }`;
 
-    const modelPath = model.replace(/^google\//, '');
-    const url = `${apiUrl}/${modelPath}:generateContent?key=${apiKey}`;
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: 'Iltimos, yuqoridagi suhbatni baholang va QAT\'IY JSON formatida javob bering.' }] }],
-        systemInstruction: { parts: [{ text: evalSystemPrompt }] },
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 2000,
-          responseMimeType: 'application/json',
-        },
-      }),
+    const { text: aiText, provider } = await callAIWithFallback({
+      systemPrompt: evalSystemPrompt,
+      messages: [{ role: 'user', text: 'Iltimos, yuqoridagi suhbatni baholang va QAT\'IY JSON formatida javob bering.' }],
+      maxTokens: 2000,
+      temperature: 0.3,
+      jsonMode: true,
+      functionName: 'moot-court-evaluate',
     });
+    console.log(`[moot-court-evaluate] provider=${provider}`);
 
-    const txt = await res.text();
-    if (!res.ok) {
-      console.error('[moot-court-evaluate] AI xato:', res.status, txt.slice(0, 300));
-      return new Response(
-        JSON.stringify({ error: 'AI baholashda xatolik yuz berdi' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const data = JSON.parse(txt);
-    const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const evaluation = extractJson(aiText);
 
     if (!evaluation) {
       console.error('[moot-court-evaluate] JSON parse xato:', aiText.slice(0, 500));
+      if (debug) {
+        return new Response(
+          JSON.stringify({ error: 'AI javobi noto\'g\'ri formatda', raw: aiText.slice(0, 2000) }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       return new Response(
-        JSON.stringify({ error: 'AI javobi noto\'g\'ri formatda' }),
+        JSON.stringify({ error: 'AI javobi noto\'g\'ri formatda. Qayta urinib ko\'ring.' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Save evaluation to session
     await supabaseAdmin
       .from('moot_court_sessions')
       .update({
@@ -221,3 +198,4 @@ ${transcript}
     );
   }
 });
+// deploy trigger 1788610507

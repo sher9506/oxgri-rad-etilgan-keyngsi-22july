@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { corsHeaders } from '../_shared/cors.ts';
+import { callAIWithFallback } from '../_shared/ai-provider.ts';
 
 // ─── INTERFEYLAR ──────────────────────────────────────────────────────────────
 
@@ -383,27 +384,13 @@ ${qoshimchaPrompt}
 }`;
 
     // ── AI GA SO'ROV ──
-    const aiResponse = await fetch(`${Deno.env.get('ONSPACE_AI_BASE_URL')}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('ONSPACE_AI_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.5,
-        max_tokens: 2000,
-      }),
+    const { text: aiText } = await callAIWithFallback({
+      systemPrompt: 'Siz huquq sohasida professional baholovchi ekspertsiz. Faqat JSON formatda javob bering.',
+      messages: [{ role: 'user', text: prompt }],
+      maxTokens: 2000,
+      temperature: 0.5,
+      functionName: 'baholash',
     });
-
-    if (!aiResponse.ok) {
-      console.error('AI xato:', await aiResponse.text());
-      return fallbackNatija(oquvchiJavob.kazus_index, 'Baholashda texnik xatolik yuz berdi.');
-    }
-
-    const aiData = await aiResponse.json();
-    const aiText = aiData.choices[0]?.message?.content || '';
     console.log(`AI javob (kazus ${oquvchiJavob.kazus_index + 1}):`, aiText.substring(0, 200));
 
     // JSON parse

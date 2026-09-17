@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Scale, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Loader2, MessageSquare, Star, Eye, ChevronLeft, Award } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Scale, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Loader2, MessageSquare, Star, Eye, ChevronLeft, Award, RotateCw, AlertCircle, ArrowRight, Search, ChevronDown, SlidersHorizontal, FolderOpen, BookMarked, Sparkles, CheckSquare, Square } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +21,9 @@ interface MootCase {
   ai_rol: string;
   faol: boolean;
   max_exchanges: number;
+  difficulty: string;
+  allow_retry: boolean;
+  is_public_demo: boolean;
   created_at: string;
 }
 
@@ -47,6 +50,39 @@ interface MootSession {
   moot_court_cases?: MootCase;
 }
 
+const diffStyles: Record<string, { gradient: string; glow: string; badge: string; label: string }> = {
+  yengil: { gradient: 'from-emerald-50 via-transparent to-transparent', glow: 'shadow-[0_0_20px_-8px_rgba(16,185,129,0.25)]', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', label: 'Yengil' },
+  orta:   { gradient: 'from-blue-50 via-transparent to-transparent',    glow: 'shadow-[0_0_20px_-8px_rgba(59,130,246,0.25)]',  badge: 'bg-blue-100 text-blue-700 border-blue-200',     label: "O'rta" },
+  qattiq: { gradient: 'from-red-50 via-transparent to-transparent',     glow: 'shadow-[0_0_20px_-8px_rgba(239,68,68,0.25)]',   badge: 'bg-red-100 text-red-700 border-red-200',         label: 'Qattiq' },
+};
+
+function getDiff(d: string) {
+  return diffStyles[d] || diffStyles.orta;
+}
+
+function CircularProgress({ score, max }: { score: number; max: number }) {
+  const r = 16;
+  const circumference = 2 * Math.PI * r;
+  const pct = score / max;
+  const offset = circumference * (1 - pct);
+  const color = pct >= 0.9 ? '#10b981' : pct >= 0.5 ? '#f59e0b' : '#ef4444';
+
+  return (
+    <svg width="40" height="40" className="shrink-0">
+      <circle cx="20" cy="20" r={r} fill="none" stroke="#e5e7eb" strokeWidth="3" />
+      <circle
+        cx="20" cy="20" r={r} fill="none" stroke={color} strokeWidth="3"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        style={{ '--mc-circumference': `${circumference}px`, '--mc-offset': `${offset}px` } as React.CSSProperties}
+        className="mc-ring-circle"
+        transform="rotate(-90 20 20)"
+      />
+      <text x="20" y="24" textAnchor="middle" fontSize="11" fontWeight="700" fill="#1f2937">{score}/{max}</text>
+    </svg>
+  );
+}
+
 export default function MootCourtUstoz() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -58,6 +94,16 @@ export default function MootCourtUstoz() {
   const [editingCase, setEditingCase] = useState<MootCase | null>(null);
   const [viewingSession, setViewingSession] = useState<MootSession | null>(null);
 
+  // Search & filter state (kazuslar)
+  const [caseSearch, setCaseSearch] = useState('');
+  const [caseDiffFilter, setCaseDiffFilter] = useState<string[]>([]);
+  const [caseStatusFilter, setCaseStatusFilter] = useState<string[]>([]);
+  const [caseVisibleCount, setCaseVisibleCount] = useState(10);
+
+  // Natijalar grouped state
+  const [selectedCaseForResults, setSelectedCaseForResults] = useState<string | null>(null);
+  const [resultSearch, setResultSearch] = useState('');
+
   // Form state
   const [sarlavha, setSarlavha] = useState('');
   const [tavsif, setTavsif] = useState('');
@@ -66,7 +112,16 @@ export default function MootCourtUstoz() {
   const [tomonInput, setTomonInput] = useState('');
   const [aiRol, setAiRol] = useState<'qarshi_tomon' | 'sudya'>('qarshi_tomon');
   const [maxExchanges, setMaxExchanges] = useState(5);
+  const [difficulty, setDifficulty] = useState<'yengil' | 'orta' | 'qattiq'>('orta');
+  const [allowRetry, setAllowRetry] = useState(true);
+  const [isPublicDemo, setIsPublicDemo] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Article search state (vector search)
+  const [searchingArticles, setSearchingArticles] = useState(false);
+  const [articleCandidates, setArticleCandidates] = useState<{ id: string; kodeks_nomi: string; modda_raqami: string; modda_matni: string; similarity: number; match_type?: string; manba_havola?: string | null; bob_nomi?: string | null }[]>([]);
+  const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
+  const [linkedArticles, setLinkedArticles] = useState<{ id: string; kodeks_nomi: string; modda_raqami: string }[]>([]);
 
   const loadCases = useCallback(async () => {
     if (!user?.ustoz_id) return;
@@ -104,7 +159,13 @@ export default function MootCourtUstoz() {
     setTomonlar(['da\'vogar', 'javobgar']);
     setAiRol('qarshi_tomon');
     setMaxExchanges(5);
+    setDifficulty('orta');
+    setAllowRetry(true);
+    setIsPublicDemo(false);
     setEditingCase(null);
+    setArticleCandidates([]);
+    setSelectedArticleIds(new Set());
+    setLinkedArticles([]);
   };
 
   const handleSave = async () => {
@@ -113,7 +174,7 @@ export default function MootCourtUstoz() {
       toast({ title: 'Sarlavha va tavsif majburiy', variant: 'destructive' });
       return;
     }
-    const clamped = Math.max(3, Math.min(10, maxExchanges));
+    const clamped = Math.max(3, Math.min(8, maxExchanges));
     setSaving(true);
     const payload = {
       ustoz_id: user.ustoz_id,
@@ -124,6 +185,9 @@ export default function MootCourtUstoz() {
       tomonlar: tomonlar.filter(t => t.trim()),
       ai_rol: aiRol,
       max_exchanges: clamped,
+      difficulty,
+      allow_retry: allowRetry,
+      is_public_demo: isPublicDemo,
     };
 
     if (editingCase) {
@@ -134,18 +198,22 @@ export default function MootCourtUstoz() {
       if (error) {
         toast({ title: 'Xatolik', description: error.message, variant: 'destructive' });
       } else {
+        // Sync linked articles
+        await syncCaseArticles(editingCase.id);
         toast({ title: 'Kazus yangilandi' });
         setShowForm(false);
         resetForm();
         loadCases();
       }
     } else {
-      const { error } = await supabase
+      const { data: newCase, error } = await supabase
         .from('moot_court_cases')
-        .insert(payload);
+        .insert(payload).select('id').single();
       if (error) {
         toast({ title: 'Xatolik', description: error.message, variant: 'destructive' });
       } else {
+        // Link selected articles
+        if (newCase?.id) await syncCaseArticles(newCase.id);
         toast({ title: 'Yangi kazus yaratildi' });
         setShowForm(false);
         resetForm();
@@ -153,6 +221,87 @@ export default function MootCourtUstoz() {
       }
     }
     setSaving(false);
+  };
+
+  const syncCaseArticles = async (caseId: string) => {
+    // Delete existing links
+    await supabase.from('moot_court_case_articles').delete().eq('case_id', caseId);
+    // Insert new links
+    const ids = Array.from(selectedArticleIds);
+    if (ids.length > 0) {
+      await supabase.from('moot_court_case_articles').insert(
+        ids.map(modda_id => ({ case_id: caseId, modda_id }))
+      );
+    }
+  };
+
+  const searchRelevantArticles = async () => {
+    if (!tavsif.trim() || tavsif.trim().length < 20) {
+      toast({ title: 'Tavsif kamida 20 ta belgi bo\'lishi kerak', variant: 'destructive' });
+      return;
+    }
+    setSearchingArticles(true);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/find-relevant-articles`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ description: tavsif.trim(), limit: 10 }),
+      });
+      const data = await res.json();
+      if (data?.error) {
+        toast({ title: 'Qidiruv xatosi', description: data.error, variant: 'destructive' });
+      } else if (data?.articles) {
+        setArticleCandidates(data.articles);
+        // Auto-select only confirmed (tasdiqlangan) articles
+        const autoSelect = new Set(
+          data.articles.filter((a: any) => a.match_type === 'tasdiqlangan').map((a: any) => a.id)
+        );
+        // Merge with already selected
+        const merged = new Set([...Array.from(selectedArticleIds), ...Array.from(autoSelect)]);
+        setSelectedArticleIds(merged);
+        const confirmed = data.articles.filter((a: any) => a.match_type === 'tasdiqlangan').length;
+        const unconfirmed = data.articles.length - confirmed;
+        if (data.articles.length === 0) {
+          toast({ title: 'Mos modda topilmadi', description: 'AI hech qanday modda taklif qila olmadi' });
+        } else {
+          toast({
+            title: `${data.articles.length} ta nomzod modda topildi`,
+            description: `${confirmed} tasdiqlangan, ${unconfirmed} umumiy bilim — tasdiqlanganlar avtomatik tanlandi`
+          });
+        }
+      }
+    } catch {
+      toast({ title: 'Tarmoq xatosi', description: 'Vektor qidiruv amalga oshmadi', variant: 'destructive' });
+    } finally {
+      setSearchingArticles(false);
+    }
+  };
+
+  const toggleArticleSelection = (id: string) => {
+    setSelectedArticleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const loadLinkedArticles = async (caseId: string) => {
+    const { data } = await supabase
+      .from('moot_court_case_articles')
+      .select('modda_id, qonun_moddalari(id, kodeks_nomi, modda_raqami)')
+      .eq('case_id', caseId);
+    if (data) {
+      const ids = new Set(data.map((d: any) => d.modda_id));
+      setSelectedArticleIds(ids);
+      setLinkedArticles(data.map((d: any) => ({ id: d.modda_id, kodeks_nomi: d.qonun_moddalari?.kodeks_nomi || '', modda_raqami: d.qonun_moddalari?.modda_raqami || '' })));
+    } else {
+      setSelectedArticleIds(new Set());
+      setLinkedArticles([]);
+    }
   };
 
   const handleEdit = (c: MootCase) => {
@@ -163,6 +312,10 @@ export default function MootCourtUstoz() {
     setTomonlar(c.tomonlar || []);
     setAiRol(c.ai_rol as 'qarshi_tomon' | 'sudya');
     setMaxExchanges(c.max_exchanges || 5);
+    setDifficulty((c.difficulty as 'yengil' | 'orta' | 'qattiq') || 'orta');
+    setAllowRetry(c.allow_retry !== false);
+    setIsPublicDemo(c.is_public_demo === true);
+    loadLinkedArticles(c.id);
     setShowForm(true);
   };
 
@@ -197,6 +350,39 @@ export default function MootCourtUstoz() {
     setTomonlar(tomonlar.filter(x => x !== t));
   };
 
+  const [reevaluating, setReevaluating] = useState(false);
+
+  const reevaluateSession = async (sessionId: string) => {
+    setReevaluating(true);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/moot-court-evaluate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = await res.json();
+      if (data?.evaluation) {
+        toast({ title: 'AI bahosi tayyor' });
+        loadSessions();
+        const { data: updated } = await supabase
+          .from('moot_court_sessions')
+          .select('*')
+          .eq('id', sessionId)
+          .maybeSingle();
+        if (updated) setViewingSession(updated as MootSession);
+      } else if (data?.error) {
+        toast({ title: 'Baholash xatosi', description: data.error, variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Tarmoq xatosi', description: 'AI baholash amalga oshmadi', variant: 'destructive' });
+    } finally {
+      setReevaluating(false);
+    }
+  };
+
   const saveTeacherScore = async (sessionId: string, score: number) => {
     const { error } = await supabase
       .from('moot_court_sessions')
@@ -211,6 +397,64 @@ export default function MootCourtUstoz() {
     }
   };
 
+  // Filtered cases (kazuslar tab)
+  const filteredCases = useMemo(() => {
+    let result = cases;
+    if (caseSearch.trim()) {
+      const q = caseSearch.toLowerCase();
+      result = result.filter(c =>
+        c.sarlavha.toLowerCase().includes(q) ||
+        c.tavsif.toLowerCase().includes(q)
+      );
+    }
+    if (caseDiffFilter.length > 0) {
+      result = result.filter(c => caseDiffFilter.includes(c.difficulty || 'orta'));
+    }
+    if (caseStatusFilter.length > 0) {
+      result = result.filter(c => {
+        const status = c.faol ? 'faol' : 'nofaol';
+        return caseStatusFilter.includes(status);
+      });
+    }
+    return result;
+  }, [cases, caseSearch, caseDiffFilter, caseStatusFilter]);
+
+  const visibleCases = filteredCases.slice(0, caseVisibleCount);
+
+  // Grouped sessions by case
+  const sessionsByCase = useMemo(() => {
+    const groups: Record<string, { case: MootCase; sessions: MootSession[] }> = {};
+    for (const s of sessions) {
+      const caseId = s.case_id;
+      if (!groups[caseId]) {
+        groups[caseId] = { case: s.moot_court_cases!, sessions: [] };
+      }
+      groups[caseId].sessions.push(s);
+    }
+    let groupList = Object.values(groups);
+    if (resultSearch.trim()) {
+      const q = resultSearch.toLowerCase();
+      groupList = groupList.filter(g =>
+        g.case?.sarlavha?.toLowerCase().includes(q) ||
+        g.sessions.some(s => s.oquvchi_ismi?.toLowerCase().includes(q))
+      );
+    }
+    return groupList;
+  }, [sessions, resultSearch]);
+
+  const filteredSessionsForCase = useMemo(() => {
+    if (!selectedCaseForResults) return [];
+    let result = sessions.filter(s => s.case_id === selectedCaseForResults);
+    if (resultSearch.trim()) {
+      const q = resultSearch.toLowerCase();
+      result = result.filter(s =>
+        s.oquvchi_ismi?.toLowerCase().includes(q) ||
+        s.moot_court_cases?.sarlavha?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [sessions, selectedCaseForResults, resultSearch]);
+
   if (!user || user.rol !== 'ustoz') {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -222,6 +466,14 @@ export default function MootCourtUstoz() {
 
   // Session detail view
   if (viewingSession) {
+    const aiScore = viewingSession.ai_score;
+    const teacherScore = viewingSession.teacher_score;
+    const hasBoth = aiScore !== null && teacherScore !== null && aiScore !== teacherScore;
+    const aiColor = aiScore !== null ? (aiScore >= 8 ? '#10b981' : aiScore >= 5 ? '#f59e0b' : '#ef4444') : '#3b82f6';
+    const aiCircumference = 2 * Math.PI * 32;
+    const aiPct = aiScore !== null ? aiScore / 10 : 0;
+    const aiOffset = aiCircumference * (1 - aiPct);
+
     return (
       <div className="space-y-4 max-w-3xl mx-auto">
         <button
@@ -231,11 +483,11 @@ export default function MootCourtUstoz() {
           <ChevronLeft className="h-4 w-4" /> Natijalarga qaytish
         </button>
 
-        <Card className="rounded-2xl shadow-sm border border-gray-100">
-          <CardHeader className="pb-3">
+        <div className="rounded-3xl bg-white shadow-lg border border-gray-100/80 overflow-hidden">
+          <div className="p-4 border-b border-gray-100/80">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <CardTitle className="text-base">{viewingSession.moot_court_cases?.sarlavha || 'Kazus'}</CardTitle>
+                <h3 className="text-base font-bold text-gray-900">{viewingSession.moot_court_cases?.sarlavha || 'Kazus'}</h3>
                 <p className="text-xs text-gray-500 mt-1">
                   Talaba: <span className="font-bold text-gray-700">{viewingSession.oquvchi_ismi}</span>
                   {viewingSession.oquvchi_tomon && (
@@ -247,23 +499,63 @@ export default function MootCourtUstoz() {
                 {viewingSession.status === 'yakunlangan' ? 'Yakunlangan' : 'Faol'}
               </Badge>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div className="p-4">
+            {/* AI score ring + teacher comparison */}
+            {aiScore !== null && (
+              <div className="flex items-center gap-4 mb-4 rounded-2xl bg-gradient-to-br from-gray-50/80 to-white p-4 border border-gray-100/60">
+                <svg width="76" height="76" className="shrink-0">
+                  <circle cx="38" cy="38" r="32" fill="none" stroke="#e5e7eb" strokeWidth="4" />
+                  <circle
+                    cx="38" cy="38" r="32" fill="none" stroke={aiColor} strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray={aiCircumference}
+                    style={{ '--mc-circumference': `${aiCircumference}px`, '--mc-offset': `${aiOffset}px` } as React.CSSProperties}
+                    className="mc-ring-circle"
+                    transform="rotate(-90 38 38)"
+                  />
+                  <text x="38" y="40" textAnchor="middle" fontSize="18" fontWeight="700" fill="#1f2937">{aiScore}</text>
+                  <text x="38" y="52" textAnchor="middle" fontSize="10" fill="#9ca3af">/ 10</text>
+                </svg>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Award className="h-5 w-5 text-blue-500" />
+                    <span className="text-sm font-bold text-gray-900">AI bahosi</span>
+                  </div>
+                  {hasBoth && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-xs font-bold text-gray-500">AI: {aiScore}</span>
+                      <ArrowRight className="h-3 w-3 text-gray-400" />
+                      <span className="text-xs font-bold text-amber-600">Ustoz: {teacherScore}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${teacherScore > aiScore ? 'bg-green-100 text-green-700' : teacherScore < aiScore ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {teacherScore > aiScore ? `+${teacherScore - aiScore}` : teacherScore < aiScore ? `${teacherScore - aiScore}` : '='}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3 max-h-[400px] overflow-y-auto p-1">
               {(viewingSession.messages || []).map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white rounded-tr-sm'
-                      : 'bg-gray-100 text-gray-800 rounded-tl-sm'
-                  }`}>
-                    {msg.role !== 'user' && (
-                      <div className="text-[10px] font-bold text-blue-600 mb-1">
-                        {viewingSession.moot_court_cases?.ai_rol === 'sudya' ? '⚖️ Sudya' : '🥷 Qarshi tomon'}
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mc-msg-in`}>
+                  {msg.role !== 'user' ? (
+                    <div className="max-w-[80%]">
+                      <div className="flex items-center gap-1.5 mb-1 px-1">
+                        <div className="h-0.5 w-4 rounded-full bg-blue-400" />
+                        <span className="text-[10px] font-bold text-blue-600">
+                          {viewingSession.moot_court_cases?.ai_rol === 'sudya' ? '⚖️ Sudya' : '🥷 Qarshi tomon'}
+                        </span>
                       </div>
-                    )}
-                    <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
-                  </div>
+                      <div className="bg-gray-50 text-gray-800 rounded-2xl rounded-tl-md px-4 py-3 border border-gray-100/60">
+                        <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.text}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="max-w-[80%] bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl rounded-tr-md px-4 py-3 shadow-md shadow-blue-500/20">
+                      <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.text}</p>
+                    </div>
+                  )}
                 </div>
               ))}
               {(!viewingSession.messages || viewingSession.messages.length === 0) && (
@@ -271,9 +563,9 @@ export default function MootCourtUstoz() {
               )}
             </div>
 
-            <AiEvaluationView session={viewingSession} onSaveTeacherScore={saveTeacherScore} />
-          </CardContent>
-        </Card>
+            <AiEvaluationView session={viewingSession} onSaveTeacherScore={saveTeacherScore} onReevaluate={reevaluateSession} reevaluating={reevaluating} />
+          </div>
+        </div>
       </div>
     );
   }
@@ -294,15 +586,15 @@ export default function MootCourtUstoz() {
           </h2>
         </div>
 
-        <Card className="rounded-2xl shadow-sm border border-gray-100">
-          <CardContent className="space-y-4 pt-5">
+        <div className="rounded-3xl bg-white shadow-lg border border-gray-100/80 overflow-hidden">
+          <div className="p-5 space-y-4">
             <div>
               <Label className="text-xs font-bold">Sarlavha *</Label>
               <Input
                 value={sarlavha}
                 onChange={e => setSarlavha(e.target.value)}
                 placeholder="Masalan: Fuqarolik shartnomasi bo'yicha nizo"
-                className="mt-1.5"
+                className="mt-1.5 rounded-xl"
               />
             </div>
 
@@ -312,18 +604,124 @@ export default function MootCourtUstoz() {
                 value={tavsif}
                 onChange={e => setTavsif(e.target.value)}
                 placeholder="Sud jarayoni vaziyatini batafsil yozing..."
-                className="mt-1.5 min-h-[120px]"
+                className="mt-1.5 min-h-[120px] rounded-xl"
               />
             </div>
 
             <div>
-              <Label className="text-xs font-bold">Tegishli qonun/moddalar</Label>
+              <Label className="text-xs font-bold">Tegishli qonun moddalari (vektor qidiruv)</Label>
+              <div className="mt-1.5 space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={searchRelevantArticles}
+                  disabled={searchingArticles}
+                  className="rounded-xl w-full border-blue-200 text-blue-600 hover:bg-blue-50"
+                >
+                  {searchingArticles ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                  Mos moddalarni topish (AI + baza tekshiruvi)
+                </Button>
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  AI kazus tavsifiga tayanib mos moddalarni taklif qiladi, keyin ular bazadagi tasdiqlangan moddalar bilan solishtiriladi. Tasdiqlangan moddalar yashil, tekshirilmaganlar sariq belgi bilan ko'rsatiladi.
+                </p>
+
+                {/* Selected articles */}
+                {selectedArticleIds.size > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {Array.from(selectedArticleIds).map(id => {
+                      const cand = articleCandidates.find(a => a.id === id);
+                      const linked = linkedArticles.find(a => a.id === id);
+                      const kodeks = cand?.kodeks_nomi || linked?.kodeks_nomi || '';
+                      const raqam = cand?.modda_raqami || linked?.modda_raqami || '';
+                      return (
+                        <Badge key={id} variant="default" className="text-[10px] cursor-pointer bg-blue-100 text-blue-700 border border-blue-200" onClick={() => toggleArticleSelection(id)}>
+                          {kodeks} {raqam}-modda ✕
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Candidates from vector search */}
+                {articleCandidates.length > 0 && (
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto rounded-xl border border-gray-200/80 p-2 bg-gray-50/50">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nomzod moddalar (AI taklifi + baza tekshiruvi):</p>
+                    {articleCandidates.map(a => {
+                      const selected = selectedArticleIds.has(a.id);
+                      const isConfirmed = a.match_type === 'tasdiqlangan';
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => toggleArticleSelection(a.id)}
+                          className={`w-full text-left p-2 rounded-lg transition-all duration-200 ${
+                            selected
+                              ? isConfirmed
+                                ? 'bg-emerald-50/80 border border-emerald-200'
+                                : 'bg-amber-50/80 border border-amber-200'
+                              : 'bg-white border border-transparent hover:border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {selected ? <CheckSquare className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" /> : <Square className="h-4 w-4 text-gray-300 shrink-0 mt-0.5" />}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                <span className="text-[10px] font-bold text-blue-700">{a.kodeks_nomi}</span>
+                                <span className="text-[10px] font-bold text-gray-600">{a.modda_raqami}-modda</span>
+                                {isConfirmed ? (
+                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">✅ Tasdiqlangan</span>
+                                ) : (
+                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">⚠️ Umumiy bilim</span>
+                                )}
+                                {a.match_type === 'hybrid' && (
+                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">Gibrid</span>
+                                )}
+                                {a.match_type === 'vector' && (
+                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">Semantik</span>
+                                )}
+                                {a.match_type === 'text' && (
+                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">Kalit so'z</span>
+                                )}
+                              </div>
+                              <p className={`text-[10px] leading-tight line-clamp-2 ${
+                                isConfirmed ? 'text-gray-600' : 'text-amber-600/70 italic'
+                              }`}>{a.modda_matni}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Already linked articles (when editing) */}
+                {linkedArticles.length > 0 && articleCandidates.length === 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Biriktirilgan moddalar:</p>
+                    {linkedArticles.map(a => (
+                      <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg bg-blue-50/50 border border-blue-100">
+                        <BookMarked className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                        <span className="text-[11px] font-bold text-blue-700">{a.kodeks_nomi} {a.modda_raqami}-modda</span>
+                        <button type="button" onClick={() => toggleArticleSelection(a.id)} className="ml-auto text-gray-400 hover:text-red-500">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold">Qo'shimcha qonun/moddalar (ixtiyoriy, erkin matn)</Label>
               <Input
                 value={qonunModdalar}
                 onChange={e => setQonunModdalar(e.target.value)}
                 placeholder="Masalan: Fuqarolik kodeksi 123-modda, 124-modda"
-                className="mt-1.5"
+                className="mt-1.5 rounded-xl"
               />
+              <p className="text-[10px] text-gray-400 mt-1">Vektor qidiruv topa olmagan moddalar uchun qo'lda yozishingiz mumkin</p>
             </div>
 
             <div>
@@ -334,9 +732,9 @@ export default function MootCourtUstoz() {
                   onChange={e => setTomonInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTomon(); } }}
                   placeholder="Masalan: da'vogar, javobgar..."
-                  className="flex-1"
+                  className="flex-1 rounded-xl"
                 />
-                <Button type="button" variant="outline" size="sm" onClick={addTomon}>
+                <Button type="button" variant="outline" size="sm" onClick={addTomon} className="rounded-xl">
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -357,9 +755,9 @@ export default function MootCourtUstoz() {
               <div className="grid grid-cols-2 gap-2 mt-1.5">
                 <button
                   onClick={() => setAiRol('qarshi_tomon')}
-                  className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${
+                  className={`p-3 rounded-2xl border-2 text-sm font-bold transition-all duration-300 ${
                     aiRol === 'qarshi_tomon'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md shadow-blue-500/10'
                       : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
                 >
@@ -367,13 +765,55 @@ export default function MootCourtUstoz() {
                 </button>
                 <button
                   onClick={() => setAiRol('sudya')}
-                  className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${
+                  className={`p-3 rounded-2xl border-2 text-sm font-bold transition-all duration-300 ${
                     aiRol === 'sudya'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md shadow-blue-500/10'
                       : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
                 >
                   ⚖️ Sudya
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold">Qiyinlik darajasi</Label>
+              <div className="grid grid-cols-3 gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDifficulty('yengil')}
+                  className={`p-3 rounded-2xl border-2 text-center transition-all duration-300 ${
+                    difficulty === 'yengil'
+                      ? 'border-emerald-500 bg-emerald-50 shadow-md shadow-emerald-500/10'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className={`text-sm font-bold ${difficulty === 'yengil' ? 'text-emerald-700' : 'text-gray-500'}`}>Yengil</div>
+                  <div className="text-[10px] text-gray-400 mt-1 leading-tight">AI sodda savollar beradi, yo'l ko'rsatadi — yangi boshlovchilar uchun</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDifficulty('orta')}
+                  className={`p-3 rounded-2xl border-2 text-center transition-all duration-300 ${
+                    difficulty === 'orta'
+                      ? 'border-amber-500 bg-amber-50 shadow-md shadow-amber-500/10'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className={`text-sm font-bold ${difficulty === 'orta' ? 'text-amber-700' : 'text-gray-500'}`}>O'rta</div>
+                  <div className="text-[10px] text-gray-400 mt-1 leading-tight">AI standart advokat/sudya kabi savol beradi va asosli e'tiroz bildiradi</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDifficulty('qattiq')}
+                  className={`p-3 rounded-2xl border-2 text-center transition-all duration-300 ${
+                    difficulty === 'qattiq'
+                      ? 'border-red-500 bg-red-50 shadow-md shadow-red-500/10'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className={`text-sm font-bold ${difficulty === 'qattiq' ? 'text-red-700' : 'text-gray-500'}`}>Qattiq</div>
+                  <div className="text-[10px] text-gray-400 mt-1 leading-tight">AI qattiq, tajribali advokat kabi qiynaydi — yuqori darajadagi talabalar uchun</div>
                 </button>
               </div>
             </div>
@@ -384,21 +824,49 @@ export default function MootCourtUstoz() {
                 <Input
                   type="number"
                   min={3}
-                  max={10}
+                  max={8}
                   value={maxExchanges}
                   onChange={e => setMaxExchanges(parseInt(e.target.value) || 5)}
-                  className="w-24"
+                  className="w-24 rounded-xl"
                 />
-                <span className="text-xs text-gray-500">Talaba shuncha argument yuborgach, AI yakuniy nutq so'zlaydi va sessiya avtomatik yakunlanadi (3-10)</span>
+                <span className="text-xs text-gray-500">Talaba shuncha argument yuborgach, AI yakuniy nutq so'zlaydi va sessiya avtomatik yakunlanadi (3-8)</span>
               </div>
             </div>
 
-            <Button onClick={handleSave} disabled={saving} className="w-full">
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl border border-gray-200/80 bg-gray-50/50">
+              <div>
+                <Label className="text-xs font-bold">Talaba qayta yecha oladimi?</Label>
+                <p className="text-[11px] text-gray-400 mt-0.5">Yoqilgan bo'lsa, talaba bu kazusni xohlagancha qayta yechishi mumkin. O'chirilgan bo'lsa, faqat bitta urinish.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAllowRetry(!allowRetry)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${allowRetry ? 'bg-blue-500' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${allowRetry ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl border border-gray-200/80 bg-gray-50/50">
+              <div>
+                <Label className="text-xs font-bold">Ommaviy namuna (demo)</Label>
+                <p className="text-[11px] text-gray-400 mt-0.5">Yoqilgan bo'lsa, tizimga kirmagan mehmonlar bu kazusni sinab ko'rishi mumkin (faqat 2 almashinuv).</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPublicDemo(!isPublicDemo)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${isPublicDemo ? 'bg-blue-500' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${isPublicDemo ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+
+            <Button onClick={handleSave} disabled={saving} className="w-full rounded-xl shadow-lg shadow-blue-500/20">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               {editingCase ? 'Saqlash' : 'Kazus yaratish'}
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -412,24 +880,24 @@ export default function MootCourtUstoz() {
           <h2 className="text-base font-bold text-gray-900">Moot Court</h2>
         </div>
         {tab === 'kazuslar' && (
-          <Button size="sm" onClick={() => { resetForm(); setShowForm(true); }}>
+          <Button size="sm" onClick={() => { resetForm(); setShowForm(true); }} className="rounded-xl shadow-md shadow-blue-500/10">
             <Plus className="h-4 w-4 mr-1" /> Yangi kazus
           </Button>
         )}
       </div>
 
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">
+      <div className="flex gap-1 p-1 bg-gray-100/80 rounded-2xl">
         <button
-          onClick={() => setTab('kazuslar')}
-          className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+          onClick={() => { setTab('kazuslar'); setSelectedCaseForResults(null); setResultSearch(''); }}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
             tab === 'kazuslar' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
           Kazuslar ({cases.length})
         </button>
         <button
-          onClick={() => setTab('natijalar')}
-          className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+          onClick={() => { setTab('natijalar'); setSelectedCaseForResults(null); }}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
             tab === 'natijalar' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -449,56 +917,146 @@ export default function MootCourtUstoz() {
             <p className="text-xs text-gray-400 mt-1">"Yangi kazus" tugmasini bosing</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {cases.map(c => (
-              <Card key={c.id} className="rounded-2xl shadow-sm border border-gray-100">
-                <CardContent className="pt-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-bold text-gray-900 truncate">{c.sarlavha}</h3>
-                        <Badge variant={c.faol ? 'default' : 'secondary'} className="shrink-0 text-[10px]">
-                          {c.faol ? 'Faol' : 'Nofaol'}
-                        </Badge>
+          <>
+            {/* Search & filter */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={caseSearch}
+                  onChange={e => { setCaseSearch(e.target.value); setCaseVisibleCount(10); }}
+                  placeholder="Kazus qidirish..."
+                  className="w-full pl-9 pr-4 py-2.5 rounded-2xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-sm placeholder:text-gray-400 focus:outline-none focus:border-blue-400 transition-colors"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <SlidersHorizontal className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                {(['yengil', 'orta', 'qattiq'] as const).map(d => {
+                  const diff = getDiff(d);
+                  const active = caseDiffFilter.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => { setCaseDiffFilter(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]); setCaseVisibleCount(10); }}
+                      className={`text-[11px] font-bold px-3 py-1 rounded-full border transition-all duration-200 ${active ? diff.badge : 'bg-white text-gray-500 border-gray-200/80 hover:border-gray-300'}`}
+                    >
+                      {diff.label}
+                    </button>
+                  );
+                })}
+                <span className="w-px h-4 bg-gray-200 mx-0.5" />
+                {(['faol', 'nofaol'] as const).map(s => {
+                  const active = caseStatusFilter.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => { setCaseStatusFilter(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]); setCaseVisibleCount(10); }}
+                      className={`text-[11px] font-bold px-3 py-1 rounded-full border transition-all duration-200 ${active ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-gray-500 border-gray-200/80 hover:border-gray-300'}`}
+                    >
+                      {s === 'faol' ? 'Faol' : 'Nofaol'}
+                    </button>
+                  );
+                })}
+                {(caseDiffFilter.length > 0 || caseStatusFilter.length > 0) && (
+                  <button
+                    onClick={() => { setCaseDiffFilter([]); setCaseStatusFilter([]); }}
+                    className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors px-1"
+                  >
+                    Tozalash
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {filteredCases.length === 0 ? (
+              <div className="text-center py-12">
+                <Search className="h-8 w-8 text-gray-200 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">Qidiruv bo'yicha kazus topilmadi</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {visibleCases.map((c) => {
+                    const diff = getDiff(c.difficulty);
+                    return (
+                      <div
+                        key={c.id}
+                        className={`group relative overflow-hidden rounded-3xl bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border border-gray-100/80 ${diff.glow}`}
+                      >
+                        <div className={`absolute inset-0 bg-gradient-to-br ${diff.gradient} pointer-events-none opacity-70`} />
+                        <div className="relative h-1 bg-gradient-to-r from-blue-400/50 via-blue-500/30 to-transparent" />
+                        <div className="relative p-4">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                <h3 className="font-bold text-gray-900 truncate text-sm">{c.sarlavha}</h3>
+                                <Badge variant={c.faol ? 'default' : 'secondary'} className="shrink-0 text-[10px]">
+                                  {c.faol ? 'Faol' : 'Nofaol'}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-gray-500 line-clamp-2">{c.tavsif}</p>
+                              {c.qonun_moddalar && (
+                                <p className="text-[11px] text-blue-600 font-medium mt-1.5">📋 {c.qonun_moddalar}</p>
+                              )}
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {c.tomonlar?.map(t => (
+                                  <Badge key={t} variant="outline" className="text-[10px] border-gray-200/80">{t}</Badge>
+                                ))}
+                                <Badge variant="outline" className="text-[10px] border-gray-200/80">
+                                  {c.ai_rol === 'sudya' ? '⚖️ Sudya' : '🥷 Qarshi tomon'}
+                                </Badge>
+                                <Badge variant="outline" className="text-[10px] border-gray-200/80">
+                                  {c.max_exchanges || 5} almashinuv
+                                </Badge>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${diff.badge}`}>{diff.label}</span>
+                                {c.allow_retry === false && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">↻ 1 urinish</span>
+                                )}
+                                {c.is_public_demo && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">Demo</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-100/60">
+                            <Button size="sm" variant="ghost" onClick={() => handleEdit(c)} className="text-xs h-7 rounded-lg">
+                              <Edit className="h-3 w-3 mr-1" /> Tahrirlash
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => toggleFaol(c)} className="text-xs h-7 rounded-lg">
+                              {c.faol ? (
+                                <><ToggleRight className="h-3.5 w-3.5 mr-1 text-green-600" /> Faol</>
+                              ) : (
+                                <><ToggleLeft className="h-3.5 w-3.5 mr-1 text-gray-400" /> Nofaol</>
+                              )}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)} className="text-xs h-7 text-red-500 hover:text-red-600 rounded-lg">
+                              <Trash2 className="h-3 w-3 mr-1" /> O'chirish
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 line-clamp-2">{c.tavsif}</p>
-                      {c.qonun_moddalar && (
-                        <p className="text-[11px] text-blue-600 font-medium mt-1.5">📋 {c.qonun_moddalar}</p>
-                      )}
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {c.tomonlar?.map(t => (
-                          <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
-                        ))}
-                        <Badge variant="outline" className="text-[10px]">
-                          {c.ai_rol === 'sudya' ? '⚖️ Sudya' : '🥷 Qarshi tomon'}
-                        </Badge>
-                        <Badge variant="outline" className="text-[10px]">
-                          {c.max_exchanges || 5} almashinuv
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-50">
-                    <Button size="sm" variant="ghost" onClick={() => handleEdit(c)} className="text-xs h-7">
-                      <Edit className="h-3 w-3 mr-1" /> Tahrirlash
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => toggleFaol(c)} className="text-xs h-7">
-                      {c.faol ? (
-                        <><ToggleRight className="h-3.5 w-3.5 mr-1 text-green-600" /> Faol</>
-                      ) : (
-                        <><ToggleLeft className="h-3.5 w-3.5 mr-1 text-gray-400" /> Nofaol</>
-                      )}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)} className="text-xs h-7 text-red-500 hover:text-red-600">
-                      <Trash2 className="h-3 w-3 mr-1" /> O'chirish
+                    );
+                  })}
+                </div>
+                {caseVisibleCount < filteredCases.length && (
+                  <div className="flex justify-center pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCaseVisibleCount(prev => prev + 10)}
+                      className="rounded-xl text-xs"
+                    >
+                      Ko'proq ko'rsatish ({filteredCases.length - caseVisibleCount} ta qoldi)
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                )}
+              </>
+            )}
+          </>
         )
       ) : (
+        /* ── NATIJALAR: Two-step grouped navigation ── */
         sessions.length === 0 ? (
           <div className="text-center py-16">
             <MessageSquare className="h-10 w-10 text-gray-300 mx-auto mb-3" />
@@ -506,54 +1064,143 @@ export default function MootCourtUstoz() {
             <p className="text-xs text-gray-400 mt-1">Talabalar yakunlagan sessiyalar shu yerda ko'rinadi</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {sessions.map(s => (
-              <Card key={s.id} className="rounded-2xl shadow-sm border border-gray-100">
-                <CardContent className="pt-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-bold text-gray-900 truncate">
-                        {s.moot_court_cases?.sarlavha || 'Kazus'}
-                      </h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Talaba: <span className="font-bold text-gray-700">{s.oquvchi_ismi}</span>
-                        {s.oquvchi_tomon && <span className="ml-1.5 text-blue-600">• {s.oquvchi_tomon}</span>}
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        {new Date(s.created_at).toLocaleString('uz-UZ')}
-                      </p>
-                      {s.ai_score !== null && (
-                        <div className="flex items-center gap-1.5 mt-1.5">
-                          <Award className="h-3.5 w-3.5 text-blue-500" />
-                          <span className="text-xs font-bold text-gray-700">AI: {s.ai_score}/10</span>
-                          {s.teacher_score !== null && (
-                            <span className="text-xs font-bold text-amber-600 ml-1">Ustoz: {s.teacher_score}/10</span>
-                          )}
+          <>
+            {/* Search for results */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                value={resultSearch}
+                onChange={e => { setResultSearch(e.target.value); setSelectedCaseForResults(null); }}
+                placeholder="Kazus yoki talaba ismi bo'yicha qidirish..."
+                className="w-full pl-9 pr-4 py-2.5 rounded-2xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-sm placeholder:text-gray-400 focus:outline-none focus:border-blue-400 transition-colors"
+              />
+            </div>
+
+            {selectedCaseForResults ? (
+              /* Step 2: sessions for selected case */
+              <>
+                <button
+                  onClick={() => setSelectedCaseForResults(null)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" /> Kazuslar ro'yxatiga qaytish
+                </button>
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-blue-600" />
+                  <h3 className="text-sm font-bold text-gray-900">
+                    {sessionsByCase.find(g => g.case?.id === selectedCaseForResults)?.case?.sarlavha || 'Kazus'}
+                  </h3>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {filteredSessionsForCase.length} ta natija
+                  </Badge>
+                </div>
+                {filteredSessionsForCase.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-gray-500">Bu kazus bo'yicha natija topilmadi</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {filteredSessionsForCase.map(s => {
+                      const diff = getDiff(s.moot_court_cases?.difficulty || 'orta');
+                      return (
+                        <div
+                          key={s.id}
+                          className={`group relative overflow-hidden rounded-3xl bg-white shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 border border-gray-100/80 ${diff.glow}`}
+                        >
+                          <div className={`absolute inset-0 bg-gradient-to-br ${diff.gradient} pointer-events-none opacity-50`} />
+                          <div className="relative p-4">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-sm font-bold text-gray-900 truncate">
+                                  {s.oquvchi_ismi}
+                                </h3>
+                                {s.oquvchi_tomon && <span className="text-xs text-blue-600">{s.oquvchi_tomon}</span>}
+                                <p className="text-[11px] text-gray-400 mt-0.5">
+                                  {new Date(s.created_at).toLocaleString('uz-UZ')}
+                                </p>
+                                {s.ai_score !== null && (
+                                  <div className="flex items-center gap-1.5 mt-1.5">
+                                    <Award className="h-3.5 w-3.5 text-blue-500" />
+                                    <span className="text-xs font-bold text-gray-700">AI: {s.ai_score}/10</span>
+                                    {s.teacher_score !== null && (
+                                      <span className="text-xs font-bold text-amber-600 ml-1">Ustoz: {s.teacher_score}/10</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <Badge variant={s.status === 'yakunlangan' ? 'default' : 'secondary'} className="shrink-0 text-[10px]">
+                                {s.status === 'yakunlangan' ? 'Yakunlangan' : 'Faol'}
+                              </Badge>
+                            </div>
+                            <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-100/60">
+                              <Button size="sm" variant="ghost" onClick={() => setViewingSession(s)} className="text-xs h-7 rounded-lg">
+                                <Eye className="h-3 w-3 mr-1" /> Suhbatni ko'rish
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <Badge variant={s.status === 'yakunlangan' ? 'default' : 'secondary'} className="shrink-0 text-[10px]">
-                      {s.status === 'yakunlangan' ? 'Yakunlangan' : 'Faol'}
-                    </Badge>
+                      );
+                    })}
                   </div>
-                  <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-50">
-                    <Button size="sm" variant="ghost" onClick={() => setViewingSession(s)} className="text-xs h-7">
-                      <Eye className="h-3 w-3 mr-1" /> Suhbatni ko'rish
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                )}
+              </>
+            ) : (
+              /* Step 1: case groups */
+              sessionsByCase.length === 0 ? (
+                <div className="text-center py-12">
+                  <Search className="h-8 w-8 text-gray-200 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Qidiruv bo'yicha natija topilmadi</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {sessionsByCase.map(g => {
+                    const diff = getDiff(g.case?.difficulty || 'orta');
+                    return (
+                      <button
+                        key={g.case?.id}
+                        onClick={() => { setSelectedCaseForResults(g.case?.id || ''); setResultSearch(''); }}
+                        className={`group relative w-full overflow-hidden rounded-3xl bg-white shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 border border-gray-100/80 text-left ${diff.glow}`}
+                      >
+                        <div className={`absolute inset-0 bg-gradient-to-br ${diff.gradient} pointer-events-none opacity-50`} />
+                        <div className="relative p-4 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center shrink-0 shadow-sm">
+                              <FolderOpen className="h-4.5 w-4.5 text-blue-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-bold text-gray-900 truncate">{g.case?.sarlavha || 'Kazus'}</h3>
+                              <p className="text-[11px] text-gray-400 mt-0.5">
+                                {g.sessions.length} ta natija
+                                {g.sessions.filter(s => s.status === 'yakunlangan').length > 0 && (
+                                  <span className="ml-1.5">• {g.sessions.filter(s => s.status === 'yakunlangan').length} yakunlangan</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${diff.badge}`}>{diff.label}</span>
+                            <ChevronLeft className="h-4 w-4 text-gray-300 rotate-180 group-hover:text-blue-500 transition-colors" />
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )
+            )}
+          </>
         )
       )}
     </div>
   );
 }
 
-function AiEvaluationView({ session, onSaveTeacherScore }: {
+function AiEvaluationView({ session, onSaveTeacherScore, onReevaluate, reevaluating }: {
   session: MootSession;
   onSaveTeacherScore: (id: string, score: number) => void;
+  onReevaluate: (id: string) => void;
+  reevaluating: boolean;
 }) {
   const [teacherScore, setTeacherScore] = useState(session.teacher_score?.toString() || session.ai_score?.toString() || '');
 
@@ -562,49 +1209,58 @@ function AiEvaluationView({ session, onSaveTeacherScore }: {
 
   if (!hasEvaluation) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-100">
+      <div className="mt-4 pt-4 border-t border-gray-100/80 space-y-3">
         <div className="flex items-center gap-2 text-gray-400">
           <Award className="h-4 w-4" />
           <span className="text-xs font-medium">AI bahosi hali mavjud emas</span>
         </div>
+        {reevaluating ? (
+          <div className="flex items-center gap-2 bg-blue-50/80 backdrop-blur-sm rounded-xl px-4 py-3 border border-blue-100">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+            <span className="text-xs font-medium text-blue-600">AI baholamoqda...</span>
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onReevaluate(session.id)}
+            className="text-xs rounded-xl"
+          >
+            <RotateCw className="h-3.5 w-3.5 mr-1" /> AI baholashni qayta boshlash
+          </Button>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
-      {/* AI Score Header */}
-      <div className="flex items-center gap-2">
-        <Award className="h-5 w-5 text-blue-500" />
-        <span className="text-sm font-bold text-gray-900">AI bahosi: {session.ai_score}/10</span>
-      </div>
-
+    <div className="mt-4 pt-4 border-t border-gray-100/80 space-y-4">
       {/* Overall comment */}
       {session.ai_comment && (
-        <div className="bg-blue-50 rounded-xl p-3">
+        <div className="bg-gradient-to-br from-blue-50/80 to-white rounded-2xl p-3 border border-blue-100/60">
           <p className="text-[10px] font-bold text-blue-600 mb-1">Umumiy izoh</p>
           <p className="text-xs text-gray-700 leading-relaxed">{session.ai_comment}</p>
         </div>
       )}
 
-      {/* Criteria breakdown */}
+      {/* Criteria breakdown with circular progress */}
       {breakdown.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-bold text-gray-700">Mezonlar bo'yicha batafsil:</p>
           {breakdown.map((c, i) => (
-            <div key={i} className="bg-gray-50 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-gray-800">{c.name}</span>
-                <span className="text-xs font-bold text-blue-600">{c.score}/2</span>
+            <div key={i} className="flex items-start gap-3 bg-gray-50/80 rounded-2xl p-3 border border-gray-100/60">
+              <CircularProgress score={c.score} max={2} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-gray-800 mb-0.5">{c.name}</p>
+                <p className="text-[11px] text-gray-600 leading-relaxed">{c.explanation}</p>
               </div>
-              <p className="text-[11px] text-gray-600 leading-relaxed">{c.explanation}</p>
             </div>
           ))}
         </div>
       )}
 
       {/* Teacher score override */}
-      <div className="pt-3 border-t border-gray-100">
+      <div className="pt-3 border-t border-gray-100/80">
         <Label className="text-xs font-bold">Yakuniy baho (ustoz)</Label>
         <p className="text-[11px] text-gray-400 mb-2">Standart holatda AI bahosi bilan to'ldirilgan. Istalgan songa o'zgartiring.</p>
         <div className="flex gap-2 items-center">
@@ -615,7 +1271,7 @@ function AiEvaluationView({ session, onSaveTeacherScore }: {
             value={teacherScore}
             onChange={e => setTeacherScore(e.target.value)}
             placeholder="Masalan: 8"
-            className="w-24"
+            className="w-24 rounded-xl"
           />
           <Button
             size="sm"
@@ -624,14 +1280,23 @@ function AiEvaluationView({ session, onSaveTeacherScore }: {
               if (s >= 0 && s <= 10) onSaveTeacherScore(session.id, s);
               else alert('Baho 0-10 orasida bo\'lishi kerak');
             }}
+            className="rounded-xl shadow-md shadow-blue-500/10"
           >
             Saqlash
           </Button>
           {session.teacher_score !== null && session.teacher_score !== session.ai_score && (
-            <span className="text-xs text-gray-500 ml-1">
-              Ustoz bahosi: <span className="font-bold text-amber-600">{session.teacher_score}/10</span>
-              <span className="text-gray-400 ml-1">(AI: {session.ai_score}/10)</span>
-            </span>
+            <div className="flex items-center gap-1.5 ml-1">
+              <span className="text-xs text-gray-500">
+                AI: <span className="font-bold text-blue-600">{session.ai_score}</span>
+              </span>
+              <ArrowRight className="h-3 w-3 text-gray-400" />
+              <span className="text-xs text-gray-500">
+                Ustoz: <span className="font-bold text-amber-600">{session.teacher_score}</span>
+              </span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${session.teacher_score > session.ai_score ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {session.teacher_score > session.ai_score ? `+${session.teacher_score - session.ai_score!}` : `${session.teacher_score - session.ai_score!}`}
+              </span>
+            </div>
           )}
         </div>
       </div>

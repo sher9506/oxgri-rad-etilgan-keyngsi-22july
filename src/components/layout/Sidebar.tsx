@@ -6,7 +6,7 @@ import {
   ScanFace, X, User as UserIcon, FileText, GraduationCap,
   Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
   Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain,
-  BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper
+  BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper, Activity
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang } from '@/contexts/LangContext';
@@ -35,6 +35,7 @@ const ADMIN_GROUPS = [
       { id: 'barcha_testlar', label: 'Barcha testlar', icon: BookOpen },
       { id: 'materiallar', label: "O'quv materiallari", icon: Library },
       { id: 'natija', label: 'Natijalar', icon: Search },
+      { id: 'shikoyatlar', label: 'Shikoyatlar', icon: ShieldAlert },
     ],
   },
   {
@@ -73,24 +74,39 @@ const ADMIN_GROUPS = [
       { id: 'bot_ustoz_ruxsat', label: 'Ustoz Bot Ruxsati', icon: Shield },
       { id: 'tg_login_bot', label: 'Telegram Login Bot', icon: Bot },
       { id: 'ai_mentor', label: 'AI Mentor', icon: Brain },
+      { id: 'ai_kvota', label: 'AI Kvota (Tizim holati)', icon: Activity },
       { id: 'chunking', label: 'Chunking (AI Index)', icon: Database },
+      { id: 'qonun_bazasi', label: 'Qonunlar bazasi', icon: BookMarked },
       { id: 'sozlamalar', label: 'Maxfiy sozlamalar', icon: Lock },
     ],
   },
 ];
 
 // ── Normal/Ustoz menyu seksiyalari ────────────────────────────────────────────
-function buildSections(userRol: string | undefined, ustozBotRuxsat: boolean, t: (k: string) => string) {
+function buildSections(
+  userRol: string | undefined,
+  ustozBotRuxsat: boolean,
+  t: (k: string) => string,
+  blogHuquqi: boolean = false,
+  ustozHuquqi: boolean = false,
+) {
   const isUstoz = userRol === 'ustoz';
+  // blog_huquqi=true — faqat blog, blog_yozish, profil, haqida, yordam
+  // ustoz_huquqi=true — blog_yozishdan tashqari hammasi
+  // ikkalasi false — hammasi ko'rinadi
+  const isBlogOnly = isUstoz && blogHuquqi && !ustozHuquqi;
+  const isUstozRestricted = isUstoz && ustozHuquqi && !blogHuquqi;
 
-  const oqishItems = [
+  const oqishItems = isBlogOnly ? [
+    { id: 'blog', label: 'Blog', icon: Newspaper },
+  ] : [
     { id: 'kurslar', label: t('nav.kurslar'), icon: BookMarked },
     { id: 'oqmatlar', label: t('nav.oqmatlar'), icon: Library },
     { id: 'savol_javob', label: t('nav.savol_javob'), icon: Layers },
     { id: 'blog', label: 'Blog', icon: Newspaper },
   ];
 
-  const sinovItems = [
+  const sinovItems = isBlogOnly ? [] : [
     { id: 'sinov', label: t('nav.bilim_olish'), icon: Play, accent: true },
     { id: 'mavjud_testlar', label: t('nav.mavjud_testlar'), icon: FileText },
     { id: 'mavjud_kazuslar', label: t('nav.mavjud_kazuslar'), icon: GraduationCap },
@@ -104,16 +120,32 @@ function buildSections(userRol: string | undefined, ustozBotRuxsat: boolean, t: 
     { id: 'yordam', label: t('nav.yordam'), icon: HelpCircle },
   ];
 
-  const kabinetItems = isUstoz ? [
-    { id: 'ustoz', label: 'Kazus kabineti', icon: UserCircle },
-    { id: 'testlar', label: 'Test kabineti', icon: BookOpen },
-    { id: 'oquvchilar', label: "O'quvchilarim", icon: GraduationCap },
-    { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
-    { id: 'moot_court', label: 'Moot Court', icon: Scale },
-    ...(ustozBotRuxsat ? [{ id: 'bot_yangilik', label: 'Bot Yangilik', icon: Megaphone }] : []),
-  ] : [];
+  // Blog-only uchun natijalar ham yashirin
+  const visibleBottomItems = isBlogOnly
+    ? bottomItems.filter(i => ['profil', 'haqida', 'yordam'].includes(i.id))
+    : bottomItems;
 
-  return { oqishItems, sinovItems, bottomItems, kabinetItems };
+  let kabinetItems: { id: string; label: string; icon: any }[] = [];
+  if (isUstoz && isBlogOnly) {
+    kabinetItems = [
+      { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
+    ];
+  } else if (isUstoz && !isBlogOnly) {
+    const allKabinet = [
+      { id: 'ustoz', label: 'Kazus kabineti', icon: UserCircle },
+      { id: 'testlar', label: 'Test kabineti', icon: BookOpen },
+      { id: 'oquvchilar', label: "O'quvchilarim", icon: GraduationCap },
+      { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
+      { id: 'moot_court', label: 'Moot Court', icon: Scale },
+      ...(ustozBotRuxsat ? [{ id: 'bot_yangilik', label: 'Bot Yangilik', icon: Megaphone }] : []),
+    ];
+    // ustoz_huquqi=true — blog_yozishni yashir
+    kabinetItems = isUstozRestricted
+      ? allKabinet.filter(i => i.id !== 'blog_yozish')
+      : allKabinet;
+  }
+
+  return { oqishItems, sinovItems, bottomItems: visibleBottomItems, kabinetItems };
 }
 
 export default function Sidebar({
@@ -197,7 +229,7 @@ export default function Sidebar({
   };
 
   const { oqishItems, sinovItems, bottomItems, kabinetItems } = buildSections(
-    user?.rol, ustozBotRuxsat, t
+    user?.rol, ustozBotRuxsat, t, user?.blog_huquqi, user?.ustoz_huquqi
   );
 
   // ── Menu item renderer ──────────────────────────────────────────────────────

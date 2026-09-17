@@ -264,7 +264,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       const loginVariants = [loginId, '+' + loginId];
       const { data: ustozData } = await supabase
         .from('ustoz')
-        .select('id, full_name, username, phone, status, parol_hash')
+        .select('id, full_name, username, phone, status, parol_hash, blog_huquqi, ustoz_huquqi')
         .or(`phone.in.(${loginVariants.map(v => `"${v}"`).join(',')}),username.in.(${loginVariants.map(v => `"${v}"`).join(',')})`)
         .maybeSingle();
       if (ustozData) {
@@ -278,7 +278,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           setYuklanyapti(false); return;
         }
         const parts = (ustozData.full_name || '').split(' ');
-        authLogin({ ism: parts[0] || 'Ustoz', familiya: parts.slice(1).join(' ') || '', rol: 'ustoz', login: ustozData.phone || ustozData.username, ustoz_id: ustozData.id });
+        authLogin({ ism: parts[0] || 'Ustoz', familiya: parts.slice(1).join(' ') || '', rol: 'ustoz', login: ustozData.phone || ustozData.username, ustoz_id: ustozData.id, blog_huquqi: ustozData.blog_huquqi ?? false, ustoz_huquqi: ustozData.ustoz_huquqi ?? false });
         toast({ title: 'Xush kelibsiz!', description: `${ustozData.full_name} — Ustoz` });
         onClose(); return;
       }
@@ -366,8 +366,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       const mos = ustozDescriptorlar.map(u => ({ ...u, distance: faceDistance(descriptor, u.descriptor) })).filter(u => u.distance < THRESHOLD).sort((a, b) => a.distance - b.distance);
       if (mos.length === 0) { toast({ title: 'Yuz tanilmadi', variant: 'destructive' }); setYuklanyapti(false); return; }
       const ustoz = mos[0].ustoz;
+      const { data: ustozFull } = await supabase.from('ustoz').select('blog_huquqi, ustoz_huquqi').eq('id', ustoz.id).maybeSingle();
       const parts = (ustoz.full_name || '').split(' ');
-      authLogin({ ism: parts[0] || 'Ustoz', familiya: parts.slice(1).join(' ') || '', rol: 'ustoz', login: ustoz.username, ustoz_id: ustoz.id });
+      authLogin({ ism: parts[0] || 'Ustoz', familiya: parts.slice(1).join(' ') || '', rol: 'ustoz', login: ustoz.username, ustoz_id: ustoz.id, blog_huquqi: ustozFull?.blog_huquqi ?? false, ustoz_huquqi: ustozFull?.ustoz_huquqi ?? false });
       toast({ title: 'Xush kelibsiz!', description: `${ustoz.full_name} — Face ID` });
       onClose();
     } catch (e: any) {

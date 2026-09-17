@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { callAIWithFallback } from '../_shared/ai-provider.ts';
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -7,8 +8,6 @@ const supabaseAdmin = createClient(
 );
 
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000;
-const ONSPACE_AI_BASE_URL = Deno.env.get('ONSPACE_AI_BASE_URL') ?? '';
-const ONSPACE_AI_API_KEY = Deno.env.get('ONSPACE_AI_API_KEY') ?? '';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface Message { role: 'user' | 'model'; parts: { text: string }[]; }
@@ -110,23 +109,14 @@ class AiHttpError extends Error {
 }
 
 async function callOnSpaceAI(model: string, systemPrompt: string, messages: Message[], maxTokens = 2000): Promise<string> {
-  if (!ONSPACE_AI_BASE_URL || !ONSPACE_AI_API_KEY) throw new AiHttpError('OnSpace AI sozlanmagan.', 503);
-  const formatted = messages.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.parts.map(p => p.text).join('\n') }));
-  const res = await fetch(`${ONSPACE_AI_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ONSPACE_AI_API_KEY}` },
-    body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...formatted], max_tokens: maxTokens, temperature: 0.4, stream: false }),
+  const formattedMessages = messages.map(m => ({ role: (m.role === 'model' ? 'assistant' : 'user') as 'user' | 'assistant', text: m.parts.map(p => p.text).join('\n') }));
+  const { text: reply, provider } = await callAIWithFallback({
+    systemPrompt,
+    messages: formattedMessages,
+    maxTokens,
+    temperature: 0.4,
+    functionName: 'mentor-chat',
   });
-  const txt = await res.text();
-  if (!res.ok) {
-    if (res.status === 402) {
-      throw new AiHttpError('AI Mentor vaqtincha ishlamayapti. Iltimos, keyinroq urinib ko\'ring.', 402);
-    }
-    throw new AiHttpError(`OnSpace AI [${res.status}]: ${txt.slice(0, 200)}`, res.status);
-  }
-  const data = JSON.parse(txt);
-  const reply = data?.choices?.[0]?.message?.content;
-  if (!reply) throw new AiHttpError("OnSpace AI bo'sh javob qaytardi", 502);
   return reply;
 }
 
@@ -185,22 +175,13 @@ FAQAT kalit so'zlar ro'yxatini qaytarning — vergul bilan ajratilgan bitta qato
 Misol kirish: "Advokatlar qayerda ishlaydi?"
 Misol chiqish: advokat,advokatlik,himoyachi,yurish,faoliyat,ish,joyi,firma`;
   try {
-    const res = await fetch(`${ONSPACE_AI_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ONSPACE_AI_API_KEY}` },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: EXPAND_SYSTEM },
-          { role: 'user', content: savol.slice(0, 300) },
-        ],
-        max_tokens: 120,
-        temperature: 0.2,
-      }),
+    const { text: raw } = await callAIWithFallback({
+      systemPrompt: EXPAND_SYSTEM,
+      messages: [{ role: 'user', text: savol.slice(0, 300) }],
+      maxTokens: 120,
+      temperature: 0.2,
+      functionName: 'mentor-chat-expand',
     });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const raw: string = data?.choices?.[0]?.message?.content || '';
     const terms = raw
       .split(/[,\n]+/)
       .map((t: string) => t.trim().toLowerCase().replace(/[^\w'\s]/g, '').trim())
@@ -1575,3 +1556,4 @@ ${NO_NAV_RULE}${NAV_SYNTAX}`;
     return new Response(JSON.stringify({ error: `Xatolik: ${msg.slice(0, 200)}` }), { status: statusCode, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
+// deploy trigger 1788610507

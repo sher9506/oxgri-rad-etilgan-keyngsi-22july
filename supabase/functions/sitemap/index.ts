@@ -13,14 +13,23 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-// sitemap edge function — public, verify_jwt = false
+interface SitemapEntry {
+  loc: string;
+  lastmod?: string;
+  changefreq: string;
+  priority: string;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
-    const urls: string[] = [`${SITE_URL}/`];
+    const entries: SitemapEntry[] = [
+      { loc: `${SITE_URL}/`, changefreq: 'weekly', priority: '1.0' },
+      { loc: `${SITE_URL}/blog`, changefreq: 'daily', priority: '0.9' },
+    ];
 
     const { data: posts } = await supabase
       .from('blog_posts')
@@ -31,7 +40,12 @@ Deno.serve(async (req: Request) => {
     if (posts) {
       for (const post of posts) {
         if (post.slug) {
-          urls.push(`${SITE_URL}/blog/${post.slug}`);
+          entries.push({
+            loc: `${SITE_URL}/blog/${post.slug}`,
+            lastmod: post.updated_at ? new Date(post.updated_at).toISOString().split('T')[0] : undefined,
+            changefreq: 'monthly',
+            priority: '0.6',
+          });
         }
       }
     }
@@ -45,22 +59,25 @@ Deno.serve(async (req: Request) => {
     if (authors) {
       for (const author of authors) {
         if (author.muallif_slug) {
-          urls.push(`${SITE_URL}/blog/muallif/${author.muallif_slug}`);
+          entries.push({
+            loc: `${SITE_URL}/blog/muallif/${author.muallif_slug}`,
+            changefreq: 'monthly',
+            priority: '0.5',
+          });
         }
       }
     }
 
-    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map(url => `  <url>
-    <loc>${url}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+${entries.map(e => `  <url>
+    <loc>${e.loc}</loc>${e.lastmod ? `\n    <lastmod>${e.lastmod}</lastmod>` : ''}
+    <changefreq>${e.changefreq}</changefreq>
+    <priority>${e.priority}</priority>
   </url>`).join('\n')}
 </urlset>`;
 
-    return new Response(sitemap, {
+    return new Response(xml, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/xml; charset=utf-8',

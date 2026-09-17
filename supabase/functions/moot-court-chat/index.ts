@@ -1,5 +1,7 @@
+// force redeploy
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { callAIWithFallback } from '../_shared/ai-provider.ts';
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -11,62 +13,6 @@ interface ChatMessage {
   text: string;
 }
 
-async function loadAiConfig(): Promise<{ apiUrl: string; apiKey: string; model: string }> {
-  const { data } = await supabaseAdmin
-    .from('settings')
-    .select('key, text_value')
-    .in('key', ['AI_MENTOR_API_URL', 'AI_MENTOR_API_KEY', 'AI_MENTOR_MODEL']);
-  const map: Record<string, string> = {};
-  (data || []).forEach((r: any) => { map[r.key] = r.text_value || ''; });
-  return {
-    apiUrl: map['AI_MENTOR_API_URL'] || '',
-    apiKey: map['AI_MENTOR_API_KEY'] || '',
-    model: map['AI_MENTOR_MODEL'] || 'gemini-3-flash-preview',
-  };
-}
-
-async function callGemini(
-  apiUrl: string,
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  messages: ChatMessage[]
-): Promise<string> {
-  const modelPath = model.replace(/^google\//, '');
-  const url = `${apiUrl}/${modelPath}:generateContent?key=${apiKey}`;
-
-  const contents = messages.map(m => ({
-    role: m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: m.text }],
-  }));
-
-  const body = {
-    contents,
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    generationConfig: {
-      temperature: 0.6,
-      maxOutputTokens: 1500,
-    },
-  };
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  const txt = await res.text();
-  if (!res.ok) {
-    console.error('[moot-court-chat] Gemini xato:', res.status, txt.slice(0, 300));
-    throw new Error(`Gemini API [${res.status}]`);
-  }
-
-  const data = JSON.parse(txt);
-  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!reply) throw new Error('Gemini bo\'sh javob qaytardi');
-  return reply;
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -74,12 +20,14 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { caseId, sessionId, messages, studentSide, isIntro } = body as {
+    const { caseId, sessionId, messages, studentSide, isIntro, guestToken, studentName } = body as {
       caseId: string;
       sessionId?: string;
       messages: ChatMessage[];
       studentSide?: string;
       isIntro?: boolean;
+      guestToken?: string;
+      studentName?: string;
     };
 
     if (!caseId || !messages || !Array.isArray(messages)) {
@@ -89,17 +37,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { apiUrl, apiKey, model } = await loadAiConfig();
-    if (!apiUrl || !apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'AI sozlanmagan. Admin bilan bog\'laning.' }),
-        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const { data: caseData, error: caseErr } = await supabaseAdmin
       .from('moot_court_cases')
-      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol, max_exchanges')
+      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol, max_exchanges, difficulty, allow_retry, is_public_demo')
       .eq('id', caseId)
       .maybeSingle();
 
@@ -110,9 +50,58 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // ── Fetch linked legal articles from qonun_moddalari (if any) ──
+    const { data: linkedArticles } = await supabaseAdmin
+      .from('moot_court_case_articles')
+      .select('modda_id, qonun_moddalari(id, kodeks_nomi, modda_raqami, modda_matni)')
+      .eq('case_id', caseId);
+
+    const articles: { kodeks_nomi: string; modda_raqami: string; modda_matni: string }[] = [];
+    if (linkedArticles) {
+      for (const la of linkedArticles) {
+        const m = la.qonun_moddalari as any;
+        if (m && m.modda_matni) {
+          articles.push({ kodeks_nomi: m.kodeks_nomi, modda_raqami: m.modda_raqami, modda_matni: m.modda_matni });
+        }
+      }
+    }
+
+    // ── Guest mode: enforce 2-exchange limit and public demo check ──
+    const isGuest = !!guestToken;
+    if (isGuest) {
+      if (!caseData.is_public_demo) {
+        return new Response(
+          JSON.stringify({ error: 'Bu kazus mehmon rejimida mavjud emas. Tizimga kiring.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // ── Retry enforcement (non-guest, non-intro) ──
+    // If allow_retry is false and student already has a completed session for this case, block
+    if (!isGuest && !isIntro && caseData.allow_retry === false && studentName) {
+      const { data: existingSessions } = await supabaseAdmin
+        .from('moot_court_sessions')
+        .select('id, status')
+        .eq('case_id', caseId)
+        .eq('oquvchi_ismi', studentName)
+        .eq('status', 'yakunlangan')
+        .limit(1);
+
+      if (existingSessions && existingSessions.length > 0) {
+        return new Response(
+          JSON.stringify({ error: 'Siz bu kazusni allaqachon yechgansiz. Qayta yechish ruxsat berilmagan.', alreadyCompleted: true }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     const aiRol = caseData.ai_rol || 'qarshi_tomon';
     const isSudya = aiRol === 'sudya';
-    const maxExchanges = caseData.max_exchanges || 5;
+    // ── Enforce max_exchanges 3-8 limit (server-side) ──
+    const rawMaxExchanges = caseData.max_exchanges || 5;
+    const maxExchanges = isGuest ? 2 : Math.max(3, Math.min(8, rawMaxExchanges));
+    const difficulty = caseData.difficulty || 'orta';
 
     // Count user exchanges (talaba yuborgan xabarlar soni)
     const userMessageCount = messages.filter(m => m.role === 'user').length;
@@ -125,6 +114,16 @@ Deno.serve(async (req: Request) => {
     const studentSideStr = studentSide || (Array.isArray(caseData.tomonlar) && caseData.tomonlar.length > 0
       ? caseData.tomonlar[0]
       : '');
+
+    // Difficulty-based personality instructions
+    const difficultyInstructions: Record<string, string> = {
+      yengil: `## Qiyinlik darajasi: YENGIL
+Sen mehribon, sabrli sudya/advokatsan. Talabaga yordam beruvchi, yo'naltiruvchi savollar ber. Agar talaba adashsa, uni to'g'ri yo'nalishga muloyimlik bilan burib qo'y. Murakkab yoki qiynovchi savollardan saqlan. Talaba argument keltira olmasa, unga muloyim tarzda ip uchini bering — qaysi moddaga tayanishi kerakligini ishora qiling.`,
+      orta: `## Qiyinlik darajasi: O'RTA
+Sen professional, adolatli sudya/advokatsan. Standart, asosli savollar va e'tirozlar bildir, lekin haddan tashqari qattiqqo'l bo'lma. Talabaning argumentlarini mantiqiy bahola va asosli e'tirozlarni ilgari sur.`,
+      qattiq: `## Qiyinlik darajasi: QATTIQ
+Sen juda tajribali, qattiqqo'l va talabchan sudya/advokatsan. Talabaning har bir zaif argumentini aniqlab, qattiq e'tiroz bildir, qarama-qarshi dalillarni keskin ilgari sur, talabani chuqur o'ylashga majbur qil. Lekin hech qachon haqoratli yoki mensimaydigan bo'lma — faqat professional jihatdan talabchan bo'l.`,
+    };
 
     let roleInstruction: string;
     if (isSudya) {
@@ -142,13 +141,23 @@ Talaba ${studentSideStr || 'bir tomon'}ni himoya qilmoqda. Siz o'z tomoningiznin
 qarshi dalillarni keltiring, talabaning argumentlariga e'tiroz bildiring. Professional va mantiqiy gapiring.`;
     }
 
+    // ── Build article text block for system prompt ──
+    let articlesBlock = '';
+    if (articles.length > 0) {
+      articlesBlock = '\n\n## TASDIQLANGAN QONUN MODDALARI (faqat shularga tayaning):\n';
+      for (const a of articles) {
+        articlesBlock += `\n### ${a.kodeks_nomi}, ${a.modda_raqami}-modda:\n${a.modda_matni}\n`;
+      }
+      articlesBlock += '\n## QATIY QOIDA: Sen faqat yuqorida berilgan qonun moddalariga tayanib javob berishing kerak. Agar javob boshqa modda talab qilsa-yu, u senga berilmagan bo\'lsa, "Bu masala bo\'yicha menga aniq modda berilmagan, umumiy tamoyillar asosida fikr bildiraman" deb ayt — hech qachon mavjud bo\'lmagan modda raqamini o\'ylab topib aytma.';
+    }
+
     let systemPrompt = `Siz FanFaster platformasining Moot Court (sud jarayoni simulyatsiyasi) funksiyasidagi AI yordamchisiz.
 
 ## Vaziyat (Kazus):
 ${caseData.tavsif}
 
 ## Tegishli qonun/moddalar:
-${caseData.qonun_moddalar || 'Aniq ko\'rsatilmagan'}
+${caseData.qonun_moddalar || 'Aniq ko\'rsatilmagan'}${articlesBlock}
 
 ## Mavjud tomonlar:
 ${tomonlarStr}
@@ -166,7 +175,9 @@ ${roleInstruction}
 4. O'zbek tilida, professional huquqiy uslubda yozing.
 5. Javoblaringiz qisqa va mazmunli bo'lsin (2-4 paragrafdan oshmasin).
 6. Bu o'quv jarayoni — talabani o'rgating, uning argumentlarini qiyoshtiring va baholang.
-7. Hech qachon xayoliy faktlar yoki qonun moddalari o'ylab topmang.`;
+7. Hech qachon xayoliy faktlar yoki qonun moddalari o'ylab topmang.
+
+${difficultyInstructions[difficulty] || difficultyInstructions.orta}`;
 
     // If this is the final exchange, modify the prompt to ask for a closing speech
     if (isFinalExchange) {
@@ -185,7 +196,14 @@ Bu suhbatning oxirgi almashinuvi. Talaba ${maxExchanges} ta argument yubordi. En
       ? [{ role: 'user', text: `Iltimos, o'zingizni tanishtiring va sud jarayonini boshlang. Birinchi savolni yoki ochish nutqini bering.` }]
       : messages;
 
-    const aiReply = await callGemini(apiUrl, apiKey, model, systemPrompt, messagesForAI);
+    const { text: aiReply, provider } = await callAIWithFallback({
+      systemPrompt,
+      messages: messagesForAI,
+      maxTokens: 1500,
+      temperature: 0.6,
+      functionName: 'moot-court-chat',
+    });
+    console.log(`[moot-court-chat] provider=${provider}`);
 
     // Save updated messages to session
     if (sessionId) {
@@ -210,7 +228,7 @@ Bu suhbatning oxirgi almashinuvi. Talaba ${maxExchanges} ta argument yubordi. En
     }
 
     return new Response(
-      JSON.stringify({ reply: aiReply, aiRol, sessionEnded: isFinalExchange }),
+      JSON.stringify({ reply: aiReply, aiRol, sessionEnded: isFinalExchange, isGuest }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
@@ -222,3 +240,4 @@ Bu suhbatning oxirgi almashinuvi. Talaba ${maxExchanges} ta argument yubordi. En
     );
   }
 });
+// deploy trigger 1788610507

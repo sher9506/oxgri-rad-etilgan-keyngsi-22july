@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Search, Users, Clock, CheckCircle, XCircle, Loader2, Trash2, Plus, Lightbulb, Settings, AlertTriangle, BookOpen, ChevronRight, ArrowLeft, FileText, ChevronDown, X, Bell, Send, GraduationCap, ShieldAlert, AlertCircle, Play, Square, Edit, Library, Eye, EyeOff, Bot, HelpCircle } from 'lucide-react';
+import { Shield, Search, Users, Clock, CheckCircle, XCircle, Loader2, Trash2, Plus, Lightbulb, Settings, AlertTriangle, BookOpen, ChevronRight, ArrowLeft, FileText, ChevronDown, X, Bell, Send, GraduationCap, ShieldAlert, ShieldCheck, AlertCircle, Play, Square, Edit, Library, Eye, EyeOff, Bot, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +21,8 @@ import MentorAiSozlamalari from './MentorAiSozlamalari';
 import TelegramLoginSozlamalari from './TelegramLoginSozlamalari';
 import Analitika from './Analitika';
 import AdminChunking from './AdminChunking';
+import AiKvotaWidget from './AiKvotaWidget';
+import QonunlarBazasi from './QonunlarBazasi';
 
 const ADMIN_CODE = 'adminchit';
 
@@ -109,6 +111,9 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const [bildYuborYuklanyapti, setBildYuborYuklanyapti] = useState(false);
   const [bildirishnomalar, setBildirishnomalar] = useState<any[]>([]);
   const [ustoz_bot_ruxsat, setUstozBotRuxsat] = useState(false);
+  const [tasdiqlashModal, setTasdiqlashModal] = useState<{ ustozId: string; fullName: string; mode: 'approve' | 'edit' } | null>(null);
+  const [modalBlogHuquqi, setModalBlogHuquqi] = useState(false);
+  const [modalUstozHuquqi, setModalUstozHuquqi] = useState(false);
   const [ustoz_bot_yuklanyapti, setUstozBotYuklanyapti] = useState(false);
   const [adminToplamKazuslar, setAdminToplamKazuslar] = useState<any[]>([]);
   const [ochiqKazuslarAdmin, setOchiqKazuslarAdmin] = useState<Set<number>>(new Set());
@@ -121,6 +126,10 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
     oquvchiJavob: string;
   } | null>(null);
   const { toast } = useToast();
+
+  // Shikoyatlar (blog complaints)
+  const [shikoyatlar, setShikoyatlar] = useState<any[]>([]);
+  const [shikoyatYuklanyapti, setShikoyatYuklanyapti] = useState(false);
 
   const bildTalabalarniYuklash = async (kurs: string, guruh: string) => {
     if (!kurs || !guruh) { setBildTalabalar([]); return; }
@@ -205,6 +214,8 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
       else if (view === 'fraud') fraudlarniYuklash();
       else if (view === 'barcha_testlar') barchaTestlarniYuklash();
       else if (view === 'materiallar') {} // materiallar paneliga alohida yuklanadi
+      else if (view === 'ai_kvota') {} // AiKvotaWidget o'z ichida yuklaydi
+      else if (view === 'shikoyatlar') shikoyatlarniYuklash();
     }
   }, [kirish, view]);
 
@@ -221,6 +232,36 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
       toast({ title: 'Xato', description: 'Testlarni yuklashda xatolik', variant: 'destructive' });
     } finally {
       setBarchaTestlarYuklanyapti(false);
+    }
+  };
+
+  const shikoyatlarniYuklash = async () => {
+    setShikoyatYuklanyapti(true);
+    try {
+      const { data, error } = await supabase
+        .from('blog_shikoyat')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setShikoyatlar(data || []);
+    } catch (e: any) {
+      toast({ title: 'Xato', description: "Shikoyatlarni yuklashda xatolik", variant: 'destructive' });
+    } finally {
+      setShikoyatYuklanyapti(false);
+    }
+  };
+
+  const shikoyatStatusUpdate = async (id: string, status: string, note?: string) => {
+    try {
+      const update: any = { status };
+      if (status === 'resolved') update.resolved_at = new Date().toISOString();
+      if (note !== undefined) update.admin_note = note;
+      const { error } = await supabase.from('blog_shikoyat').update(update).eq('id', id);
+      if (error) throw error;
+      setShikoyatlar(prev => prev.map(s => s.id === id ? { ...s, ...update } : s));
+      toast({ title: 'Yangilandi', description: 'Shikoyat holati yangilandi' });
+    } catch (e: any) {
+      toast({ title: 'Xato', description: e?.message || 'Xatolik yuz berdi', variant: 'destructive' });
     }
   };
 
@@ -401,7 +442,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
     }
   };
 
-  const ustozniTasdiqlash = async (ustozId: string, status: 'approved' | 'rejected') => {
+  const ustozniTasdiqlash = async (ustozId: string, status: 'approved' | 'rejected', huquqlar?: { blog_huquqi?: boolean; ustoz_huquqi?: boolean }) => {
     setYuklanyapti(true);
     try {
       // Ustoz ma'lumotlarini olish (bot xabari uchun)
@@ -411,7 +452,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
         .eq('id', ustozId)
         .maybeSingle();
 
-      await approveUstoz(ustozId, status);
+      await approveUstoz(ustozId, status, huquqlar);
 
       // Bot orqali ustoz ga xabar yuborish (avval ustoz bot, keyin oquvchi bot)
       if (ustozData?.telegram_chat_id) {
@@ -668,11 +709,28 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
     );
   }
 
+  const huquqlarniYangilash = async (ustozId: string, huquqlar: { blog_huquqi: boolean; ustoz_huquqi: boolean }) => {
+    setYuklanyapti(true);
+    try {
+      const { error } = await supabase
+        .from('ustoz')
+        .update({ blog_huquqi: huquqlar.blog_huquqi, ustoz_huquqi: huquqlar.ustoz_huquqi })
+        .eq('id', ustozId);
+      if (error) throw error;
+      await ustozlarniYuklash();
+      toast({ title: 'Yangilandi', description: "Ustoz huquqlari o'zgartirildi" });
+    } catch (error: any) {
+      toast({ title: 'Xato', description: error.message || "Huquqlarni o'zgartirishda xatolik", variant: 'destructive' });
+    } finally { setYuklanyapti(false); }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
 
       {/* ─────────── O'QUVCHILAR (ADMIN) ─────────── */}
       {view === 'analitika' && <Analitika />}
+
+      {view === 'ai_kvota' && <AiKvotaWidget />}
 
       {view === 'oquvchilar' && <OquvchilarRoyhat mode="admin" />}
 
@@ -805,13 +863,33 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
                         {ustoz.status === 'pending' && (
                           <>
-                            <Button onClick={() => ustozniTasdiqlash(ustoz.id, 'approved')} disabled={yuklanyapti} size="sm" className="bg-green-600 hover:bg-green-700 h-8">
+                            <Button onClick={() => {
+                              setTasdiqlashModal({ ustozId: ustoz.id, fullName: ustoz.full_name });
+                              setModalBlogHuquqi(false);
+                              setModalUstozHuquqi(false);
+                            }} disabled={yuklanyapti} size="sm" className="bg-green-600 hover:bg-green-700 h-8">
                               {yuklanyapti ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><CheckCircle className="h-3.5 w-3.5 mr-1" />Tasdiqlash</>}
                             </Button>
                             <Button onClick={() => ustozniTasdiqlash(ustoz.id, 'rejected')} disabled={yuklanyapti} variant="destructive" size="sm" className="h-8">
                               {yuklanyapti ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><XCircle className="h-3.5 w-3.5 mr-1" />Rad etish</>}
                             </Button>
                           </>
+                        )}
+                        {ustoz.status === 'approved' && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            {ustoz.blog_huquqi && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold">Blog huquqi</span>}
+                            {ustoz.ustoz_huquqi && <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">Ustoz huquqi</span>}
+                            {!ustoz.blog_huquqi && !ustoz.ustoz_huquqi && <span className="bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-semibold">To'liq huquq</span>}
+                          </div>
+                        )}
+                        {ustoz.status === 'approved' && (
+                          <Button onClick={() => {
+                            setTasdiqlashModal({ ustozId: ustoz.id, fullName: ustoz.full_name, mode: 'edit' });
+                            setModalBlogHuquqi(ustoz.blog_huquqi ?? false);
+                            setModalUstozHuquqi(ustoz.ustoz_huquqi ?? false);
+                          }} disabled={yuklanyapti} variant="outline" size="sm" className="h-8 border-blue-300 text-blue-700 hover:bg-blue-50">
+                            <ShieldAlert className="h-3.5 w-3.5 mr-1" />Huquqlarni o'zgartirish
+                          </Button>
                         )}
                         {ustoz.status === 'approved' && ustoz.face_image && (
                           <Button onClick={async () => {
@@ -1453,6 +1531,61 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
 
       {/* ─────────── CHUNKING ─────────── */}
       {view === 'chunking' && <AdminChunking />}
+      {view === 'qonun_bazasi' && <QonunlarBazasi />}
+
+      {/* ─────────── SHIKOYATLAR ─────────── */}
+      {view === 'shikoyatlar' && (
+        <div className="max-w-5xl mx-auto space-y-6">
+          <Card className="border-2 border-red-500 shadow-xl overflow-hidden">
+            <div className="bg-gradient-to-r from-red-600 to-orange-500 text-white p-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/20 p-3 rounded-2xl"><ShieldAlert className="h-8 w-8" /></div>
+                <div>
+                  <h1 className="text-2xl font-bold">Blog Shikoyatlari</h1>
+                  <p className="text-red-100 text-sm mt-1">Jami {shikoyatlar.length} ta shikoyat • {shikoyatlar.filter(s => s.status === 'pending').length} ta kutilmoqda</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+          {shikoyatYuklanyapti ? (
+            <Card><CardContent className="py-16 text-center"><div className="animate-spin h-12 w-12 border-4 border-red-500 border-t-transparent rounded-full mx-auto mb-4" /><p className="text-gray-500">Yuklanmoqda...</p></CardContent></Card>
+          ) : shikoyatlar.length === 0 ? (
+            <Card><CardContent className="py-20 text-center"><ShieldCheck className="h-20 w-20 text-gray-300 mx-auto mb-4" /><p className="text-xl font-medium text-gray-500">Hozircha shikoyatlar yo'q</p></CardContent></Card>
+          ) : (
+            <div className="space-y-3">
+              {shikoyatlar.map((s: any) => (
+                <Card key={s.id} className={`border-2 shadow-md transition-all ${s.status === 'pending' ? 'border-amber-300' : s.status === 'resolved' ? 'border-green-300' : 'border-gray-200'}`}>
+                  <CardContent className="py-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${s.status === 'pending' ? 'bg-amber-100 text-amber-700' : s.status === 'reviewed' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                            {s.status === 'pending' ? 'Kutilmoqda' : s.status === 'reviewed' ? "Ko'rib chiqildi" : 'Hal qilindi'}
+                          </span>
+                          <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">{s.sabab}</span>
+                          <span className="text-xs text-gray-400">{new Date(s.created_at).toLocaleString('uz-UZ')}</span>
+                        </div>
+                        <p className="font-bold text-gray-900 text-sm">{s.post_sarlavha || 'Sarlavha mavjud emas'}</p>
+                        {s.shikoyatchi_ismi && <p className="text-xs text-gray-500">Shikoyatchi: {s.shikoyatchi_ismi}</p>}
+                        {s.izoh && <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">{s.izoh}</p>}
+                        {s.admin_note && <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded-lg">Admin izoh: {s.admin_note}</p>}
+                      </div>
+                      <div className="flex flex-col gap-1.5 shrink-0">
+                        {s.status === 'pending' && (
+                          <button onClick={() => shikoyatStatusUpdate(s.id, 'reviewed')} className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all">Ko'rib chiqildi</button>
+                        )}
+                        {s.status !== 'resolved' && (
+                          <button onClick={() => shikoyatStatusUpdate(s.id, 'resolved')} className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 transition-all">Hal qilindi</button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─────────── TELEGRAM LOGIN BOT ─────────── */}
       {view === 'tg_login_bot' && <TelegramLoginSozlamalari />}
@@ -1743,6 +1876,68 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
         .animate-slide-up { animation: slide-up 0.5s ease-out; }
         .animate-fade-in { animation: fade-in 0.5s ease-out; }
       `}</style>
+
+      {tasdiqlashModal && (() => {
+        const isEditMode = tasdiqlashModal.mode === 'edit';
+        return (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={() => setTasdiqlashModal(null)}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className={`text-white px-6 py-5 ${isEditMode ? 'bg-gradient-to-r from-blue-600 to-indigo-600' : 'bg-gradient-to-r from-green-600 to-emerald-600'}`}>
+                <h2 className="text-lg font-black">{isEditMode ? "Huquqlarni o'zgartirish" : 'Ustozni tasdiqlash'}</h2>
+                <p className={`text-sm mt-1 ${isEditMode ? 'text-blue-100' : 'text-green-100'}`}>{tasdiqlashModal.fullName}</p>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-sm text-gray-600 font-medium">{isEditMode ? 'Ustoz huquqlarini qaytadan tanlang:' : 'Ushbu ustozga qaysi huquqlarni berasiz?'}</p>
+
+                <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${modalBlogHuquqi ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}
+                  onClick={() => setModalBlogHuquqi(v => !v)}>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-gray-900">Blog huquqi</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Faqat blog, blog yozish, profil, dastur haqida, yordam ko'rinadi</p>
+                  </div>
+                  <Switch checked={modalBlogHuquqi} onCheckedChange={setModalBlogHuquqi} />
+                </div>
+
+                <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${modalUstozHuquqi ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}
+                  onClick={() => setModalUstozHuquqi(v => !v)}>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-gray-900">Ustoz huquqi</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Blog yozishdan tashqari barcha ustoz funksiyalari ko'rinadi</p>
+                  </div>
+                  <Switch checked={modalUstozHuquqi} onCheckedChange={setModalUstozHuquqi} />
+                </div>
+
+                {!modalBlogHuquqi && !modalUstozHuquqi && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs text-amber-800 font-medium">Hech qaysi huquq tanlanmagan — to'liq huquq (barcha funksiyalar).</p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    onClick={async () => {
+                      if (isEditMode) {
+                        await huquqlarniYangilash(tasdiqlashModal.ustozId, { blog_huquqi: modalBlogHuquqi, ustoz_huquqi: modalUstozHuquqi });
+                      } else {
+                        await ustozniTasdiqlash(tasdiqlashModal.ustozId, 'approved', { blog_huquqi: modalBlogHuquqi, ustoz_huquqi: modalUstozHuquqi });
+                      }
+                      setTasdiqlashModal(null);
+                    }}
+                    disabled={yuklanyapti}
+                    className={`flex-1 ${isEditMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}
+                  >
+                    {yuklanyapti ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4 mr-1.5" />{isEditMode ? 'Saqlash' : 'Tasdiqlash'}</>}
+                  </Button>
+                  <Button onClick={() => setTasdiqlashModal(null)} variant="outline" className="flex-1">
+                    Bekor
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2594,4 +2789,6 @@ function TahrirlashlarPanel() {
       )}
     </div>
   );
+
+  return null;
 }

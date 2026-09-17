@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, createContext, useContext, useMemo, lazy, 
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import TelegramCallback from '@/pages/TelegramCallback';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LogIn, LogOut, User as UserIcon, ChevronDown, Menu, Bell } from 'lucide-react';
+import { LogIn, LogOut, User as UserIcon, ChevronDown, Menu, Bell, Search } from 'lucide-react';
 import { Toaster } from '@/components/ui/toaster';
 import Sidebar from '@/components/layout/Sidebar';
 import LoginModal from '@/components/features/LoginModal';
@@ -48,8 +48,10 @@ const BlogList = lazy(() => import('@/components/features/BlogList'));
 const BlogYozish = lazy(() => import('@/components/features/BlogYozish'));
 const BlogPostDetail = lazy(() => import('@/components/features/BlogPostDetail'));
 const BlogMuallif = lazy(() => import('@/components/features/BlogMuallif'));
+const TezOradaSahifa = lazy(() => import('@/components/features/TezOradaSahifa'));
 const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz'));
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
+const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 
 // Admin Context
 interface AdminContextType {
@@ -315,7 +317,7 @@ function AppContent() {
   }, [pendingDeepLink, activeTab]);
 
   // Orqaga qaytish mumkin bo'lgan sahifalar (haqida sahifasiga qaytadi)
-  const BACK_TABS = ['sinov','natijalar','mavjud_testlar','mavjud_kazuslar','oqmatlar','savol_javob','profil','reyting','ustoz','testlar','royhat','oquvchilar','bot_yangilik','faceid','blog','blog_yozish','moot_court'];
+  const BACK_TABS = ['sinov','natijalar','mavjud_testlar','mavjud_kazuslar','oqmatlar','savol_javob','profil','reyting','ustoz','testlar','royhat','oquvchilar','bot_yangilik','faceid','blog','blog_yozish','moot_court','qonun_bazasi'];
   const showBackBtn = BACK_TABS.includes(activeTab) && !isAdmin;
 
   const getPageTitle = () => {
@@ -338,6 +340,26 @@ function AppContent() {
     if (isAdmin || activeTab === 'admin') {
     return <Suspense fallback={<LazyFallback />}><AdminPanel adminView={adminView} onAdminViewChange={setAdminView} isAdminLoggedIn={isAdmin} onAdminLogin={loginAdmin} onAdminLogout={logoutAdmin} /></Suspense>;
     }
+
+    // ── Ustoz huquq cheklovi (xavfsizlik) ──
+    if (user?.rol === 'ustoz') {
+      const blogHuquqi = user.blog_huquqi === true;
+      const ustozHuquqi = user.ustoz_huquqi === true;
+      const isBlogOnly = blogHuquqi && !ustozHuquqi;
+      const isUstozRestricted = ustozHuquqi && !blogHuquqi;
+
+      if (isBlogOnly) {
+        const allowed = ['blog', 'blog_yozish', 'profil', 'haqida', 'yordam'];
+        if (!allowed.includes(activeTab)) {
+          return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
+        }
+      }
+
+      if (isUstozRestricted && activeTab === 'blog_yozish') {
+        return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
+      }
+    }
+
     switch (activeTab) {
       case 'haqida': 
         return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
@@ -359,6 +381,7 @@ function AppContent() {
       case 'blog': return <Suspense fallback={<LazyFallback />}><BlogList /></Suspense>;
       case 'blog_yozish': return <Suspense fallback={<LazyFallback />}><BlogYozish /></Suspense>;
       case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
+      case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
       case 'faceid': return <Suspense fallback={<LazyFallback />}><FaceIdPanel /></Suspense>;
       default: return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
@@ -546,24 +569,49 @@ function RouterRoot() {
       </LangProvider>
     );
   }
-  // /blog/muallif/:muallif_slug — muallif sahifasi (asosiy layout ichida)
+  // /blog/mualliflar — mualliflar ro'yxati (tez orada)
+  if (location.pathname === '/blog/mualliflar') {
+    return (
+      <LangProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <div className="min-h-screen bg-[#f3f7ff] font-sans text-slate-900">
+              <Suspense fallback={<div className="flex min-h-[560px] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /></div>}>
+                <TezOradaSahifa sarlavha="Mualliflar" />
+              </Suspense>
+            </div>
+          </NotificationProvider>
+        </AuthProvider>
+      </LangProvider>
+    );
+  }
+  // /blog/mavzular — mavzular bo'limi (tez orada)
+  if (location.pathname === '/blog/mavzular') {
+    return (
+      <LangProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <div className="min-h-screen bg-[#f3f7ff] font-sans text-slate-900">
+              <Suspense fallback={<div className="flex min-h-[560px] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /></div>}>
+                <TezOradaSahifa sarlavha="Mavzular" />
+              </Suspense>
+            </div>
+          </NotificationProvider>
+        </AuthProvider>
+      </LangProvider>
+    );
+  }
+  // /blog/muallif/:muallif_slug — standalone muallif sahifasi
   const muallifMatch = location.pathname.match(/^\/blog\/muallif\/([^/]+)$/);
   if (muallifMatch) {
     return (
       <LangProvider>
         <AuthProvider>
           <NotificationProvider>
-            <div className="flex bg-[#F2F4F7] font-sans" style={{ height: '100dvh', minHeight: '-webkit-fill-available', overflow: 'hidden' }}>
-              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                <header className="h-12 bg-white border-b border-gray-200 flex items-center px-4 md:px-6 shrink-0 z-40">
-                  <h1 className="text-[13px] font-bold text-gray-800 uppercase tracking-tight">Muallif</h1>
-                </header>
-                <main className="flex-1 overflow-auto p-4 md:p-6">
-                  <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}>
-                    <BlogMuallif muallif_slug={muallifMatch[1]} />
-                  </Suspense>
-                </main>
-              </div>
+            <div className="min-h-screen bg-[#f3f7ff] font-sans text-slate-900">
+              <Suspense fallback={<div className="flex min-h-[560px] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /></div>}>
+                <BlogMuallif muallif_slug={muallifMatch[1]} />
+              </Suspense>
             </div>
           </NotificationProvider>
         </AuthProvider>
