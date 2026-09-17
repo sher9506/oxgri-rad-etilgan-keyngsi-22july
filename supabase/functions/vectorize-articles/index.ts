@@ -1,5 +1,6 @@
 // vectorize-articles: batch vectorization using Gemini batchEmbedContents
 // Optimized: single API call per batch, parallel fallback, bulk DB update, awaited self-call
+// 429 quota errors leave articles pending (not marked as error) so they retry next batch
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -16,6 +17,7 @@ const MAX_TEXT_LEN = 8000;
 interface BatchResult {
   values: number[] | null;
   error: string | null;
+  isQuota: boolean;
 }
 
 async function batchEmbedAll(
@@ -43,14 +45,18 @@ async function batchEmbedAll(
       );
 
       if (res.status === 429 || res.status === 503) {
+        const errBody = await res.text().catch(() => '');
+        const isQuota = res.status === 429 && errBody.includes('quota');
         const retryAfter = res.headers.get('Retry-After');
         let wait: number;
         if (retryAfter) {
-          wait = Math.min(parseInt(retryAfter, 10) * 1000, 10000);
+          wait = Math.min(parseInt(retryAfter, 10) * 1000, 60000);
         } else {
-          wait = Math.min(3000 * Math.pow(2, attempt), 10000);
+          wait = isQuota
+            ? Math.min(15000 * Math.pow(2, attempt), 60000)
+            : Math.min(3000 * Math.pow(2, attempt), 10000);
         }
-        console.log(`[vectorize-articles] 429/503 — kutish ${wait}ms (attempt ${attempt + 1})`);
+        console.log(`[vectorize-articles] 429/503 — kutish ${wait}ms (attempt ${attempt + 1}/${maxRetries})${isQuota ? ' [QUOTA]' : ''}`);
         await new Promise((r) => setTimeout(r, wait));
         continue;
       }
@@ -58,7 +64,7 @@ async function batchEmbedAll(
       if (!res.ok) {
         const errBody = await res.text();
         console.error(`[vectorize-articles] HTTP ${res.status}: ${errBody.slice(0, 200)}`);
-        return texts.map(() => ({ values: null, error: `HTTP ${res.status}: ${errBody.slice(0, 150)}` }));
+        return texts.map(() => ({ values: null, error: `HTTP ${res.status}: ${errBody.slice(0, 150)}`, isQuota: false }));
       }
 
       const data = await res.json();
@@ -66,23 +72,24 @@ async function batchEmbedAll(
       if (Array.isArray(embeddings) && embeddings.length === texts.length) {
         return embeddings.map((e: any) => {
           const vals = e?.values;
-          if (Array.isArray(vals) && vals.length > 0) return { values: vals, error: null };
-          return { values: null, error: "Bo'sh embedding" };
+          if (Array.isArray(vals) && vals.length > 0) return { values: vals, error: null, isQuota: false };
+          return { values: null, error: "Bo'sh embedding", isQuota: false };
         });
       }
 
-      return texts.map(() => ({ values: null, error: "Javob formati noto'g'ri" }));
+      return texts.map(() => ({ values: null, error: "Javob formati noto'g'ri", isQuota: false }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[vectorize-articles] xato:', msg);
       if (attempt < maxRetries - 1) {
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
       } else {
-        return texts.map(() => ({ values: null, error: msg.slice(0, 200) }));
+        return texts.map(() => ({ values: null, error: msg.slice(0, 200), isQuota: false }));
       }
     }
   }
-  return texts.map(() => ({ values: null, error: 'Maksimal urinishlar tugadi' }));
+  // Barcha urinishlar tugadi — quota xatomi yoki oddiy xatomi?
+  return texts.map(() => ({ values: null, error: 'Maksimal urinishlar tugadi', isQuota: true }));
 }
 
 async function singleEmbed(text: string, apiKey: string): Promise<BatchResult> {
@@ -103,20 +110,25 @@ async function singleEmbed(text: string, apiKey: string): Promise<BatchResult> {
     );
     if (!res.ok) {
       const errBody = await res.text();
-      return { values: null, error: `HTTP ${res.status}: ${errBody.slice(0, 150)}` };
+      const isQuota = res.status === 429 && errBody.includes('quota');
+      return { values: null, error: `HTTP ${res.status}: ${errBody.slice(0, 150)}`, isQuota };
     }
     const data = await res.json();
     const vals = data?.embedding?.values;
-    if (Array.isArray(vals) && vals.length > 0) return { values: vals, error: null };
-    return { values: null, error: "Bo'sh javob" };
+    if (Array.isArray(vals) && vals.length > 0) return { values: vals, error: null, isQuota: false };
+    return { values: null, error: "Bo'sh javob", isQuota: false };
   } catch (e) {
-    return { values: null, error: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
+    return { values: null, error: (e instanceof Error ? e.message : String(e)).slice(0, 200), isQuota: false };
   }
 }
 
-async function selfCallContinue(payload: Record<string, unknown>): Promise<void> {
+async function selfCallContinue(payload: Record<string, unknown>, delayMs?: number): Promise<void> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (delayMs && delayMs > 0) {
+    console.log(`[vectorize-articles] self-call ${delayMs}ms dan keyin davom etadi...`);
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
   try {
     await fetch(`${supabaseUrl}/functions/v1/vectorize-articles`, {
       method: 'POST',
@@ -267,7 +279,7 @@ Deno.serve(async (req: Request) => {
     // ─── 2-urinish: muvaffaqiyatsiz moddalar uchun parallel single fallback ───
     const failedIndices: number[] = [];
     for (let i = 0; i < results.length; i++) {
-      if (results[i].error && !results[i].values) failedIndices.push(i);
+      if (results[i].error && !results[i].values && !results[i].isQuota) failedIndices.push(i);
     }
 
     if (failedIndices.length > 0) {
@@ -280,10 +292,11 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ─── Bulk DB yangilash (bitta RPC orqali) ───
+    // ─── Bulk DB yangilash ───
     const records: Array<{ id: string; embedding: string | null; error: string | null }> = [];
     let processed = 0;
     let errors = 0;
+    let quotaHits = 0;
     const errorDetails: { modda_raqami: string; error: string }[] = [];
 
     for (let i = 0; i < pending.length; i++) {
@@ -296,6 +309,9 @@ Deno.serve(async (req: Request) => {
           error: null,
         });
         processed++;
+      } else if (result.isQuota) {
+        // 429 quota — xato belgilamaymiz, pending qoldiramiz
+        quotaHits++;
       } else if (result.error) {
         records.push({
           id: article.id,
@@ -314,7 +330,6 @@ Deno.serve(async (req: Request) => {
       });
       if (bulkError) {
         console.error('[vectorize-articles] bulk update xato:', bulkError.message);
-        // Fallback: individual updates
         await Promise.all(records.map((rec) => {
           if (rec.embedding) {
             return supabaseAdmin
@@ -354,10 +369,15 @@ Deno.serve(async (req: Request) => {
       };
     }
 
+    console.log(
+      `[vectorize-articles] batch yakun: processed=${processed}, errors=${errors}, quotaHits=${quotaHits}, qoldi=${remaining}`
+    );
+
     if (hasMore) {
-      console.log(`[vectorize-articles] ${remaining} ta qolgan — self-call davom etmoqda...`);
-      // Await qilamiz — zanjir uzilmasin
-      selfCallContinue({ kodeks_nomi: kodeksNomi, retry_errors: false, _chain: true, batch_size: batchSize });
+      // 429 bo'lsa, keyingi batch'ni 30s dan keyin boshlaymiz (kvota tiklanishi uchun)
+      const delay = quotaHits > 0 ? 30000 : 0;
+      console.log(`[vectorize-articles] ${remaining} ta qolgan — self-call${delay > 0 ? ` ${delay}ms dan keyin` : ''}...`);
+      selfCallContinue({ kodeks_nomi: kodeksNomi, retry_errors: false, _chain: true, batch_size: batchSize }, delay);
     }
 
     return new Response(
@@ -365,6 +385,7 @@ Deno.serve(async (req: Request) => {
         done: !hasMore,
         processed,
         errors,
+        quota_hits: quotaHits,
         error_details: errorDetails,
         remaining: remaining ?? 0,
         status,
