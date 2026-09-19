@@ -69,7 +69,7 @@ export default function BlogList() {
       if (ustozIds.length > 0) {
         const { data: authors } = await supabase
           .from('ustoz')
-          .select('id, full_name, muallif_slug, face_photo_url, note')
+          .select('id, full_name, muallif_slug, face_photo_url, note, mutaxassislik')
           .in('id', ustozIds);
         if (authors) {
           const map: AuthorMap = {};
@@ -109,6 +109,13 @@ export default function BlogList() {
     if (topicFilter === 'yangiliklar') return text.includes('yangilik') || text.includes('o\'zgarish') || text.includes('yangi');
     return true;
   });
+
+  const matchingAuthors = searchQuery.trim()
+    ? Object.values(authorMap).filter((author) => {
+        const haystack = `${author.full_name} ${author.note || ''} ${author.mutaxassislik || ''}`.toLowerCase();
+        return haystack.includes(searchQuery.trim().toLowerCase());
+      })
+    : [];
 
   const featuredPost = filteredPosts[0];
   const restPosts = filteredPosts.slice(1);
@@ -181,7 +188,7 @@ export default function BlogList() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Maqola qidirish..."
+          placeholder="Maqola yoki muallif qidirish..."
           className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all"
         />
       </div>
@@ -212,7 +219,7 @@ export default function BlogList() {
       )}
 
       {/* Empty state */}
-      {!loading && filteredPosts.length === 0 && (
+      {!loading && filteredPosts.length === 0 && matchingAuthors.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
             <BookOpen className="h-8 w-8 text-gray-300" />
@@ -224,6 +231,32 @@ export default function BlogList() {
             {searchQuery ? "Boshqa kalit so'z bilan urinib ko'ring" : "Ustozlar maqola yozganda shu yerda ko'rinadi"}
           </p>
         </div>
+      )}
+
+      {/* Author search results */}
+      {!loading && matchingAuthors.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-extrabold text-gray-900">Mualliflar</h2>
+            <span className="text-xs text-gray-400">{matchingAuthors.length} ta natija</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {matchingAuthors.map((author) => (
+              <button
+                key={author.id}
+                onClick={() => author.muallif_slug && navigate(`/blog/muallif/${author.muallif_slug}`)}
+                className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+              >
+                {renderAvatar(author, 'h-12 w-12 text-sm')}
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-extrabold text-gray-900">{author.full_name}</span>
+                  <span className="mt-1 block truncate text-xs text-gray-500">{author.note || 'FanFaster muallifi'}</span>
+                </span>
+                <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-blue-500" />
+              </button>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Featured post + grid */}

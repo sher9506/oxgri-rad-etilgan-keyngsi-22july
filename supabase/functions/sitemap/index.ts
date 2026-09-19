@@ -18,6 +18,7 @@ interface SitemapEntry {
   lastmod?: string;
   changefreq: string;
   priority: string;
+  image?: { url: string; caption: string; title: string };
 }
 
 Deno.serve(async (req: Request) => {
@@ -52,7 +53,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: authors } = await supabase
       .from('ustoz')
-      .select('muallif_slug')
+      .select('muallif_slug, full_name, face_photo_url')
       .not('muallif_slug', 'is', null)
       .neq('muallif_slug', '');
 
@@ -63,17 +64,27 @@ Deno.serve(async (req: Request) => {
             loc: `${SITE_URL}/blog/muallif/${author.muallif_slug}`,
             changefreq: 'monthly',
             priority: '0.5',
+            ...(author.face_photo_url
+              ? {
+                  image: {
+                    url: author.face_photo_url,
+                    caption: `${author.full_name} — FanFaster muallifi`,
+                    title: author.full_name,
+                  },
+                }
+              : {}),
           });
         }
       }
     }
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 ${entries.map(e => `  <url>
     <loc>${e.loc}</loc>${e.lastmod ? `\n    <lastmod>${e.lastmod}</lastmod>` : ''}
     <changefreq>${e.changefreq}</changefreq>
-    <priority>${e.priority}</priority>
+    <priority>${e.priority}</priority>${e.image ? `\n    <image:image>\n      <image:loc>${e.image.url}</image:loc>\n      <image:caption>${e.image.caption}</image:caption>\n      <image:title>${e.image.title}</image:title>\n    </image:image>` : ''}
   </url>`).join('\n')}
 </urlset>`;
 

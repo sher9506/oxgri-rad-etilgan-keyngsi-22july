@@ -561,7 +561,13 @@ export default function MootCourtOquvchi() {
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mc-msg-in`}>
+            <div
+              key={i}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mc-msg-in mc-no-select`}
+              onCopy={(e) => e.preventDefault()}
+              onCut={(e) => e.preventDefault()}
+              onContextMenu={(e) => e.preventDefault()}
+            >
               {msg.role === 'assistant' ? (
                 <div className="max-w-[80%]">
                   {/* Role indicator line */}
@@ -659,7 +665,9 @@ export default function MootCourtOquvchi() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                placeholder="Argumentingizni yozing..."
+                onPaste={e => e.preventDefault()}
+                onDrop={e => e.preventDefault()}
+                placeholder="Argumentingizni yozing (paste qilib bo'lmaydi)..."
                 className="flex-1 min-h-[44px] max-h-32 resize-none rounded-2xl border-gray-200/80"
                 rows={1}
               />

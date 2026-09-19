@@ -205,10 +205,21 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
           '@type': 'Person',
           name: authorName,
           ...(authorSlug ? { url: `https://fanfaster.uz/blog/muallif/${authorSlug}` } : {}),
+          ...(author?.face_photo_url
+            ? {
+                image: {
+                  '@type': 'ImageObject',
+                  url: author.face_photo_url,
+                  contentUrl: author.face_photo_url,
+                  caption: `${authorName} — FanFaster muallifi`,
+                },
+              }
+            : {}),
         },
         datePublished: data.created_at ? new Date(data.created_at).toISOString() : new Date().toISOString(),
         publisher: { '@type': 'Organization', name: 'FanFaster' },
         mainEntityOfPage: `https://fanfaster.uz/blog/${data.slug}`,
+        ...(author?.face_photo_url ? { image: author.face_photo_url } : {}),
       }, 'blog-post-jsonld');
     } catch (err) {
       console.error('Blog post yuklash xatosi:', err);

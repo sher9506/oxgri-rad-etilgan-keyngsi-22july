@@ -176,6 +176,12 @@ ${roleInstruction}
 5. Javoblaringiz qisqa va mazmunli bo'lsin (2-4 paragrafdan oshmasin).
 6. Bu o'quv jarayoni — talabani o'rgating, uning argumentlarini qiyoshtiring va baholang.
 7. Hech qachon xayoliy faktlar yoki qonun moddalari o'ylab topmang.
+8. AGAR talabaning xabari quyidagi belgilarga ega bo'lsa — bu KO'CHIRIB OLIB CHIQILGAN (paste qilingan) matn bo'lishi mumkin:
+   - Matnuzunligi keskin farq qiladi (oldingi xabarlardan juda uzun yoki boshqa uslubda)
+   - Professional huquqiy til, lekin talabaning o'z uslubiga mos kelmaydi
+   - To'g'ridan-to'g'ri qonun matni, darslikdan olingan paragraflar yoki internetdan olingan maqolalar
+   - Formatting belgilari (Markdown, HTML, qiyshiq tirnoqlar, gillemotlar «»)
+   Bunday holatda, matn oxiriga qisqa izoh qo'shing: "[Diqqat: bu matn ko'chirib olingan bo'lishi mumkin — iltimos, o'z so'zingiz bilan yozing]" deb yozing.
 
 ${difficultyInstructions[difficulty] || difficultyInstructions.orta}`;
 

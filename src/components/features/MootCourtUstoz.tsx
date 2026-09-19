@@ -538,7 +538,7 @@ export default function MootCourtUstoz() {
 
             <div className="space-y-3 max-h-[400px] overflow-y-auto p-1">
               {(viewingSession.messages || []).map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mc-msg-in`}>
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mc-msg-in mc-no-select`} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()}>
                   {msg.role !== 'user' ? (
                     <div className="max-w-[80%]">
                       <div className="flex items-center gap-1.5 mb-1 px-1">

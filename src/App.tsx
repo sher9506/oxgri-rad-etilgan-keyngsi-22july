@@ -419,9 +419,9 @@ function AppContent() {
                 </button>
                 {showBackBtn && (
                   <button
-                    onClick={() => handleTabChange('haqida')}
+                    onClick={() => window.history.back()}
                     className="flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all text-xs font-bold"
-                    title="Bosh sahifaga qaytish"
+                    title="Oldingi sahifaga qaytish"
                   >
                     <LogIn className="h-3.5 w-3.5 rotate-180" />
                     <span className="hidden sm:inline">Orqaga</span>

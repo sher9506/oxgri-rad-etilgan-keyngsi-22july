@@ -7,6 +7,9 @@ const SUPABASE_ANON_KEY =
 
 const SITE_URL = "https://fanfaster.uz";
 
+const DEFAULT_OG_IMAGE =
+  "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=1200&h=630&fit=crop";
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -42,6 +45,7 @@ interface Author {
   full_name: string;
   muallif_slug: string;
   note: string | null;
+  face_photo_url: string | null;
 }
 
 async function fetchBlogPost(slug: string): Promise<BlogPost | null> {
@@ -67,7 +71,7 @@ async function fetchAuthorBySlug(
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/ustoz?muallif_slug=eq.${encodeURIComponent(
       slug
-    )}&select=id,full_name,muallif_slug,note&limit=1`,
+    )}&select=id,full_name,muallif_slug,note,face_photo_url&limit=1`,
     {
       headers: {
         apikey: SUPABASE_ANON_KEY,
@@ -101,7 +105,7 @@ async function fetchAuthorBySlug(
 
 async function fetchAuthorById(id: string): Promise<Author | null> {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/ustoz?id=eq.${id}&select=id,full_name,muallif_slug,note&limit=1`,
+    `${SUPABASE_URL}/rest/v1/ustoz?id=eq.${id}&select=id,full_name,muallif_slug,note,face_photo_url&limit=1`,
     {
       headers: {
         apikey: SUPABASE_ANON_KEY,
@@ -118,65 +122,56 @@ function buildHead(
   title: string,
   description: string,
   jsonLd: Record<string, unknown>,
-  ogImage?: string | null
+  ogImage: string,
+  ogUrl: string,
+  ogType: 'article' | 'profile'
 ): string {
   const escapedTitle = escapeHtml(title);
   const escapedDesc = escapeHtml(description);
-  const ogImg = ogImage || "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=1200&h=630&fit=crop";
-
-  const jsonLdStr = escapeHtml(JSON.stringify(jsonLd));
+  const escapedImg = escapeHtml(ogImage);
+  const escapedUrl = escapeHtml(ogUrl);
+  const jsonLdStr = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
 
   return `    <title>${escapedTitle}</title>
+    <link rel="canonical" href="${escapedUrl}" />
     <meta name="description" content="${escapedDesc}" />
+    <meta property="og:url" content="${escapedUrl}" />
     <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDesc}" />
-    <meta property="og:type" content="article" />
-    <meta property="og:image" content="${escapeHtml(ogImg)}" />
+    <meta property="og:type" content="${ogType}" />
+    <meta property="og:image" content="${escapedImg}" />
+    <meta property="og:image:alt" content="${escapedTitle}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDesc}" />
-    <meta name="twitter:image" content="${escapeHtml(ogImg)}" />
+    <meta name="twitter:image" content="${escapedImg}" />
     <script type="application/ld+json" id="page-jsonld">${jsonLdStr}</script>
   `;
 }
 
 function injectHead(html: string, headContent: string): string {
+  let modified = html;
+
   // Remove existing title tag
-  let modified = html.replace(/<title>[\s\S]*?<\/title>/i, "");
+  modified = modified.replace(/<title>[\s\S]*?<\/title>/i, "");
+
   // Remove existing meta description
   modified = modified.replace(
-    /<meta\s+name=["']description["']\s+content=["'][^"']*["']\s*\/?>/i,
+    /<meta\s+name=["']description["'][^>]*>/i,
     ""
   );
-  // Remove existing og:title, og:description, og:type
+
+  // Remove all social metadata regardless of attribute order or extra attributes.
   modified = modified.replace(
-    /<meta\s+property=["']og:title["']\s+content=["'][^"']*["']\s*\/?>/gi,
+    /<meta\b[^>]*(?:og:|twitter:)[^>]*>/gi,
     ""
   );
+
+  // Remove all origin JSON-LD so each SEO page has one authoritative schema block.
   modified = modified.replace(
-    /<meta\s+property=["']og:description["']\s+content=["'][^"']*["']\s*\/?>/gi,
-    ""
-  );
-  modified = modified.replace(
-    /<meta\s+property=["']og:type["']\s+content=["'][^"']*["']\s*\/?>/gi,
-    ""
-  );
-  // Remove existing twitter:title, twitter:description, twitter:card
-  modified = modified.replace(
-    /<meta\s+name=["']twitter:card["']\s+content=["'][^"']*["']\s*\/?>/gi,
-    ""
-  );
-  modified = modified.replace(
-    /<meta\s+name=["']twitter:title["']\s+content=["'][^"']*["']\s*\/?>/gi,
-    ""
-  );
-  modified = modified.replace(
-    /<meta\s+name=["']twitter:description["']\s+content=["'][^"']*["']\s*\/?>/gi,
-    ""
-  );
-  // Remove existing page-jsonld script
-  modified = modified.replace(
-    /<script\s+type=["']application\/ld\+json["']\s+id=["']page-jsonld["']>[^<]*<\/script>/gi,
+    /<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi,
     ""
   );
 
@@ -189,7 +184,6 @@ export default async (req: Request, ctx: Context) => {
   const url = new URL(req.url);
   const path = url.pathname;
 
-  // Blog post: /blog/:slug (but not /blog/muallif/...)
   const blogMatch = path.match(/^\/blog\/([^/]+)$/);
   const muallifMatch = path.match(/^\/blog\/muallif\/([^/]+)$/);
 
@@ -199,8 +193,6 @@ export default async (req: Request, ctx: Context) => {
     return ctx.next();
   }
 
-  // Fetch the SPA index.html directly from bolt.host root (not the full path,
-  // because bolt.host only serves the root — deep paths time out)
   const originResponse = await fetch("https://sher9506-oxgri-rad-e-ipca.bolt.host/");
   if (!originResponse.ok) {
     console.error("[blog-seo] Failed to fetch origin HTML, status:", originResponse.status);
@@ -218,12 +210,13 @@ export default async (req: Request, ctx: Context) => {
         console.log("[blog-seo] Blog post found:", post.sarlavha);
         let authorName = post.ustoz_ismi || "";
         let authorSlug = "";
-
+        let authorPhoto: string | null = null;
         if (post.ustoz_id) {
           const author = await fetchAuthorById(post.ustoz_id);
           if (author) {
             authorName = author.full_name || authorName;
             authorSlug = author.muallif_slug || "";
+            authorPhoto = author.face_photo_url || null;
           }
         }
 
@@ -231,6 +224,10 @@ export default async (req: Request, ctx: Context) => {
         const description = post.meta_description
           ? truncate(post.meta_description, 160)
           : truncate(stripHtml(post.mazmun), 160);
+
+        // Blog post: use author's profile photo (same as author page), fall back to post cover, then default
+        const ogImage = authorPhoto || post.rasm_url || DEFAULT_OG_IMAGE;
+        const pageUrl = `${SITE_URL}/blog/${post.slug}`;
 
         const jsonLd: Record<string, unknown> = {
           "@context": "https://schema.org",
@@ -242,21 +239,19 @@ export default async (req: Request, ctx: Context) => {
             ...(authorSlug
               ? { url: `${SITE_URL}/blog/muallif/${authorSlug}` }
               : {}),
+            ...(authorPhoto ? { image: authorPhoto } : {}),
           },
           datePublished: post.created_at
             ? new Date(post.created_at).toISOString()
             : new Date().toISOString(),
           publisher: { "@type": "Organization", name: "FanFaster" },
-          mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
+          mainEntityOfPage: pageUrl,
+          image: ogImage,
         };
 
-        const headContent = buildHead(
-          title,
-          description,
-          jsonLd,
-          post.rasm_url
-        );
+        const headContent = buildHead(title, description, jsonLd, ogImage, pageUrl, 'article');
         html = injectHead(html, headContent);
+        console.log("[blog-seo] Injected head for blog post, og:image:", ogImage);
       } else {
         console.log("[blog-seo] Blog post NOT found for slug:", slug);
       }
@@ -280,16 +275,32 @@ export default async (req: Request, ctx: Context) => {
           160
         );
 
+        // Author page: use the author's profile photo
+        const ogImage = author.face_photo_url || DEFAULT_OG_IMAGE;
+        const pageUrl = `${SITE_URL}/blog/muallif/${author.muallif_slug}`;
+
         const jsonLd: Record<string, unknown> = {
           "@context": "https://schema.org",
           "@type": "Person",
+          "@id": `${pageUrl}#person`,
           name: author.full_name,
-          url: `${SITE_URL}/blog/muallif/${author.muallif_slug}`,
+          url: pageUrl,
           ...(notePart ? { description: notePart } : {}),
+          ...(author.face_photo_url
+            ? {
+                image: {
+                  "@type": "ImageObject",
+                  url: author.face_photo_url,
+                  contentUrl: author.face_photo_url,
+                  caption: `${author.full_name} — FanFaster muallifi`,
+                },
+              }
+            : {}),
         };
 
-        const headContent = buildHead(title, description, jsonLd);
+        const headContent = buildHead(title, description, jsonLd, ogImage, pageUrl, 'profile');
         html = injectHead(html, headContent);
+        console.log("[blog-seo] Injected head for author page, og:image:", ogImage);
       } else {
         console.log("[blog-seo] Author NOT found for slug:", slug);
       }
@@ -302,10 +313,11 @@ export default async (req: Request, ctx: Context) => {
   respHeaders.set("Content-Type", "text/html; charset=utf-8");
   respHeaders.set("X-Blog-SEO", "processed");
   for (const [key, value] of originResponse.headers.entries()) {
-    if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "content-encoding" && key.toLowerCase() !== "transfer-encoding") {
+    if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "content-encoding" && key.toLowerCase() !== "transfer-encoding" && key.toLowerCase() !== "cache-control") {
       respHeaders.set(key, value);
     }
   }
+  respHeaders.set("Cache-Control", "public, max-age=60, s-maxage=60, must-revalidate");
 
   return new Response(html, {
     status: 200,

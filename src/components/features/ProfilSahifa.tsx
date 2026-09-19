@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   User, Shield, ShieldCheck, Edit3,
   GraduationCap, BookOpen, Briefcase,
   Loader2, AlertCircle, Star, CheckCircle,
   Clock, ArrowLeft, Send, X, LogOut,
   KeyRound, Eye, EyeOff, Lock, CheckCircle2, Save,
-  BookOpenCheck, Scale
+  BookOpenCheck, Scale, Camera, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,9 @@ import { supabase } from '@/lib/supabase';
 
 const KURSLAR = ['1-kurs', '2-kurs', '3-kurs', '4-kurs', 'Boshqa'];
 const GURUHLAR = ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'p-1', 'p-2', 'p-rus', 'p-3', 'Boshqa'];
+const PROFILE_PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+const PROFILE_PHOTO_MAX_SIZE = 5 * 1024 * 1024;
+const PROFILE_PHOTO_MIN_DIMENSION = 400;
 
 // ── Parol validatsiyasi ───────────────────────────────────────────────────
 function parolTekshir(parol: string): { valid: boolean; xabar: string } {
@@ -64,13 +67,19 @@ export default function ProfilSahifa() {
   const [mutaxassislikTahrirlash, setMutaxassislikTahrirlash] = useState(false);
   const [mutaxassislikYuklanyapti, setMutaxassislikYuklanyapti] = useState(false);
 
+  // ── Profil rasmi (ustoz) ─────────────────────────────────────────────
+  const [profilRasm, setProfilRasm] = useState<string | null>(null);
+  const [rasmYuklanyapti, setRasmYuklanyapti] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!user) return;
     if (user.rol === 'ustoz' && user.ustoz_id) {
-      supabase.from('ustoz').select('status, mutaxassislik').eq('id', user.ustoz_id).maybeSingle()
+      supabase.from('ustoz').select('status, mutaxassislik, face_photo_url').eq('id', user.ustoz_id).maybeSingle()
         .then(({ data }) => {
           if (data?.status) setUstozStatus(data.status);
           if (data?.mutaxassislik) setMutaxassislik(data.mutaxassislik);
+          if (data?.face_photo_url) setProfilRasm(data.face_photo_url);
         });
       supabase.from('profil_tahrirlashlar').select('*').eq('murojaat_id', user.ustoz_id).eq('holat', 'pending').maybeSingle()
         .then(({ data }) => setMavjudTahrirlash(data));
@@ -237,6 +246,85 @@ export default function ProfilSahifa() {
     }
   };
 
+  // ── Profil rasmi yuklash (ustoz) ─────────────────────────────────────
+  const handleRasmYuklash = async (file: File) => {
+    if (!user?.ustoz_id) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast({ title: 'Format mos emas', description: 'JPG, PNG yoki WEBP rasm tanlang', variant: 'destructive' });
+      return;
+    }
+    if (file.size > PROFILE_PHOTO_MAX_SIZE) {
+      toast({ title: 'Rasm katta', description: 'Maksimal hajm 5MB', variant: 'destructive' });
+      return;
+    }
+
+    const imageSize = await new Promise<{ width: number; height: number } | null>((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => resolve(null);
+      image.src = URL.createObjectURL(file);
+    });
+    if (!imageSize) {
+      toast({ title: 'Rasm o‘qilmadi', description: 'Boshqa rasm tanlang', variant: 'destructive' });
+      return;
+    }
+    if (imageSize.width < PROFILE_PHOTO_MIN_DIMENSION || imageSize.height < PROFILE_PHOTO_MIN_DIMENSION) {
+      toast({ title: 'Rasm o‘lchami kichik', description: 'Rasm kamida 400 × 400 piksel bo‘lsin', variant: 'destructive' });
+      return;
+    }
+
+    setRasmYuklanyapti(true);
+    try {
+      const ext = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1];
+      const path = `${user.ustoz_id}/avatar.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('profile-photos')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: urlData } = supabase.storage
+        .from('profile-photos')
+        .getPublicUrl(path);
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      const { error: dbErr } = await supabase
+        .from('ustoz')
+        .update({ face_photo_url: publicUrl })
+        .eq('id', user.ustoz_id);
+      if (dbErr) throw dbErr;
+
+      const oldPaths = PROFILE_PHOTO_EXTENSIONS
+        .filter((oldExt) => oldExt !== ext)
+        .map((oldExt) => `${user.ustoz_id}/avatar.${oldExt}`);
+      await supabase.storage.from('profile-photos').remove(oldPaths);
+      setProfilRasm(publicUrl);
+      toast({ title: 'Rasm yangilandi', description: 'Profil rasmingiz saqlandi' });
+    } catch (e: any) {
+      toast({ title: 'Xato', description: e.message || 'Rasm yuklanmadi', variant: 'destructive' });
+    } finally {
+      setRasmYuklanyapti(false);
+    }
+  };
+
+  const handleRasmOchirish = async () => {
+    if (!user?.ustoz_id || !profilRasm) return;
+    setRasmYuklanyapti(true);
+    try {
+      const paths = PROFILE_PHOTO_EXTENSIONS.map((ext) => `${user.ustoz_id}/avatar.${ext}`);
+      const { error: removeError } = await supabase.storage.from('profile-photos').remove(paths);
+      if (removeError) throw removeError;
+      const { error: dbErr } = await supabase
+        .from('ustoz')
+        .update({ face_photo_url: null })
+        .eq('id', user.ustoz_id);
+      if (dbErr) throw dbErr;
+      setProfilRasm(null);
+      toast({ title: 'Rasm o‘chirildi', description: 'Profil rasmi olib tashlandi' });
+    } catch (e: any) {
+      toast({ title: 'Xato', description: e.message || 'Rasm o‘chirilmadi', variant: 'destructive' });
+    } finally {
+      setRasmYuklanyapti(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-4">
 
@@ -257,10 +345,51 @@ export default function ProfilSahifa() {
 
         <div className="bg-white px-5 pb-5">
           <div className="flex items-end gap-4 -mt-8 mb-3">
-            <div className={`w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg flex items-center justify-center text-white text-xl font-black flex-shrink-0 ${isUstoz ? 'bg-gradient-to-br from-[hsl(221,83%,53%)] to-indigo-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
-              {avatarInitials}
+            <div className="relative w-16 h-16 flex-shrink-0">
+              {isUstoz && profilRasm ? (
+                <img src={profilRasm} alt="Profil" className="w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg object-cover" />
+              ) : (
+                <div className={`w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg flex items-center justify-center text-white text-xl font-black ${isUstoz ? 'bg-gradient-to-br from-[hsl(221,83%,53%)] to-indigo-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
+                  {avatarInitials}
+                </div>
+              )}
+              {isUstoz && (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={rasmYuklanyapti}
+                  className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-600 hover:bg-blue-700 rounded-full flex items-center justify-center shadow-md border-2 border-white transition disabled:opacity-50"
+                  title="Profil rasmini yuklash yoki almashtirish"
+                >
+                  {rasmYuklanyapti ? <Loader2 className="h-3 w-3 text-white animate-spin" /> : <Camera className="h-3 w-3 text-white" />}
+                </button>
+              )}
+              {isUstoz && profilRasm && (
+                <button
+                  type="button"
+                  onClick={handleRasmOchirish}
+                  disabled={rasmYuklanyapti}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center shadow-md border-2 border-white transition disabled:opacity-50"
+                  title="Profil rasmini o‘chirish"
+                >
+                  <Trash2 className="h-2.5 w-2.5 text-white" />
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleRasmYuklash(f);
+                  e.target.value = '';
+                }}
+              />
             </div>
             <div className="flex-1 pb-1">
+              {isUstoz && (
+                <p className="text-[11px] text-gray-500 mb-1">JPG, PNG yoki WEBP · kamida 400×400 px · 5MB gacha</p>
+              )}
               <h1 className="text-lg font-black text-gray-900 leading-tight">
                 {user.familiya} {user.ism}
               </h1>

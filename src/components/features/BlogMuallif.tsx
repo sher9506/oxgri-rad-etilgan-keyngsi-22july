@@ -76,6 +76,16 @@ const recommendedTopics = [
   'Xalqaro huquq',
 ];
 
+function getBrowserId(): string {
+  const KEY = 'ff_browser_id';
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = 'browser_' + crypto.randomUUID();
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 function getPostLabel(post: BlogPost): 'Maqola' | 'Tahlil' | 'Sharh' {
   const text = `${post.sarlavha} ${post.mazmun}`.toLowerCase();
   if (text.includes('tahlil') || text.includes('tahlili')) return 'Tahlil';
@@ -151,15 +161,14 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
           .eq('ustoz_id', aInfo.id);
         setObunaCount(count || 0);
 
-        if (user?.ustoz_id) {
-          const { data: existing } = await supabase
-            .from('blog_obuna')
-            .select('id')
-            .eq('ustoz_id', aInfo.id)
-            .eq('obuna_ustoz_id', user.ustoz_id)
-            .maybeSingle();
-          setObunaBorgan(!!existing);
-        }
+        const followerId = user?.ustoz_id || getBrowserId();
+        const { data: existing } = await supabase
+          .from('blog_obuna')
+          .select('id')
+          .eq('ustoz_id', aInfo.id)
+          .eq('obuna_ustoz_id', followerId)
+          .maybeSingle();
+        setObunaBorgan(!!existing);
       }
       setDocumentTitle(`${aInfo.full_name} — FanFaster ustozi | Barcha maqolalar`);
       const notePart = isValidNote(aInfo.note) ? aInfo.note! : '';
@@ -169,13 +178,25 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
           160,
         ),
       );
+      const pageUrl = `https://fanfaster.uz/blog/muallif/${aInfo.muallif_slug}`;
       setJsonLd(
         {
           '@context': 'https://schema.org',
           '@type': 'Person',
+          '@id': `${pageUrl}#person`,
           name: aInfo.full_name,
-          url: `https://fanfaster.uz/blog/muallif/${aInfo.muallif_slug}`,
+          url: pageUrl,
           ...(notePart ? { description: notePart } : {}),
+          ...(aInfo.face_photo_url
+            ? {
+                image: {
+                  '@type': 'ImageObject',
+                  url: aInfo.face_photo_url,
+                  contentUrl: aInfo.face_photo_url,
+                  caption: `${aInfo.full_name} — FanFaster muallifi`,
+                },
+              }
+            : {}),
         },
         'muallif-jsonld',
       );
@@ -202,10 +223,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
 
   const toggleObuna = async () => {
     if (!author?.id) return;
-    if (!user?.ustoz_id) {
-      toast({ title: 'Kuzatish uchun tizimga kiring', description: 'Avval ustoz sifatida kiring' });
-      return;
-    }
+    const followerId = user?.ustoz_id || getBrowserId();
     setObunaLoading(true);
     try {
       if (obunaBorgan) {
@@ -213,7 +231,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
           .from('blog_obuna')
           .delete()
           .eq('ustoz_id', author.id)
-          .eq('obuna_ustoz_id', user.ustoz_id);
+          .eq('obuna_ustoz_id', followerId);
         setObunaBorgan(false);
         setObunaCount(c => Math.max(0, c - 1));
       } else {
@@ -221,14 +239,15 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
           .from('blog_obuna')
           .insert({
             ustoz_id: author.id,
-            obuna_ustoz_id: user.ustoz_id,
-            obuna_ismi: `${user.ism || ''} ${user.familiya || ''}`.trim() || null,
+            obuna_ustoz_id: followerId,
+            obuna_ismi: user?.ustoz_id ? `${user.ism || ''} ${user.familiya || ''}`.trim() || null : 'Mehmon',
           });
         setObunaBorgan(true);
         setObunaCount(c => c + 1);
       }
     } catch (err) {
       console.error('Obuna xatosi:', err);
+      toast({ title: 'Xatolik', description: 'Kuzatish amalga oshmadi', variant: 'destructive' });
     } finally {
       setObunaLoading(false);
     }

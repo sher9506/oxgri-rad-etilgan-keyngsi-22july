@@ -132,6 +132,15 @@ iframe[src*="bolt"] {
 }
 .mc-msg-in { animation: mc-msg-in 220ms ease-out both; }
 
+/* Moot Court chat: matn tanlash, copy, cut — bloklash */
+.mc-no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 @keyframes mc-typing-bounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30%           { transform: translateY(-4px); opacity: 1; }
