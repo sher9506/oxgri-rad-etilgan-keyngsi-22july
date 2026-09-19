@@ -3,14 +3,14 @@ import { useState, useEffect, useRef, createContext, useContext, useMemo, lazy, 
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import TelegramCallback from '@/pages/TelegramCallback';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LogIn, LogOut, User as UserIcon, ChevronDown, Menu, Bell, Search } from 'lucide-react';
+import { LogIn, LogOut, User as UserIcon, ChevronDown, Menu, Bell } from 'lucide-react';
 import { Toaster } from '@/components/ui/toaster';
 import Sidebar from '@/components/layout/Sidebar';
-import LoginModal from '@/components/features/LoginModal';
-import SinovBoshlash from '@/components/features/SinovBoshlash';
-import RealVaqtNatijalar from '@/components/features/RealVaqtNatijalar';
-import MavjudTestlar from '@/components/features/MavjudTestlar';
-import MavjudKazuslar from '@/components/features/MavjudKazuslar';
+const LoginModal = lazy(() => import('@/components/features/LoginModal'));
+const SinovBoshlash = lazy(() => import('@/components/features/SinovBoshlash'));
+const RealVaqtNatijalar = lazy(() => import('@/components/features/RealVaqtNatijalar'));
+const MavjudTestlar = lazy(() => import('@/components/features/MavjudTestlar'));
+const MavjudKazuslar = lazy(() => import('@/components/features/MavjudKazuslar'));
 const KurslarOquvchi = lazy(() => import('@/components/features/KurslarOquvchi'));
 const KurslarUstoz = lazy(() => import('@/components/features/KurslarUstoz'));
 const UstozKabineti = lazy(() => import('@/components/features/UstozKabineti'));
@@ -23,8 +23,8 @@ const BotXabarnomasi = lazy(() => import('@/components/features/BotXabarnomasi')
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NotificationProvider, useNotifications } from '@/contexts/NotificationContext';
 import { LangProvider, useLang, Lang } from '@/contexts/LangContext';
-import OquvchiBildirishnomaBell from '@/components/features/OquvchiBildirishnomaBell';
-import SaytHaqida from '@/components/features/SaytHaqida';
+const OquvchiBildirishnomaBell = lazy(() => import('@/components/features/OquvchiBildirishnomaBell'));
+const SaytHaqida = lazy(() => import('@/components/features/SaytHaqida'));
 const ProfilSahifa = lazy(() => import('@/components/features/ProfilSahifa'));
 const SavolJavobUstoz = lazy(() => import('@/components/features/SavolJavobUstoz'));
 const SavolJavobOquvchi = lazy(() => import('@/components/features/SavolJavobOquvchi'));
@@ -38,7 +38,7 @@ import {
   getCurrentCleanPath,
   TAB_PATHS,
 } from '@/lib/deepLink';
-import NotificationBell from '@/components/features/NotificationBell';
+const NotificationBell = lazy(() => import('@/components/features/NotificationBell'));
 const ReytingSahifa = lazy(() => import('@/components/features/ReytingSahifa'));
 const YordamSahifa = lazy(() => import('@/components/features/YordamSahifa'));
 const MentorChatBot = lazy(() => import('@/components/features/MentorChatBot'));
@@ -351,25 +351,25 @@ function AppContent() {
       if (isBlogOnly) {
         const allowed = ['blog', 'blog_yozish', 'profil', 'haqida', 'yordam'];
         if (!allowed.includes(activeTab)) {
-          return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
+          return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
         }
       }
 
       if (isUstozRestricted && activeTab === 'blog_yozish') {
-        return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
+        return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
       }
     }
 
     switch (activeTab) {
       case 'haqida': 
-        return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
+        return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
       case 'kurslar': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <KurslarUstoz /> : <KurslarOquvchi onNavigate={handleTabChange} />}</Suspense>;
       case 'profil': return <Suspense fallback={<LazyFallback />}><ProfilSahifa /></Suspense>;
-      case 'sinov': return <SinovBoshlash />;
-      case 'natijalar': return <RealVaqtNatijalar />;
-      case 'mavjud_testlar': return <MavjudTestlar />;
+      case 'sinov': return <Suspense fallback={<LazyFallback />}><SinovBoshlash /></Suspense>;
+      case 'natijalar': return <Suspense fallback={<LazyFallback />}><RealVaqtNatijalar /></Suspense>;
+      case 'mavjud_testlar': return <Suspense fallback={<LazyFallback />}><MavjudTestlar /></Suspense>;
       case 'reyting': return <Suspense fallback={<LazyFallback />}><ReytingSahifa /></Suspense>;
-      case 'mavjud_kazuslar': return <MavjudKazuslar />;
+      case 'mavjud_kazuslar': return <Suspense fallback={<LazyFallback />}><MavjudKazuslar /></Suspense>;
       case 'oqmatlar': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <OquvMateriallarUstoz /> : <OquvMateriallarOquvchi />}</Suspense>;
       case 'savol_javob': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <SavolJavobUstoz /> : <SavolJavobOquvchi />}</Suspense>;
       case 'ustoz': return <Suspense fallback={<LazyFallback />}><UstozKabineti /></Suspense>;
@@ -384,7 +384,7 @@ function AppContent() {
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
       case 'faceid': return <Suspense fallback={<LazyFallback />}><FaceIdPanel /></Suspense>;
-      default: return <SaytHaqida onNavigate={(tab) => handleTabChange(tab)} />;
+      default: return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
     }
   };
 
@@ -396,7 +396,7 @@ function AppContent() {
 
   return (
     <>
-      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+      <Suspense fallback={null}><LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} /></Suspense>
       
       <div className="flex bg-[#F2F4F7] font-sans" style={{ height: '100dvh', minHeight: '-webkit-fill-available', overflow: 'hidden' }}>
         <AdminContext.Provider value={{ isAdmin, adminView, loginAdmin, logoutAdmin, setAdminView }}>
@@ -459,11 +459,11 @@ function AppContent() {
                 <div className="w-[1px] h-4 bg-gray-200 mx-0.5" />
                 <div className="relative">
                   {isAuthenticated && user?.rol === 'oquvchi' && oquvchiStorageKey ? (
-                    <OquvchiBildirishnomaBell oquvchiIsm={user.ism} oquvchiFamiliya={user.familiya} kurs={user.kurs} guruh={user.guruh} storageKey={oquvchiStorageKey} />
+                    <Suspense fallback={null}><OquvchiBildirishnomaBell oquvchiIsm={user.ism} oquvchiFamiliya={user.familiya} kurs={user.kurs} guruh={user.guruh} storageKey={oquvchiStorageKey} /></Suspense>
                   ) : isAuthenticated && user?.rol === 'ustoz' ? (
                     <>
                       <UstozBildirishnomaLoader ustozId={user.ustoz_id!} />
-                      <NotificationBell />
+                      <Suspense fallback={null}><NotificationBell /></Suspense>
                     </>
                   ) : (
                     <button className="p-1.5 text-gray-400 hover:text-blue-600 transition-all"><Bell className="h-4 w-4" /></button>
