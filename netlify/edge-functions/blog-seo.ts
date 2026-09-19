@@ -28,6 +28,18 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max).trimEnd() + "...";
 }
 
+function toSeoImageUrl(url: string): string {
+  if (/\.(heic|heif)$/i.test(url)) {
+    const renderUrl = url.replace(
+      "/storage/v1/object/public/",
+      "/storage/v1/render/image/public/"
+    );
+    const sep = renderUrl.includes("?") ? "&" : "?";
+    return `${renderUrl}${sep}format=jpg&quality=90&width=1200&height=1200&resize=cover`;
+  }
+  return url;
+}
+
 interface BlogPost {
   id: string;
   ustoz_id: string | null;
@@ -226,7 +238,7 @@ export default async (req: Request, ctx: Context) => {
           : truncate(stripHtml(post.mazmun), 160);
 
         // Blog post: use author's profile photo (same as author page), fall back to post cover, then default
-        const ogImage = authorPhoto || post.rasm_url || DEFAULT_OG_IMAGE;
+        const ogImage = authorPhoto ? toSeoImageUrl(authorPhoto) : (post.rasm_url || DEFAULT_OG_IMAGE);
         const pageUrl = `${SITE_URL}/blog/${post.slug}`;
 
         const jsonLd: Record<string, unknown> = {
@@ -239,7 +251,7 @@ export default async (req: Request, ctx: Context) => {
             ...(authorSlug
               ? { url: `${SITE_URL}/blog/muallif/${authorSlug}` }
               : {}),
-            ...(authorPhoto ? { image: authorPhoto } : {}),
+            ...(authorPhoto ? { image: toSeoImageUrl(authorPhoto) } : {}),
           },
           datePublished: post.created_at
             ? new Date(post.created_at).toISOString()
@@ -276,7 +288,7 @@ export default async (req: Request, ctx: Context) => {
         );
 
         // Author page: use the author's profile photo
-        const ogImage = author.face_photo_url || DEFAULT_OG_IMAGE;
+        const ogImage = author.face_photo_url ? toSeoImageUrl(author.face_photo_url) : DEFAULT_OG_IMAGE;
         const pageUrl = `${SITE_URL}/blog/muallif/${author.muallif_slug}`;
 
         const jsonLd: Record<string, unknown> = {
@@ -290,8 +302,8 @@ export default async (req: Request, ctx: Context) => {
             ? {
                 image: {
                   "@type": "ImageObject",
-                  url: author.face_photo_url,
-                  contentUrl: author.face_photo_url,
+                  url: toSeoImageUrl(author.face_photo_url),
+                  contentUrl: toSeoImageUrl(author.face_photo_url),
                   caption: `${author.full_name} — FanFaster muallifi`,
                 },
               }

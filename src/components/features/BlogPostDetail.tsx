@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { setDocumentTitle, setMetaDescription, setJsonLd, removeJsonLd, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
 import { getInitials, estimateReadingTime, formatDate, type AuthorInfo, extractErrorMessage, isValidNote, gradientForTitle } from '@/lib/blogUtils';
+import { AuthorAvatar } from '@/components/features/AuthorAvatar';
 
 interface BlogPost {
   id: string;
@@ -300,24 +301,9 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
     }
   };
 
-  const renderAvatar = (a: AuthorInfo | null, size: string = 'w-16 h-16 text-xl') => {
-    if (a?.face_photo_url) {
-      return (
-        <img
-          src={a.face_photo_url}
-          alt={a.full_name}
-          className={`${size} rounded-full object-cover shrink-0 mx-auto`}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-      );
-    }
-    const name = a?.full_name || '?';
-    return (
-      <div className={`${size} rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center font-bold shrink-0 mx-auto`}>
-        {getInitials(name)}
-      </div>
-    );
-  };
+  const renderAvatar = (a: AuthorInfo | null, size: string = 'w-16 h-16 text-xl') => (
+    <AuthorAvatar author={a} size={size} rounded="rounded-full" className="mx-auto" />
+  );
 
   if (loading) {
     return (

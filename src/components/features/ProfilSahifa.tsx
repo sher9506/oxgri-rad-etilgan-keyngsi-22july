@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import heic2any from 'heic2any';
 import {
   User, Shield, ShieldCheck, Edit3,
   GraduationCap, BookOpen, Briefcase,
@@ -15,9 +16,20 @@ import { supabase } from '@/lib/supabase';
 
 const KURSLAR = ['1-kurs', '2-kurs', '3-kurs', '4-kurs', 'Boshqa'];
 const GURUHLAR = ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'p-1', 'p-2', 'p-rus', 'p-3', 'Boshqa'];
-const PROFILE_PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
-const PROFILE_PHOTO_MAX_SIZE = 5 * 1024 * 1024;
-const PROFILE_PHOTO_MIN_DIMENSION = 400;
+const PROFILE_PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg', 'heic', 'heif', 'avif'];
+const PROFILE_PHOTO_MAX_SIZE = 10 * 1024 * 1024;
+
+function toDisplayUrl(url: string): string {
+  if (/\.(heic|heif)$/i.test(url)) {
+    const renderUrl = url.replace(
+      '/storage/v1/object/public/',
+      '/storage/v1/render/image/public/'
+    );
+    const sep = renderUrl.includes('?') ? '&' : '?';
+    return `${renderUrl}${sep}format=webp&quality=90`;
+  }
+  return url;
+}
 
 // ── Parol validatsiyasi ───────────────────────────────────────────────────
 function parolTekshir(parol: string): { valid: boolean; xabar: string } {
@@ -249,42 +261,36 @@ export default function ProfilSahifa() {
   // ── Profil rasmi yuklash (ustoz) ─────────────────────────────────────
   const handleRasmYuklash = async (file: File) => {
     if (!user?.ustoz_id) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      toast({ title: 'Format mos emas', description: 'JPG, PNG yoki WEBP rasm tanlang', variant: 'destructive' });
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Rasm emas', description: 'Iltimos, rasm faylini tanlang', variant: 'destructive' });
       return;
     }
     if (file.size > PROFILE_PHOTO_MAX_SIZE) {
-      toast({ title: 'Rasm katta', description: 'Maksimal hajm 5MB', variant: 'destructive' });
-      return;
-    }
-
-    const imageSize = await new Promise<{ width: number; height: number } | null>((resolve) => {
-      const image = new Image();
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => resolve(null);
-      image.src = URL.createObjectURL(file);
-    });
-    if (!imageSize) {
-      toast({ title: 'Rasm o‘qilmadi', description: 'Boshqa rasm tanlang', variant: 'destructive' });
-      return;
-    }
-    if (imageSize.width < PROFILE_PHOTO_MIN_DIMENSION || imageSize.height < PROFILE_PHOTO_MIN_DIMENSION) {
-      toast({ title: 'Rasm o‘lchami kichik', description: 'Rasm kamida 400 × 400 piksel bo‘lsin', variant: 'destructive' });
+      toast({ title: 'Rasm katta', description: 'Maksimal hajm 10MB', variant: 'destructive' });
       return;
     }
 
     setRasmYuklanyapti(true);
     try {
-      const ext = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1];
+      let uploadFile = file;
+      let ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const isHeic = ext === 'heic' || ext === 'heif' || file.type === 'image/heic' || file.type === 'image/heif';
+
+      if (isHeic) {
+        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 }) as Blob;
+        uploadFile = new File([converted], 'avatar.jpg', { type: 'image/jpeg' });
+        ext = 'jpg';
+      }
+
       const path = `${user.ustoz_id}/avatar.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('profile-photos')
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, uploadFile, { upsert: true, contentType: uploadFile.type });
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage
         .from('profile-photos')
         .getPublicUrl(path);
-      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      const publicUrl = urlData.publicUrl;
       const { error: dbErr } = await supabase
         .from('ustoz')
         .update({ face_photo_url: publicUrl })
@@ -295,7 +301,7 @@ export default function ProfilSahifa() {
         .filter((oldExt) => oldExt !== ext)
         .map((oldExt) => `${user.ustoz_id}/avatar.${oldExt}`);
       await supabase.storage.from('profile-photos').remove(oldPaths);
-      setProfilRasm(publicUrl);
+      setProfilRasm(`${publicUrl}?t=${Date.now()}`);
       toast({ title: 'Rasm yangilandi', description: 'Profil rasmingiz saqlandi' });
     } catch (e: any) {
       toast({ title: 'Xato', description: e.message || 'Rasm yuklanmadi', variant: 'destructive' });
@@ -347,7 +353,7 @@ export default function ProfilSahifa() {
           <div className="flex items-end gap-4 -mt-8 mb-3">
             <div className="relative w-16 h-16 flex-shrink-0">
               {isUstoz && profilRasm ? (
-                <img src={profilRasm} alt="Profil" className="w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg object-cover" />
+                <img src={toDisplayUrl(profilRasm)} alt="Profil" className="w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg object-cover" />
               ) : (
                 <div className={`w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg flex items-center justify-center text-white text-xl font-black ${isUstoz ? 'bg-gradient-to-br from-[hsl(221,83%,53%)] to-indigo-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
                   {avatarInitials}
@@ -377,7 +383,7 @@ export default function ProfilSahifa() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                accept="image/*"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -388,7 +394,7 @@ export default function ProfilSahifa() {
             </div>
             <div className="flex-1 pb-1">
               {isUstoz && (
-                <p className="text-[11px] text-gray-500 mb-1">JPG, PNG yoki WEBP · kamida 400×400 px · 5MB gacha</p>
+                <p className="text-[11px] text-gray-500 mb-1">Har qanday rasm formati · 10MB gacha</p>
               )}
               <h1 className="text-lg font-black text-gray-900 leading-tight">
                 {user.familiya} {user.ism}

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { setDocumentTitle, setMetaDescription, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
 import { getInitials, estimateReadingTime, truncateText, formatDate, type AuthorInfo, isValidNote, gradientForTitle } from '@/lib/blogUtils';
+import { AuthorAvatar } from '@/components/features/AuthorAvatar';
 
 interface BlogPost {
   id: string;
@@ -120,24 +121,9 @@ export default function BlogList() {
   const featuredPost = filteredPosts[0];
   const restPosts = filteredPosts.slice(1);
 
-  const renderAvatar = (author: AuthorInfo | undefined, size: string = 'w-8 h-8 text-[10px]') => {
-    if (author?.face_photo_url) {
-      return (
-        <img
-          src={author.face_photo_url}
-          alt={author.full_name}
-          className={`${size} rounded-full object-cover shrink-0`}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-      );
-    }
-    const name = author?.full_name || '?';
-    return (
-      <div className={`${size} rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center font-bold shrink-0`}>
-        {getInitials(name)}
-      </div>
-    );
-  };
+  const renderAvatar = (author: AuthorInfo | undefined, size: string = 'w-8 h-8 text-[10px]') => (
+    <AuthorAvatar author={author} size={size} />
+  );
 
   const renderCoverImage = (post: BlogPost, height: string, rounded: string = '') => {
     const gradient = gradientForTitle(post.sarlavha);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AuthorAvatar } from '@/components/features/AuthorAvatar';
 import {
   ArrowLeft,
   ArrowRight,
@@ -253,25 +254,9 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
     }
   };
 
-  const renderAvatar = (a: AuthorInfo | null, size: string = 'h-24 w-24 text-3xl') => {
-    if (a?.face_photo_url) {
-      return (
-        <img
-          src={a.face_photo_url}
-          alt={a.full_name || ''}
-          className={`${size} shrink-0 rounded-full object-cover`}
-          onError={(event) => {
-            (event.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      );
-    }
-    return (
-      <div className={`${size} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 font-bold text-white`}>
-        {getInitials(a?.full_name || '?')}
-      </div>
-    );
-  };
+  const renderAvatar = (a: AuthorInfo | null, size: string = 'h-24 w-24 text-3xl') => (
+    <AuthorAvatar author={a} size={size} />
+  );
 
   const renderPostCover = (post: BlogPost) => {
     const gradient = gradientForTitle(post.sarlavha);
