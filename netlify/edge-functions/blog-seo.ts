@@ -29,15 +29,14 @@ function truncate(text: string, max: number): string {
 }
 
 function toSeoImageUrl(url: string): string {
-  if (/\.(heic|heif)$/i.test(url)) {
-    const renderUrl = url.replace(
-      "/storage/v1/object/public/",
-      "/storage/v1/render/image/public/"
-    );
-    const sep = renderUrl.includes("?") ? "&" : "?";
-    return `${renderUrl}${sep}format=jpg&quality=90&width=1200&height=1200&resize=cover`;
-  }
-  return url;
+  if (!url) return url;
+  const renderUrl = url.replace(
+    "/storage/v1/object/public/",
+    "/storage/v1/render/image/public/"
+  );
+  if (renderUrl === url) return url;
+  const sep = renderUrl.includes("?") ? "&" : "?";
+  return `${renderUrl}${sep}format=origin&width=1200&height=630&resize=cover`;
 }
 
 interface BlogPost {
