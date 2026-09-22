@@ -448,7 +448,7 @@ export default function KurslarOquvchi({ onNavigate }: { onNavigate?: (tab: stri
                               {tugallangan ? <CheckCircle className="h-4 w-4" /> : dIdx + 1}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className={`text-sm font-bold truncate ${tugallandan ? 'text-emerald-700' : darsOchiq ? 'text-gray-900' : 'text-gray-700'}`}>{dars.nomi}</p>
+                              <p className={`text-sm font-bold truncate ${tugallangan ? 'text-emerald-700' : darsOchiq ? 'text-gray-900' : 'text-gray-700'}`}>{dars.nomi}</p>
                               {dars.tavsif && !darsOchiq && <p className="text-[10px] text-gray-400 truncate mt-0.5">{dars.tavsif}</p>}
                             </div>
                             {darsYuklanyapti === dars.id
