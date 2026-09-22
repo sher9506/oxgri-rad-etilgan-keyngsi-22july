@@ -12,7 +12,7 @@ X-Frame-Options = "SAMEORIGIN"
 X-Robots-Tag = "index, follow"
 X-Content-Type-Options = "nosniff"
 Referrer-Policy = "strict-origin-when-cross-origin"
-Content-Security-Policy = "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; media-src 'self' blob: data: https:; connect-src 'self' https://*.supabase.co https://api.groq.com https://*.onspace.ai; frame-src 'self' https://telegram.org https://*.onspace.ai; worker-src 'self' blob:;"
+Content-Security-Policy = "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; media-src 'self' blob: data: https:; connect-src 'self' https://*.supabase.co https://api.groq.com https://*.onspace.ai; frame-src 'self' blob: https://telegram.org https://*.onspace.ai; worker-src 'self' blob:;"
 
 [[headers]]
 for = "/blog/*"
