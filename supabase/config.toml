@@ -57,3 +57,6 @@ verify_jwt = false
 
 [functions.constitution-file-search]
 verify_jwt = false
+
+[functions.proxy-file]
+verify_jwt = false
