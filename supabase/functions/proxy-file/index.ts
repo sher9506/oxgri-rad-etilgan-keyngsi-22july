@@ -2,6 +2,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Cross-Origin-Resource-Policy": "cross-origin",
 };
 
 Deno.serve(async (req: Request) => {
@@ -16,7 +17,7 @@ Deno.serve(async (req: Request) => {
     if (!fileUrl) {
       return new Response(
         JSON.stringify({ error: "url parametri kerak" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -26,7 +27,7 @@ Deno.serve(async (req: Request) => {
     } catch {
       return new Response(
         JSON.stringify({ error: "Noto'g'ri URL" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -34,7 +35,7 @@ Deno.serve(async (req: Request) => {
     if (!host.endsWith(".onspace.ai") && !host.endsWith(".supabase.co")) {
       return new Response(
         JSON.stringify({ error: "Faqat onspace.ai va supabase.co domenlariga ruxsat berilgan" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -45,7 +46,7 @@ Deno.serve(async (req: Request) => {
     if (!resp.ok) {
       return new Response(
         JSON.stringify({ error: `Fayl serveri xatosi: ${resp.status}` }),
-        { status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -63,7 +64,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err?.message || "Server xatosi" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
