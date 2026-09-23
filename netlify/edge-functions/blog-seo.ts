@@ -154,7 +154,7 @@ function buildHead(
     <meta property="og:image:alt" content="${escapedTitle}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="1200" />
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDesc}" />
     <meta name="twitter:image" content="${escapedImg}" />
