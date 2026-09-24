@@ -40,7 +40,7 @@
         "@reduxjs/toolkit": "^2.9.0",
         "@stripe/react-stripe-js": "^3.7.0",
         "@stripe/stripe-js": "^7.4.0",
-        "@supabase/supabase-js": "^2.51.0",
+        "@supabase/supabase-js": "2.116.0",
         "@tanstack/react-query": "^5.90.2",
         "@tanstack/react-query-devtools": "^5.90.2",
         "axios": "^1.12.2",
@@ -56,6 +56,7 @@
         "framer-motion": "^12.23.24",
         "heic2any": "^0.0.4",
         "hls.js": "^1.6.13",
+        "iceberg-js": "^1.0.0",
         "input-otp": "^1.2.4",
         "jspdf": "^3.0.3",
         "leaflet": "^1.9.4",
@@ -875,7 +876,7 @@
 
     "https-proxy-agent": ["https-proxy-agent@5.0.1", "", { "dependencies": { "agent-base": "6", "debug": "4" } }, "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA=="],
 
-    "iceberg-js": ["iceberg-js@0.8.1", "", {}, "sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA=="],
+    "iceberg-js": ["iceberg-js@1.0.0", "", {}, "sha512-kwKtKluJzKgJLCccOpGPMaxYgAhONDPrgf8+GHOt5HE6L8wquPvQXMxaWpc1SHZ8rVeQRRADJRNi1BvJFB/2jw=="],
 
     "ieee754": ["ieee754@1.2.1", "", {}, "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA=="],
 
@@ -1354,6 +1355,8 @@
     "@isaacs/cliui/wrap-ansi": ["wrap-ansi@8.1.0", "https://registry.npmmirror.com/wrap-ansi/-/wrap-ansi-8.1.0.tgz", { "dependencies": { "ansi-styles": "^6.1.0", "string-width": "^5.0.1", "strip-ansi": "^7.0.1" } }, "sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ=="],
 
     "@react-three/fiber/zustand": ["zustand@3.7.2", "", { "peerDependencies": { "react": ">=16.8" }, "optionalPeers": ["react"] }, "sha512-PIJDIZKtokhof+9+60cpockVOq05sJzHCriyvaLBmEJixseQ1a5Kdov6fWZfWOu5SK9c+FhH1jU0tntLxRJYMA=="],
+
+    "@supabase/storage-js/iceberg-js": ["iceberg-js@0.8.1", "", {}, "sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA=="],
 
     "@types/three/@dimforge/rapier3d-compat": ["@dimforge/rapier3d-compat@0.12.0", "", {}, "sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow=="],
 
