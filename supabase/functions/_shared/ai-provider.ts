@@ -19,7 +19,7 @@ const supabaseAdmin = createClient(
 );
 
 const GEMINI_DAILY_QUOTA = 1000; // estimated free-tier daily limit
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL_DEFAULT = 'openai/gpt-oss-120b';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -50,14 +50,14 @@ export async function loadGroqConfig(): Promise<AIConfig | null> {
   const { data } = await supabaseAdmin
     .from('settings')
     .select('key, text_value')
-    .in('key', ['GROQ_API_KEY', 'GROQ_API_URL']);
+    .in('key', ['GROQ_API_KEY', 'GROQ_API_URL', 'GROQ_MODEL']);
   const map: Record<string, string> = {};
   (data || []).forEach((r: any) => { map[r.key] = r.text_value || ''; });
   if (!map['GROQ_API_KEY']) return null;
   return {
     apiUrl: map['GROQ_API_URL'] || 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: map['GROQ_API_KEY'],
-    model: GROQ_MODEL,
+    model: map['GROQ_MODEL'] || GROQ_MODEL_DEFAULT,
   };
 }
 
