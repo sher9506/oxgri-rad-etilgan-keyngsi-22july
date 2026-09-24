@@ -227,9 +227,11 @@ export const onRequest: PagesFunction = async (context) => {
     return env.ASSETS.fetch(request);
   }
 
-  // Fetch the SPA's index.html from the built static assets
-  const rootUrl = new URL("https://fanfaster.uz/");
-  const rootReq = new Request(rootUrl, request);
+  // Fetch the SPA's index.html from the built static assets.
+  // Use the incoming request's own origin so ASSETS.fetch works correctly
+  // for both the pages.dev subdomain and any custom domain (fanfaster.uz).
+  const rootUrl = new URL("/", url.origin);
+  const rootReq = new Request(rootUrl.toString(), { method: "GET", headers: request.headers });
   const assetResponse = await env.ASSETS.fetch(rootReq);
   if (!assetResponse.ok) {
     console.error(
