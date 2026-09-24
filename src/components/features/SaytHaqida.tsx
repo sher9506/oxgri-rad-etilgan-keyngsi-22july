@@ -728,441 +728,6 @@ function HowItWorksSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STATS GRID & CTA BANNER — Redesigned
-   Sub-components: StatCard, StatsGrid, CtaBanner
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
-
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReduced(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return reduced;
-}
-
-/* ── CountUp: easeOutExpo, ~1.6s ── */
-function CountUp({ target, suffix, delay }: { target: number; suffix: string; delay: number }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-50px' });
-  const reduced = useReducedMotion();
-  const [val, setVal] = useState(reduced ? target : 0);
-
-  useEffect(() => {
-    if (!inView || reduced) {
-      if (reduced) setVal(target);
-      return;
-    }
-    const t = setTimeout(() => {
-      const start = performance.now();
-      const duration = 1600;
-      const tick = (now: number) => {
-        const p = Math.min((now - start) / duration, 1);
-        const eased = 1 - Math.pow(2, -10 * p);
-        setVal(Math.round(eased * target));
-        if (p < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    }, delay);
-    return () => clearTimeout(t);
-  }, [inView, reduced, target, delay]);
-
-  return (
-    <span ref={ref} aria-label={`${target.toLocaleString()}${suffix}`}>
-      {val.toLocaleString()}{suffix}
-    </span>
-  );
-}
-
-/* ── SatisfactionRing: SVG stroke-dashoffset to 98% ── */
-function SatisfactionRing({ delay, reduced }: { delay: number; reduced: boolean }) {
-  const ref = useRef<SVGCircleElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-50px' });
-  const R = 26;
-  const CIRC = 2 * Math.PI * R;
-  const target = 98;
-  const [pct, setPct] = useState(reduced ? target : 0);
-
-  useEffect(() => {
-    if (!inView || reduced) {
-      if (reduced) setPct(target);
-      return;
-    }
-    const t = setTimeout(() => {
-      const start = performance.now();
-      const duration = 1600;
-      const tick = (now: number) => {
-        const p = Math.min((now - start) / duration, 1);
-        const eased = 1 - Math.pow(2, -10 * p);
-        setPct(Math.round(eased * target));
-        if (p < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    }, delay);
-    return () => clearTimeout(t);
-  }, [inView, reduced, target, delay]);
-
-  const offset = CIRC - (pct / 100) * CIRC;
-
-  return (
-    <svg className="w-[52px] h-[52px] -rotate-90" viewBox="0 0 60 60">
-      <circle cx="30" cy="30" r={R} fill="none" stroke="#e2e8f0" strokeWidth="3" />
-      <circle
-        ref={ref}
-        cx="30" cy="30" r={R}
-        fill="none"
-        stroke="url(#sat-grad)"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeDasharray={CIRC}
-        strokeDashoffset={offset}
-        style={{ transition: reduced ? 'none' : 'stroke-dashoffset 0.1s linear' }}
-      />
-      <defs>
-        <linearGradient id="sat-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#10b981" />
-          <stop offset="100%" stopColor="#14b8a6" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
-
-/* ── StatMicroVisual: per-card subtle animation ── */
-function StatMicroVisual({ index, accent, reduced }: { index: number; accent: string; reduced: boolean }) {
-  if (index === 0) {
-    // Orbiting dots
-    return (
-      <div className="relative w-[52px] h-[52px] flex items-center justify-center">
-        <motion.div
-          animate={reduced ? {} : { rotate: 360 }}
-          transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
-          className="absolute inset-0"
-        >
-          {[0, 120, 240].map((deg) => (
-            <div
-              key={deg}
-              className="absolute top-1/2 left-1/2 w-1.5 h-1.5 rounded-full"
-              style={{
-                background: accent,
-                opacity: 0.4,
-                transform: `rotate(${deg}deg) translateY(-18px)`,
-              }}
-            />
-          ))}
-        </motion.div>
-        <div className="w-2 h-2 rounded-full" style={{ background: accent, opacity: 0.3 }} />
-      </div>
-    );
-  }
-
-  if (index === 1) {
-    // Stacked pages
-    return (
-      <div className="relative w-[52px] h-[52px] flex items-center justify-center">
-        {[0, 1, 2].map((i) => (
-          <motion.div
-            key={i}
-            animate={reduced ? {} : { y: [0, -3, 0], opacity: [0.3, 0.5, 0.3] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: i * 0.4 }}
-            className="absolute rounded-sm border"
-            style={{
-              width: 20 - i * 3,
-              height: 26 - i * 3,
-              borderColor: accent + '40',
-              background: accent + '10',
-              zIndex: 3 - i,
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  if (index === 2) {
-    // Node network
-    return (
-      <div className="relative w-[52px] h-[52px] flex items-center justify-center">
-        <svg className="w-full h-full" viewBox="0 0 52 52">
-          {[[10, 14], [40, 12], [14, 38], [38, 36], [26, 26]].map(([x, y], i) => (
-            <g key={i}>
-              {i < 4 && (
-                <line x1="26" y1="26" x2={x} y2={y} stroke={accent} strokeWidth="0.5" opacity="0.25" />
-              )}
-              <motion.circle
-                cx={x} cy={y} r="2"
-                fill={accent}
-                animate={reduced ? {} : { opacity: [0.2, 0.5, 0.2] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: i * 0.5 }}
-              />
-            </g>
-          ))}
-          <motion.circle
-            cx="26" cy="26" r="3"
-            fill={accent}
-            animate={reduced ? {} : { scale: [1, 1.3, 1], opacity: [0.4, 0.7, 0.4] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </svg>
-      </div>
-    );
-  }
-
-  // index === 3: handled by SatisfactionRing in StatCard
-  return null;
-}
-
-/* ── StatCard: glass card with 3D icon plate, breathing, pointer parallax ── */
-function StatCard({
-  icon: Icon,
-  value,
-  suffix,
-  label,
-  color,
-  index,
-  reduced,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  value: number;
-  suffix: string;
-  label: string;
-  color: string;
-  index: number;
-  reduced: boolean;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const accent = ['#3b82f6', '#06b6d4', '#0ea5e9', '#10b981'][index];
-  const delay = index * 0.12;
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = (e.clientX - cx) / (rect.width / 2);
-    const dy = (e.clientY - cy) / (rect.height / 2);
-    setTilt({ x: -dy * 6, y: dx * 6 });
-  }, []);
-
-  const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
-
-  return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-60px' }}
-      transition={{ duration: 0.6, ease: EASE, delay }}
-      className="h-full"
-    >
-      <div
-        ref={ref}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        className="group relative h-full rounded-2xl border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm overflow-hidden transition-shadow duration-500 hover:shadow-lg"
-        style={{ transformStyle: 'preserve-3d' }}
-      >
-        {/* Pointer-following soft highlight */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-          style={{
-            background: `radial-gradient(200px circle at var(--hx, 50%) var(--hy, 50%), ${accent}10, transparent 70%)`,
-          }}
-        />
-
-        <div className="relative z-10 p-5 flex flex-col items-center text-center gap-3" style={{ transformStyle: 'preserve-3d' }}>
-          {/* 3D icon plate */}
-          <motion.div
-            animate={reduced ? {} : { translateZ: [4, 6, 4] }}
-            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: index * 0.5 }}
-            className={`w-11 h-11 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg`}
-            style={{
-              transform: `perspective(600px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) translateZ(8px)`,
-              transition: 'transform 0.3s cubic-bezier(0.22,1,0.36,1)',
-            }}
-          >
-            <Icon className="h-5 w-5 text-white" />
-          </motion.div>
-
-          {/* Number + micro-visual side by side */}
-          <div className="flex items-center gap-2">
-            <p className="text-2xl md:text-3xl font-black text-slate-900 tabular-nums">
-              {index === 3 ? (
-                <CountUp target={value} suffix={suffix} delay={delay * 1000} />
-              ) : (
-                <CountUp target={value} suffix={suffix} delay={delay * 1000} />
-              )}
-            </p>
-            {index === 3 && <SatisfactionRing delay={delay * 1000} reduced={reduced} />}
-          </div>
-
-          {/* Micro visual for non-satisfaction cards */}
-          {index < 3 && (
-            <div className="absolute top-5 right-4 opacity-40">
-              <StatMicroVisual index={index} accent={accent} reduced={reduced} />
-            </div>
-          )}
-
-          <p className="text-xs text-slate-500 font-semibold leading-tight">{label}</p>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-/* ── StatsGrid: 4 cards with shared pointer spotlight ── */
-function StatsGrid({ stats }: { stats: { icon: React.ComponentType<{ className?: string }>; value: number; suffix: string; label: string; color: string }[] }) {
-  const reduced = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    ref.current.style.setProperty('--sx', `${x}%`);
-    ref.current.style.setProperty('--sy', `${y}%`);
-  }, []);
-
-  return (
-    <section className="mb-12">
-      <div
-        ref={ref}
-        onMouseMove={handleMouseMove}
-        className="relative grid grid-cols-2 md:grid-cols-4 gap-4"
-      >
-        {/* Shared pointer spotlight */}
-        <div
-          className="pointer-events-none absolute inset-0 z-0 rounded-3xl opacity-0 md:opacity-100"
-          style={{
-            background: 'radial-gradient(280px circle at var(--sx, 50%) var(--sy, 50%), rgba(56,189,248,0.06), transparent 70%)',
-            transition: 'opacity 0.4s ease',
-          }}
-        />
-        {stats.map((s, i) => (
-          <StatCard
-            key={i}
-            icon={s.icon}
-            value={s.value}
-            suffix={s.suffix}
-            label={s.label}
-            color={s.color}
-            index={i}
-            reduced={reduced}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/* ── CtaBanner: elevated plate with sheen, 3D rings, magnetic button ── */
-function CtaBanner({ onCta }: { onCta: () => void }) {
-  const reduced = useReducedMotion();
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [ringCollapse, setRingCollapse] = useState(false);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - rect.width / 2;
-    const y = e.clientY - rect.top - rect.height / 2;
-    setOffset({ x: x * 0.2, y: y * 0.2 });
-  }, []);
-
-  return (
-    <section className="mb-12">
-      <motion.div
-        initial={reduced ? false : { opacity: 0, y: 16 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-60px' }}
-        transition={{ duration: 0.7, ease: EASE }}
-      >
-        <div className="relative rounded-3xl border border-amber-100/80 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 overflow-hidden shadow-md">
-          {/* Sheen sweep */}
-          {!reduced && (
-            <motion.div
-              className="pointer-events-none absolute inset-0 z-10"
-              animate={{ x: ['-100%', '200%'] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', repeatDelay: 4 }}
-              style={{
-                background: 'linear-gradient(110deg, transparent 40%, rgba(255,255,255,0.35) 50%, transparent 60%)',
-                width: '50%',
-              }}
-            />
-          )}
-
-          {/* Background floating shapes */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-            <motion.div
-              animate={reduced ? {} : { y: [0, -12, 0], rotate: [0, 5, 0] }}
-              transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute top-[15%] left-[8%] w-14 h-14 opacity-[0.08] border-2 border-amber-400 rounded-lg"
-            />
-            <motion.div
-              animate={reduced ? {} : { y: [0, 10, 0], rotate: [0, -6, 0] }}
-              transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut', delay: 3 }}
-              className="absolute bottom-[15%] right-[10%] w-10 h-10 opacity-[0.07] border-2 border-orange-400 rounded-lg"
-            />
-          </div>
-
-          <div className="relative z-20 p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-5">
-            <div className="flex items-center gap-4">
-              {/* 3D concentric rings */}
-              <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
-                <motion.div
-                  animate={reduced ? {} : { scale: [1, 1.15, 1], opacity: [0.3, 0.5, 0.3] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute inset-0 rounded-full border-2 border-amber-400"
-                  style={{ transform: ringCollapse ? 'scale(0.4)' : 'scale(1)', transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)' }}
-                />
-                <motion.div
-                  animate={reduced ? {} : { scale: [1, 1.1, 1], opacity: [0.4, 0.6, 0.4] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-                  className="absolute inset-2 rounded-full border-2 border-orange-400"
-                  style={{ transform: ringCollapse ? 'scale(0.5)' : 'scale(1)', transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)' }}
-                />
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(4px)' }}>
-                  <Target className="h-4 w-4 text-white" />
-                </div>
-              </div>
-
-              <div>
-                <h2 className="text-lg font-black text-slate-900">Bilim darajangizni aniqlang</h2>
-                <p className="text-sm text-slate-500 font-medium">Ro'yxatdan o'tib, shaxsiy o'quv rejangizni yarating</p>
-              </div>
-            </div>
-
-            <button
-              ref={btnRef}
-              onMouseMove={handleMouseMove}
-              onMouseEnter={() => setRingCollapse(true)}
-              onMouseLeave={() => { setRingCollapse(false); setOffset({ x: 0, y: 0 }); }}
-              onClick={onCta}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-xl shadow-lg transition-all whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
-              style={{
-                transform: `translate(${offset.x}px, ${offset.y}px) scale(${ringCollapse ? 0.98 : 1})`,
-                transition: 'transform 0.2s cubic-bezier(0.22,1,0.36,1)',
-                boxShadow: ringCollapse ? '0 4px 12px rgba(245,158,11,0.3)' : '0 8px 24px rgba(245,158,11,0.35)',
-              }}
-            >
-              Bepul boshlash
-              <ArrowRight className="h-4 w-4" style={{ transform: ringCollapse ? 'translateX(3px)' : 'translateX(0)', transition: 'transform 0.2s ease' }} />
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </section>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -1649,9 +1214,36 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
       </section>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          STATISTICS — Redesigned with 3D icon plates, micro-visuals & shared spotlight
+          STATISTICS — Animated counters with glass cards
           ═══════════════════════════════════════════════════════════════════ */}
-      <StatsGrid stats={stats} />
+      <section className="mb-12">
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: '-80px' }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-4"
+        >
+          {stats.map((s, i) => (
+            <motion.div key={i} variants={scaleIn}>
+              <TiltCard intensity={6} className="h-full">
+                <Card className="group relative border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm rounded-2xl hover:shadow-xl transition-all duration-300 overflow-hidden h-full">
+                  <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br ${s.color} pointer-events-none`} style={{ mixBlendMode: 'overlay' }} />
+                  <CardContent className="p-5 flex flex-col items-center text-center gap-2 relative z-10">
+                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-lg`}>
+                      <s.icon className="h-5 w-5 text-white" />
+                    </div>
+                    <p className="text-2xl md:text-3xl font-black text-slate-900 tabular-nums">
+                      <AnimatedCounter target={s.value} suffix={s.suffix} />
+                    </p>
+                    <p className="text-xs text-slate-500 font-semibold leading-tight">{s.label}</p>
+                  </CardContent>
+                </Card>
+              </TiltCard>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
 
       {/* ═══════════════════════════════════════════════════════════════════
           USER STATE — Welcome or CTA
@@ -1693,7 +1285,40 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
           </motion.div>
         </section>
       ) : (
-        <CtaBanner onCta={() => window.dispatchEvent(new Event('open-login-modal'))} />
+        <section className="mb-12">
+          <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
+            <Card className="border border-amber-100/80 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 rounded-3xl shadow-md overflow-hidden relative">
+              <motion.div
+                className="absolute top-0 right-0 w-64 h-64 rounded-full bg-orange-200/20 blur-3xl translate-x-1/3 -translate-y-1/3"
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <CardContent className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-5 relative z-10">
+                <div className="flex items-center gap-4">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    whileInView={{ scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                    className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg"
+                  >
+                    <Target className="h-6 w-6 text-white" />
+                  </motion.div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900">Bilim darajangizni aniqlang</h2>
+                    <p className="text-sm text-slate-500 font-medium">Ro'yxatdan o'tib, shaxsiy o'quv rejangizni yarating</p>
+                  </div>
+                </div>
+                <MagneticButton
+                  onClick={() => window.dispatchEvent(new Event('open-login-modal'))}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-xl shadow-lg transition-all active:scale-[0.98] whitespace-nowrap"
+                >
+                  Bepul boshlash<ArrowRight className="h-4 w-4" />
+                </MagneticButton>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </section>
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════
