@@ -3,7 +3,7 @@ import { motion, useInView, useScroll, useTransform, AnimatePresence } from 'fra
 import {
   Award, Code2, Library, MessageSquare, BarChart3, ArrowRight,
   BrainCircuit, Zap, BookOpen, Shield, User,
-  Users, FileText, Sparkles, Trophy, Rocket,
+  Users, FileText, Sparkles, Trophy, Rocket, Scale,
   ChevronRight, Mail, Phone,
   GraduationCap, Play, TrendingUp, Target, Brain,
   HelpCircle, Lock, Info, ChevronDown,
@@ -109,66 +109,6 @@ function TiltCard({ children, className = '', intensity = 8 }: { children: React
       }}
     >
       {children}
-    </div>
-  );
-}
-
-/* ═══ Floating Particles Background ═══ */
-function FloatingParticles() {
-  const particles = Array.from({ length: 18 }, (_, i) => ({
-    id: i,
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    size: Math.random() * 4 + 2,
-    duration: Math.random() * 8 + 6,
-    delay: Math.random() * 5,
-  }));
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-      {particles.map(p => (
-        <motion.div
-          key={p.id}
-          className="absolute rounded-full bg-white/20"
-          style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size }}
-          animate={{
-            y: [0, -30, 0],
-            opacity: [0, 0.6, 0],
-          }}
-          transition={{
-            duration: p.duration,
-            delay: p.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/* ═══ Animated Gradient Mesh Background ═══ */
-function GradientMesh() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-      <motion.div
-        className="absolute -top-1/4 -right-1/4 w-[600px] h-[600px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.15) 0%, transparent 70%)' }}
-        animate={{ x: [0, 50, 0], y: [0, 30, 0], scale: [1, 1.1, 1] }}
-        transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute -bottom-1/4 -left-1/4 w-[500px] h-[500px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 70%)' }}
-        animate={{ x: [0, -40, 0], y: [0, -20, 0], scale: [1, 1.15, 1] }}
-        transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute top-1/3 left-1/2 w-[400px] h-[400px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.08) 0%, transparent 70%)' }}
-        animate={{ x: [0, -30, 0], y: [0, 40, 0], scale: [1.1, 1, 1.1] }}
-        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-      />
     </div>
   );
 }
@@ -300,66 +240,197 @@ function FormatMatn({ text }: { text: string }) {
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function Meteors({ number = 40 }: { number?: number }) {
-  const meteors = useMemo(
-    () =>
-      Array.from({ length: number }, (_, i) => ({
-        left: -10 + (i / number) * 115 + Math.random() * 4,
-        top: -10 + Math.random() * 45,
-        delay: Math.random() * 8,
-        duration: 3 + Math.random() * 4,
-        tail: 60 + Math.random() * 60,
-      })),
-    [number]
-  );
+function ShootingStars() {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    const parent = canvas?.parentElement;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !parent || !ctx) return;
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const ANGLE = (32 * Math.PI) / 180;
+    const dx = Math.cos(ANGLE);
+    const dy = Math.sin(ANGLE);
+    let w = 0, h = 0, raf = 0, visible = true;
+    let last = performance.now();
+
+    type Star = { x: number; y: number; len: number; speed: number; alpha: number; size: number; wait: number };
+    type Dot = { x: number; y: number; r: number; phase: number; rate: number };
+    let stars: Star[] = [];
+    let dots: Dot[] = [];
+
+    const spawn = (initial: boolean): Star => {
+      const fromTop = Math.random() < 0.7;
+      return {
+        x: initial ? Math.random() * w : fromTop ? Math.random() * w * 1.1 - w * 0.1 : -40,
+        y: initial ? Math.random() * h : fromTop ? -40 : Math.random() * h * 0.5,
+        len: 80 + Math.random() * 140,
+        speed: 260 + Math.random() * 380,
+        alpha: 0.5 + Math.random() * 0.5,
+        size: 1 + Math.random() * 1.2,
+        wait: initial ? 0 : Math.random() * 3,
+      };
+    };
+
+    const resize = () => {
+      w = parent.clientWidth;
+      h = parent.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const n = Math.round(Math.min(26, Math.max(10, w / 70)));
+      stars = Array.from({ length: n }, () => spawn(true));
+      dots = Array.from({ length: Math.round((w * h) / 9000) }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.random() < 0.15 ? 2 : 1,
+        phase: Math.random() * Math.PI * 2,
+        rate: 0.6 + Math.random() * 1.6,
+      }));
+    };
+
+    const frame = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      ctx.clearRect(0, 0, w, h);
+
+      for (const d of dots) {
+        const a = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin((now / 1000) * d.rate + d.phase));
+        ctx.fillStyle = `rgba(186,230,253,${a * 0.6})`;
+        ctx.fillRect(d.x, d.y, d.r, d.r);
+      }
+
+      if (!reduce) {
+        for (let i = 0; i < stars.length; i++) {
+          const s = stars[i];
+          if (s.wait > 0) { s.wait -= dt; continue; }
+          s.x += dx * s.speed * dt;
+          s.y += dy * s.speed * dt;
+          const tx = s.x - dx * s.len;
+          const ty = s.y - dy * s.len;
+          const g = ctx.createLinearGradient(tx, ty, s.x, s.y);
+          g.addColorStop(0, 'rgba(125,211,252,0)');
+          g.addColorStop(1, `rgba(186,230,253,${s.alpha})`);
+          ctx.strokeStyle = g;
+          ctx.lineWidth = s.size;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(s.x, s.y);
+          ctx.stroke();
+          ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.size * 0.9, 0, Math.PI * 2);
+          ctx.fill();
+          if (tx > w || ty > h) stars[i] = spawn(false);
+        }
+      }
+
+      if (!reduce && visible) raf = requestAnimationFrame(frame);
+      else raf = 0;
+    };
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(parent);
+    const io = new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      if (visible && !reduce && !raf) {
+        last = performance.now();
+        raf = requestAnimationFrame(frame);
+      }
+    });
+    io.observe(parent);
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      io.disconnect();
+    };
+  }, []);
+
+  return <canvas ref={ref} aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 h-full w-full" />;
+}
+
+function MootCourtScoreRing() {
+  const ringRef = useRef<SVGCircleElement>(null);
+  const [score, setScore] = useState(0);
+  const inView = useInView(ringRef, { once: true });
+
+  useEffect(() => {
+    if (!inView) return;
+    const target = 92;
+    const duration = 1400;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setScore(Math.round(eased * target));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [inView]);
+
+  const R = 34;
+  const CIRC = 2 * Math.PI * R;
+  const offset = CIRC - (score / 100) * CIRC;
+
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-      <style>{`
-        @keyframes ff-meteor {
-          0%   { transform: rotate(35deg) translateX(0); opacity: 0; }
-          8%   { opacity: 1; }
-          70%  { opacity: 1; }
-          100% { transform: rotate(35deg) translateX(900px); opacity: 0; }
-        }
-        .ff-meteor {
-          position: absolute;
-          width: 2px;
-          height: 2px;
-          border-radius: 9999px;
-          background: #67e8f9;
-          box-shadow: 0 0 6px 1px rgba(34, 211, 238, 0.6);
-          animation-name: ff-meteor;
-          animation-timing-function: linear;
-          animation-iteration-count: infinite;
-        }
-        .ff-meteor::before {
-          content: '';
-          position: absolute;
-          top: 50%;
-          right: 100%;
-          transform: translateY(-50%);
-          width: var(--tail, 90px);
-          height: 1px;
-          background: linear-gradient(to left, rgba(103, 232, 249, 0.8), transparent);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .ff-meteor { display: none; }
-        }
-      `}</style>
-      {meteors.map((m, i) => (
-        <span
-          key={i}
-          className="ff-meteor"
-          style={{
-            left: `${m.left}%`,
-            top: `${m.top}%`,
-            animationDelay: `${m.delay}s`,
-            animationDuration: `${m.duration}s`,
-            ['--tail' as string]: `${m.tail}px`,
-          } as React.CSSProperties}
+    <div className="relative w-[88px] h-[88px] flex items-center justify-center">
+      <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" />
+        <circle
+          ref={ringRef}
+          cx="40"
+          cy="40"
+          r={R}
+          fill="none"
+          stroke="url(#ring-grad)"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={CIRC}
+          strokeDashoffset={offset}
         />
-      ))}
+        <defs>
+          <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#38bdf8" />
+            <stop offset="100%" stopColor="#a78bfa" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-base font-black text-white leading-none">{score}</span>
+        <span className="text-[8px] text-slate-400 font-bold">/100</span>
+      </div>
     </div>
+  );
+}
+
+function HeroGlassCard({
+  children, rotate, delay, duration, className = '',
+}: {
+  children: React.ReactNode; rotate: number; delay: number; duration: number; className?: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 40, filter: 'blur(8px)' }}
+      animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+      transition={{ type: 'spring', stiffness: 80, damping: 18, delay }}
+      className={className}
+      style={{ transform: `rotate(${rotate}deg)` }}
+    >
+      <motion.div
+        animate={{ y: [0, -10, 0] }}
+        transition={{ duration, repeat: Infinity, ease: 'easeInOut', delay }}
+        className="bg-white/[0.06] border border-white/15 backdrop-blur-xl rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_32px_rgba(56,189,248,0.12)]"
+      >
+        {children}
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -371,11 +442,8 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
 
   const heroRef = useRef<HTMLDivElement>(null);
-  const heroInView = useInView(heroRef, { once: true });
 
   const { scrollYProgress } = useScroll();
-  const heroY = useTransform(scrollYProgress, [0, 0.3], [0, 80]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.2], [1, 0.3]);
 
   const handleNav = (tab: string) => {
     setActiveBottomTab(tab);
@@ -416,180 +484,247 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
       <ScrollProgress />
 
       {/* ═══════════════════════════════════════════════════════════════════
-          HERO SECTION — Premium animated hero
+          HERO SECTION — Premium cinematic hero
           ═══════════════════════════════════════════════════════════════════ */}
+      <style>{`
+        @keyframes ff-flow {
+          0%   { background-position: 0% 50%; }
+          100% { background-position: 100% 50%; }
+        }
+        .ff-title-gradient {
+          background: linear-gradient(100deg, #ffffff 0%, #7dd3fc 20%, #38bdf8 38%, #818cf8 58%, #c4b5fd 74%, #ffffff 100%);
+          background-size: 250% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: transparent;
+          animation: ff-flow 8s ease-in-out infinite alternate;
+          filter: drop-shadow(0 0 28px rgba(56,189,248,0.35));
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ff-title-gradient { animation: none; -webkit-text-fill-color: #7dd3fc; color: #7dd3fc; filter: none; }
+        }
+        .ff-shimmer::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.25) 50%, transparent 70%);
+          transform: translateX(-100%);
+          transition: transform 0.6s ease;
+          pointer-events: none;
+        }
+        .ff-shimmer:hover::after { transform: translateX(100%); }
+        @media (hover: none) {
+          .ff-spotlight { display: none; }
+        }
+      `}</style>
       <section
         ref={heroRef}
-        className="relative overflow-hidden rounded-[2rem] mb-10 px-6 py-16 md:px-16 md:py-24"
-        style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 40%, #0c4a6e 70%, #082f49 100%)',
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const mx = ((e.clientX - rect.left) / rect.width) * 100;
+          const my = ((e.clientY - rect.top) / rect.height) * 100;
+          e.currentTarget.style.setProperty('--mx', `${mx}%`);
+          e.currentTarget.style.setProperty('--my', `${my}%`);
         }}
+        className="relative isolate overflow-hidden rounded-3xl mb-10 px-6 py-10 md:px-14 md:py-14 lg:py-16 bg-gradient-to-br from-[#040814] via-[#0a1a4d] to-[#050b1f]"
       >
-        <GradientMesh />
-        <FloatingParticles />
-        <Meteors number={40} />
+        {/* Glows */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+          <div className="absolute top-0 right-0 w-[28rem] h-[28rem] rounded-full bg-blue-500/25 blur-3xl -translate-y-1/3 translate-x-1/3" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl translate-y-1/3 -translate-x-1/4" />
+          <div className="absolute top-1/2 left-1/3 w-72 h-72 rounded-full bg-sky-400/10 blur-3xl" />
+        </div>
 
-        {/* Grid overlay */}
+        {/* Grid overlay with radial mask */}
         <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)`,
-            backgroundSize: '50px 50px',
-          }}
           aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0"
+          style={{
+            backgroundImage: `linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)`,
+            backgroundSize: '48px 48px',
+            maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
+          }}
         />
 
-        <motion.div style={{ y: heroY, opacity: heroOpacity }} className="relative z-10 max-w-3xl">
-          {/* Badge */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300 mb-7 backdrop-blur-md"
-          >
-            <motion.span
-              animate={{ rotate: [0, 14, -8, 14, 0] }}
-              transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 3 }}
-            >
-              <Zap className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-            </motion.span>
-            <span>SIZ KUTGAN FORMATDAGI TA'LIM</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-          </motion.div>
+        {/* Mouse spotlight */}
+        <div
+          aria-hidden="true"
+          className="ff-spotlight pointer-events-none absolute inset-0 z-0"
+          style={{
+            background: 'radial-gradient(520px circle at var(--mx, 30%) var(--my, 20%), rgba(56,189,248,0.10), transparent 60%)',
+          }}
+        />
 
-          {/* Title */}
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="text-4xl md:text-6xl lg:text-7xl font-black tracking-tighter leading-[1.05] mb-5"
-          >
-            <span className="text-white">Fan</span>
-            <span className="ff-gradient-text">Faster</span>
-            <style>{`
-              @keyframes ff-flow {
-                0%   { background-position: 0% 50%; }
-                100% { background-position: 300% 50%; }
-              }
-              .ff-gradient-text {
-                font-size: inherit;
-                font-weight: inherit;
-                letter-spacing: inherit;
-                line-height: inherit;
-                display: inline-block;
-                background: linear-gradient(90deg, #ffffff 0%, #22D3EE 25%, #38BDF8 50%, #22D3EE 75%, #ffffff 100%);
-                background-size: 300% 100%;
-                -webkit-background-clip: text;
-                background-clip: text;
-                -webkit-text-fill-color: transparent;
-                color: transparent;
-                animation: ff-flow 5s linear infinite;
-              }
-              @media (prefers-reduced-motion: reduce) {
-                .ff-gradient-text { animation: none; -webkit-text-fill-color: #22D3EE; color: #22D3EE; }
-              }
-            `}</style>
+        {/* Shooting stars */}
+        <ShootingStars />
+
+        {/* Content */}
+        <div className="relative z-10 grid lg:grid-cols-[1.15fr_0.85fr] gap-10 items-center">
+          {/* Left column */}
+          <div>
+            {/* Badge */}
             <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.7, delay: 0.3 }}
-              className="relative mt-5 inline-block"
+              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
+              className="inline-flex mb-6"
+            >
+              <div className="p-px rounded-full" style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.5), rgba(167,139,250,0.4))' }}>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.06] backdrop-blur-md text-[11px] font-bold uppercase tracking-[0.2em] text-sky-200">
+                  <Zap className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                  <span>SIZ KUTGAN FORMATDAGI TA'LIM</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Title */}
+            <motion.h1
+              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
+              className="font-black tracking-tighter leading-[1.02] mb-4"
+              style={{ fontSize: 'clamp(3rem, 8vw, 6.5rem)' }}
+            >
+              <span className="text-white">Fan</span>
+              <span className="ff-title-gradient inline-block pr-[0.06em]">Faster</span>
+            </motion.h1>
+
+            {/* Tagline */}
+            <motion.p
+              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.7, delay: 0.2, ease: 'easeOut' }}
+              className="mb-5"
             >
               <span
-                className="block font-black leading-[1.1] tracking-tight"
+                className="inline-block rounded-xl px-[18px] py-[10px] font-extrabold text-white relative"
                 style={{
-                  fontSize: 'clamp(1.4rem, 3.2vw, 3.5rem)',
-                  color: '#ffffff',
+                  fontSize: 'clamp(1.3rem, 2.4vw, 2.4rem)',
+                  background: 'rgba(255,255,255,0.05)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
                 }}
               >
+                <span
+                  className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+                  style={{
+                    background: 'linear-gradient(180deg, #38bdf8, #8b5cf6)',
+                    boxShadow: '0 0 12px rgba(56,189,248,0.5)',
+                  }}
+                />
                 Orzuyingizdagi &apos;men&apos; bugun nimani bilishi kerak?
               </span>
-              <motion.div
-                className="absolute -left-3 top-0 bottom-0 w-1.5 rounded-full"
-                style={{ background: 'linear-gradient(180deg, #38BDF8, #0EA5E9)' }}
-                initial={{ scaleY: 0 }}
-                animate={{ scaleY: 1 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-              />
+            </motion.p>
+
+            {/* Description */}
+            <motion.p
+              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.7, delay: 0.3, ease: 'easeOut' }}
+              className="text-base md:text-lg text-slate-300 leading-relaxed max-w-xl mb-8"
+            >
+              <span className="text-sky-300 font-bold">AI+Human metodi</span> yordamida bilimni yodlamang
+              — uni chuqur tushunib, amalda qo&apos;llang.{' '}
+              <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
+            </motion.p>
+
+            {/* Buttons */}
+            <motion.div
+              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.7, delay: 0.4, ease: 'easeOut' }}
+              className="flex flex-wrap gap-4"
+            >
+              <button
+                onClick={() => handleNav('kurslar')}
+                className="ff-shimmer group relative flex items-center gap-2 px-7 py-3.5 font-black text-sm rounded-2xl text-white overflow-hidden bg-gradient-to-r from-blue-500 to-indigo-600 hover:-translate-y-1 active:scale-[0.98] transition-all duration-300"
+                style={{ boxShadow: '0 8px 30px rgba(99,102,241,0.45)' }}
+              >
+                <Play className="h-4 w-4 fill-white relative z-10" />
+                <span className="relative z-10">O'qishni boshlash</span>
+              </button>
+
+              <button
+                onClick={() => handleNav('oqmatlar')}
+                className="flex items-center gap-2 px-7 py-3.5 bg-white/10 border border-white/25 text-white font-bold text-sm rounded-2xl hover:bg-white/20 hover:border-sky-400/50 active:scale-[0.98] transition-all backdrop-blur-md"
+              >
+                <BookOpen className="h-4 w-4" />
+                Materiallar
+              </button>
             </motion.div>
-          </motion.h1>
+          </div>
 
-          {/* Description */}
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.35 }}
-            className="text-base md:text-lg text-slate-300 leading-relaxed max-w-xl mb-8"
-          >
-            <span className="text-cyan-300 font-bold">AI+Human metodi</span> yordamida bilimni yodlamang
-            — uni chuqur tushunib, amalda qo&apos;llang.{' '}
-            <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
-          </motion.p>
+          {/* Right column — floating glass cards (lg+ only) */}
+          <div className="hidden lg:flex relative items-center justify-center min-h-[360px]">
+            {/* Soft radial glow behind cards */}
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'radial-gradient(circle at 55% 45%, rgba(56,189,248,0.12), rgba(139,92,246,0.08) 40%, transparent 65%)' }}
+            />
 
-          {/* CTA Buttons */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.45 }}
-            className="flex flex-wrap gap-4"
-          >
-            <MagneticButton
-              onClick={() => handleNav('kurslar')}
-              className="group relative flex items-center gap-2 px-7 py-3.5 font-black text-sm rounded-2xl text-white overflow-hidden border border-white/20 active:scale-[0.98]"
-              primary
-            >
-              <span className="absolute inset-0 bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-500 bg-[length:200%_100%] group-hover:bg-[position:100%_0] transition-all duration-500" />
-              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ boxShadow: '0 0 30px rgba(56,189,248,0.6)' }} />
-              <Play className="h-4 w-4 fill-white relative z-10" />
-              <span className="relative z-10">O'qishni boshlash</span>
-            </MagneticButton>
-
-            <MagneticButton
-              onClick={() => handleNav('oqmatlar')}
-              className="flex items-center gap-2 px-7 py-3.5 bg-white/10 border border-white/25 text-white font-bold text-sm rounded-2xl hover:bg-white/20 hover:border-cyan-400/50 active:scale-[0.98] transition-all backdrop-blur-md"
-            >
-              <BookOpen className="h-4 w-4" />
-              Materiallar
-            </MagneticButton>
-          </motion.div>
-
-          {/* Hero stats strip */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.6 }}
-            className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3 pt-6 border-t border-white/10"
-          >
-            {[
-              { icon: Sparkles, label: 'AI + Human', val: 'metodi' },
-              { icon: Trophy, label: '98%', val: 'mamnunlik' },
-              { icon: Rocket, label: '4500+', val: 'testlar' },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <item.icon className="h-4 w-4 text-cyan-400" />
-                <span className="text-xs font-black text-white">{item.label}</span>
-                <span className="text-xs text-slate-400">— {item.val}</span>
+            {/* Card 1: Moot Court */}
+            <HeroGlassCard rotate={-4} delay={0.45} duration={5} className="absolute top-[8%] left-[2%] w-[230px] z-20">
+              <div className="p-5">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                    <Scale className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-white">Moot Court</p>
+                    <p className="text-[10px] text-slate-400">AI sudya bilan jonli bahs</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                      <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-500"
+                          initial={{ width: 0 }}
+                          whileInView={{ width: `${65 + i * 7}%` }}
+                          viewport={{ once: true }}
+                          transition={{ duration: 0.8, delay: 0.6 + i * 0.1, ease: 'easeOut' }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </motion.div>
-        </motion.div>
+            </HeroGlassCard>
 
-        {/* Scroll indicator */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="absolute bottom-5 left-1/2 -translate-x-1/2 hidden md:flex flex-col items-center gap-1.5"
-        >
-          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Pastga</span>
-          <motion.div
-            animate={{ y: [0, 8, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="w-5 h-8 rounded-full border-2 border-white/20 flex items-start justify-center pt-1.5"
-          >
-            <div className="w-1 h-2 rounded-full bg-cyan-400" />
-          </motion.div>
-        </motion.div>
+            {/* Card 2: Kazus tahlili */}
+            <HeroGlassCard rotate={3} delay={0.6} duration={6} className="absolute top-[28%] right-[0%] w-[210px] z-30">
+              <div className="p-5 flex items-center gap-4">
+                <MootCourtScoreRing />
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <BrainCircuit className="h-4 w-4 text-violet-400" />
+                    <p className="text-xs font-black text-white">Kazus tahlili</p>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">AI xolis bahosi</p>
+                </div>
+              </div>
+            </HeroGlassCard>
+
+            {/* Card 3: XP chip */}
+            <HeroGlassCard rotate={-2} delay={0.75} duration={7} className="absolute bottom-[6%] left-[18%] z-10">
+              <div className="px-4 py-3 flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
+                  <Trophy className="h-3.5 w-3.5 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-white">+120 XP</p>
+                  <p className="text-[9px] text-slate-400">Yangi daraja ochildi</p>
+                </div>
+              </div>
+            </HeroGlassCard>
+          </div>
+        </div>
       </section>
 
       {/* ═══════════════════════════════════════════════════════════════════
