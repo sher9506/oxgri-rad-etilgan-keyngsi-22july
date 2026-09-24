@@ -33,6 +33,17 @@ import {
   resetDocumentTitle,
   resetMetaDescription,
 } from '@/lib/seo';
+
+function toSeoImageUrl(url: string): string {
+  if (!url) return url;
+  const renderUrl = url.replace(
+    '/storage/v1/object/public/',
+    '/storage/v1/render/image/public/'
+  );
+  if (renderUrl === url) return url;
+  const sep = renderUrl.includes('?') ? '&' : '?';
+  return `${renderUrl}${sep}format=origin&width=1200&height=1200&resize=cover&quality=80`;
+}
 import {
   getInitials,
   estimateReadingTime,
@@ -118,7 +129,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
     }
     loadAuthorAndPosts(muallif_slug);
     return () => {
-      removeJsonLd('muallif-jsonld');
+      removeJsonLd('page-jsonld');
       resetDocumentTitle();
       resetMetaDescription();
     };
@@ -196,8 +207,8 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
           ? {
               image: {
                 '@type': 'ImageObject',
-                url: aInfo.face_photo_url,
-                contentUrl: aInfo.face_photo_url,
+                url: toSeoImageUrl(aInfo.face_photo_url),
+                contentUrl: toSeoImageUrl(aInfo.face_photo_url),
                 caption: `${aInfo.full_name} — FanFaster muallifi`,
                 width: '1200',
                 height: '1200',
@@ -212,7 +223,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
           '@type': 'ProfilePage',
           mainEntity: personEntity,
         },
-        'muallif-jsonld',
+        'page-jsonld',
       );
     } catch (err) {
       console.error('Muallif sahifasi xatosi:', err);

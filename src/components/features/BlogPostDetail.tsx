@@ -5,6 +5,17 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { setDocumentTitle, setMetaDescription, setJsonLd, removeJsonLd, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
+
+function toSeoImageUrl(url: string): string {
+  if (!url) return url;
+  const renderUrl = url.replace(
+    '/storage/v1/object/public/',
+    '/storage/v1/render/image/public/'
+  );
+  if (renderUrl === url) return url;
+  const sep = renderUrl.includes('?') ? '&' : '?';
+  return `${renderUrl}${sep}format=origin&width=1200&height=1200&resize=cover&quality=80`;
+}
 import { getInitials, estimateReadingTime, formatDate, type AuthorInfo, extractErrorMessage, isValidNote, gradientForTitle } from '@/lib/blogUtils';
 import { AuthorAvatar } from '@/components/features/AuthorAvatar';
 
@@ -72,7 +83,7 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
     }
     loadPost(slug);
     return () => {
-      removeJsonLd('blog-post-jsonld');
+      removeJsonLd('page-jsonld');
       resetDocumentTitle();
       resetMetaDescription();
     };
@@ -210,8 +221,8 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
             ? {
                 image: {
                   '@type': 'ImageObject',
-                  url: author.face_photo_url,
-                  contentUrl: author.face_photo_url,
+                  url: toSeoImageUrl(author.face_photo_url),
+                  contentUrl: toSeoImageUrl(author.face_photo_url),
                   caption: `${authorName} — FanFaster muallifi`,
                 },
               }
@@ -220,8 +231,8 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
         datePublished: data.created_at ? new Date(data.created_at).toISOString() : new Date().toISOString(),
         publisher: { '@type': 'Organization', name: 'FanFaster' },
         mainEntityOfPage: `https://fanfaster.uz/blog/${data.slug}`,
-        ...(author?.face_photo_url ? { image: author.face_photo_url } : {}),
-      }, 'blog-post-jsonld');
+        ...(author?.face_photo_url ? { image: toSeoImageUrl(author.face_photo_url) } : {}),
+      }, 'page-jsonld');
     } catch (err) {
       console.error('Blog post yuklash xatosi:', err);
       setError(extractErrorMessage(err, "Blog postni yuklab bo'lmadi"));
