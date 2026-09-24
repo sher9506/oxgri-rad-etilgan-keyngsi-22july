@@ -180,24 +180,37 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
         ),
       );
       const pageUrl = `https://fanfaster.uz/blog/muallif/${aInfo.muallif_slug}`;
+      const personEntity: Record<string, unknown> = {
+        '@type': 'Person',
+        '@id': `${pageUrl}#person`,
+        name: aInfo.full_name,
+        url: pageUrl,
+        jobTitle: 'FanFaster Ustozi',
+        worksFor: {
+          '@type': 'Organization',
+          name: 'FanFaster',
+          url: 'https://fanfaster.uz',
+        },
+        ...(notePart ? { description: notePart } : {}),
+        ...(aInfo.face_photo_url
+          ? {
+              image: {
+                '@type': 'ImageObject',
+                url: aInfo.face_photo_url,
+                contentUrl: aInfo.face_photo_url,
+                caption: `${aInfo.full_name} — FanFaster muallifi`,
+                width: '1200',
+                height: '1200',
+              },
+            }
+          : {}),
+      };
+
       setJsonLd(
         {
           '@context': 'https://schema.org',
-          '@type': 'Person',
-          '@id': `${pageUrl}#person`,
-          name: aInfo.full_name,
-          url: pageUrl,
-          ...(notePart ? { description: notePart } : {}),
-          ...(aInfo.face_photo_url
-            ? {
-                image: {
-                  '@type': 'ImageObject',
-                  url: aInfo.face_photo_url,
-                  contentUrl: aInfo.face_photo_url,
-                  caption: `${aInfo.full_name} — FanFaster muallifi`,
-                },
-              }
-            : {}),
+          '@type': 'ProfilePage',
+          mainEntity: personEntity,
         },
         'muallif-jsonld',
       );
