@@ -60,3 +60,9 @@ verify_jwt = false
 
 [functions.proxy-file]
 verify_jwt = false
+
+[functions.import-qonun]
+verify_jwt = false
+
+[functions.case-research]
+verify_jwt = false

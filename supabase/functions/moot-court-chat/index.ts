@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: caseData, error: caseErr } = await supabaseAdmin
       .from('moot_court_cases')
-      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol, max_exchanges, difficulty, allow_retry, is_public_demo')
+      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol, max_exchanges, difficulty, allow_retry, is_public_demo, tadqiqot_holati, tasdiqlangan_moddalar, namunaviy_javob')
       .eq('id', caseId)
       .maybeSingle();
 
@@ -50,18 +50,30 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Fetch linked legal articles from qonun_moddalari (if any) ──
-    const { data: linkedArticles } = await supabaseAdmin
-      .from('moot_court_case_articles')
-      .select('modda_id, qonun_moddalari(id, kodeks_nomi, modda_raqami, modda_matni)')
-      .eq('case_id', caseId);
+    // ── Fetch confirmed articles from new research pipeline (tasdiqlangan_moddalar) ──
+    const confirmedArticles = (caseData.tasdiqlangan_moddalar || []) as {
+      qonun_kodi: string;
+      modda_raqami: string;
+      sarlavha: string;
+      bob_nomi: string;
+      matn: string;
+      lex_element_id: string | null;
+      hukm: string;
+    }[];
 
-    const articles: { kodeks_nomi: string; modda_raqami: string; modda_matni: string }[] = [];
-    if (linkedArticles) {
-      for (const la of linkedArticles) {
-        const m = la.qonun_moddalari as any;
-        if (m && m.modda_matni) {
-          articles.push({ kodeks_nomi: m.kodeks_nomi, modda_raqami: m.modda_raqami, modda_matni: m.modda_matni });
+    const sampleAnswer = caseData.namunaviy_javob || null;
+    const researchStatus = caseData.tadqiqot_holati || 'kutmoqda';
+
+    const articles: { kodeks_nomi: string; modda_raqami: string; modda_matni: string; sarlavha: string }[] = [];
+    if (confirmedArticles.length > 0) {
+      for (const a of confirmedArticles) {
+        if (a.matn) {
+          articles.push({
+            kodeks_nomi: a.qonun_kodi,
+            modda_raqami: a.modda_raqami,
+            modda_matni: a.matn,
+            sarlavha: a.sarlavha || '',
+          });
         }
       }
     }
@@ -142,13 +154,27 @@ qarshi dalillarni keltiring, talabaning argumentlariga e'tiroz bildiring. Profes
     }
 
     // ── Build article text block for system prompt ──
+    // New pipeline: use sample answer + article summaries (token-saving)
+    // Full article text is only included if research is not ready, or for the first message
     let articlesBlock = '';
-    if (articles.length > 0) {
+    if (articles.length > 0 && sampleAnswer) {
+      // Token-efficient mode: give AI the sample answer + article summaries (raqam + sarlavha + 1-2 gap)
+      articlesBlock = '\n\n## TASDIQLANGAN QONUN MODDALARI (namunaviy javob asosida):\n';
+      articlesBlock += `\n### Namunaviy javob:\n${sampleAnswer}\n`;
+      articlesBlock += '\n### Moddalar ro\'yxati (faqat raqam va sarlavha):\n';
+      for (const a of articles) {
+        articlesBlock += `- ${a.kodeks_nomi} ${a.modda_raqami}-modda: ${a.sarlavha}\n`;
+      }
+      articlesBlock += '\n## QATIY QOIDA: Yuqoridagi namunaviy javob va moddalar ro\'yxatiga tayaning. To\'liq modda matni talaba tilga olganda alohida beriladi. Hech qachon mavjud bo\'lmagan modda raqamini o\'ylab topma.';
+    } else if (articles.length > 0) {
+      // No sample answer — give full article text
       articlesBlock = '\n\n## TASDIQLANGAN QONUN MODDALARI (faqat shularga tayaning):\n';
       for (const a of articles) {
         articlesBlock += `\n### ${a.kodeks_nomi}, ${a.modda_raqami}-modda:\n${a.modda_matni}\n`;
       }
       articlesBlock += '\n## QATIY QOIDA: Sen faqat yuqorida berilgan qonun moddalariga tayanib javob berishing kerak. Agar javob boshqa modda talab qilsa-yu, u senga berilmagan bo\'lsa, "Bu masala bo\'yicha menga aniq modda berilmagan, umumiy tamoyillar asosida fikr bildiraman" deb ayt — hech qachon mavjud bo\'lmagan modda raqamini o\'ylab topib aytma.';
+    } else if (researchStatus === 'qisman' || researchStatus === 'xato') {
+      articlesBlock = '\n\n## DIQQAT: Tadqiqot holati: ' + researchStatus + '. Moddalar tasdiqlanmagan. Umumiy huquqiy bilim asosida javob bering, aniq modda raqamlari keltirmang.';
     }
 
     let systemPrompt = `Siz FanFaster platformasining Moot Court (sud jarayoni simulyatsiyasi) funksiyasidagi AI yordamchisiz.

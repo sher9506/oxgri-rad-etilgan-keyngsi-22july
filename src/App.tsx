@@ -52,6 +52,7 @@ const TezOradaSahifa = lazy(() => import('@/components/features/TezOradaSahifa')
 const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz'));
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
+const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
 
 // Admin Context
 interface AdminContextType {
@@ -317,7 +318,7 @@ function AppContent() {
   }, [pendingDeepLink, activeTab]);
 
   // Orqaga qaytish mumkin bo'lgan sahifalar (haqida sahifasiga qaytadi)
-  const BACK_TABS = ['sinov','natijalar','mavjud_testlar','mavjud_kazuslar','oqmatlar','savol_javob','profil','reyting','ustoz','testlar','royhat','oquvchilar','bot_yangilik','faceid','blog','blog_yozish','moot_court','qonun_bazasi'];
+  const BACK_TABS = ['sinov','natijalar','mavjud_testlar','mavjud_kazuslar','oqmatlar','savol_javob','profil','reyting','ustoz','testlar','royhat','oquvchilar','bot_yangilik','faceid','blog','blog_yozish','moot_court','qonun_bazasi','lex_uz_qidiruvchi'];
   const showBackBtn = BACK_TABS.includes(activeTab) && !isAdmin;
 
   const getPageTitle = () => {
@@ -382,6 +383,7 @@ function AppContent() {
       case 'blog_yozish': return <Suspense fallback={<LazyFallback />}><BlogYozish /></Suspense>;
       case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
+      case 'lex_uz_qidiruvchi': return <Suspense fallback={<LazyFallback />}><LexUzQidiruvchi /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
       case 'faceid': return <Suspense fallback={<LazyFallback />}><FaceIdPanel /></Suspense>;
       default: return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;

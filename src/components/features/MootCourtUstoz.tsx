@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Scale, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Loader2, MessageSquare, Star, Eye, ChevronLeft, Award, RotateCw, AlertCircle, ArrowRight, Search, ChevronDown, SlidersHorizontal, FolderOpen, BookMarked, Sparkles, CheckSquare, Square } from 'lucide-react';
+import { Scale, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Loader2, MessageSquare, Star, Eye, ChevronLeft, Award, RotateCw, AlertCircle, ArrowRight, Search, ChevronDown, SlidersHorizontal, FolderOpen, BookMarked, RefreshCw, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
@@ -25,6 +25,9 @@ interface MootCase {
   allow_retry: boolean;
   is_public_demo: boolean;
   created_at: string;
+  tadqiqot_holati?: string;
+  tasdiqlangan_moddalar?: any[];
+  namunaviy_javob?: string | null;
 }
 
 interface ScoreCriterion {
@@ -116,12 +119,7 @@ export default function MootCourtUstoz() {
   const [allowRetry, setAllowRetry] = useState(true);
   const [isPublicDemo, setIsPublicDemo] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Article search state (vector search)
-  const [searchingArticles, setSearchingArticles] = useState(false);
-  const [articleCandidates, setArticleCandidates] = useState<{ id: string; kodeks_nomi: string; modda_raqami: string; modda_matni: string; similarity: number; match_type?: string; manba_havola?: string | null; bob_nomi?: string | null }[]>([]);
-  const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
-  const [linkedArticles, setLinkedArticles] = useState<{ id: string; kodeks_nomi: string; modda_raqami: string }[]>([]);
+  const [triggeringResearch, setTriggeringResearch] = useState(false);
 
   const loadCases = useCallback(async () => {
     if (!user?.ustoz_id) return;
@@ -163,9 +161,6 @@ export default function MootCourtUstoz() {
     setAllowRetry(true);
     setIsPublicDemo(false);
     setEditingCase(null);
-    setArticleCandidates([]);
-    setSelectedArticleIds(new Set());
-    setLinkedArticles([]);
   };
 
   const handleSave = async () => {
@@ -198,12 +193,11 @@ export default function MootCourtUstoz() {
       if (error) {
         toast({ title: 'Xatolik', description: error.message, variant: 'destructive' });
       } else {
-        // Sync linked articles
-        await syncCaseArticles(editingCase.id);
-        toast({ title: 'Kazus yangilandi' });
+        toast({ title: 'Kazus yangilandi', description: 'Qonun moddalari tadqiqoti fon rejimida yangilanadi' });
         setShowForm(false);
         resetForm();
         loadCases();
+        triggerResearch(editingCase.id);
       }
     } else {
       const { data: newCase, error } = await supabase
@@ -212,95 +206,43 @@ export default function MootCourtUstoz() {
       if (error) {
         toast({ title: 'Xatolik', description: error.message, variant: 'destructive' });
       } else {
-        // Link selected articles
-        if (newCase?.id) await syncCaseArticles(newCase.id);
-        toast({ title: 'Yangi kazus yaratildi' });
+        toast({ title: 'Yangi kazus yaratildi', description: 'Qonun moddalari tadqiqoti fon rejimida boshlandi' });
         setShowForm(false);
         resetForm();
         loadCases();
+        if (newCase?.id) triggerResearch(newCase.id);
       }
     }
     setSaving(false);
   };
 
-  const syncCaseArticles = async (caseId: string) => {
-    // Delete existing links
-    await supabase.from('moot_court_case_articles').delete().eq('case_id', caseId);
-    // Insert new links
-    const ids = Array.from(selectedArticleIds);
-    if (ids.length > 0) {
-      await supabase.from('moot_court_case_articles').insert(
-        ids.map(modda_id => ({ case_id: caseId, modda_id }))
-      );
-    }
-  };
-
-  const searchRelevantArticles = async () => {
-    if (!tavsif.trim() || tavsif.trim().length < 20) {
-      toast({ title: 'Tavsif kamida 20 ta belgi bo\'lishi kerak', variant: 'destructive' });
-      return;
-    }
-    setSearchingArticles(true);
+  const triggerResearch = async (caseId: string) => {
+    setTriggeringResearch(true);
     try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/find-relevant-articles`, {
+      const res = await fetch(`${supabaseUrl}/functions/v1/case-research`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${supabaseAnonKey}`,
         },
-        body: JSON.stringify({ description: tavsif.trim(), limit: 10 }),
+        body: JSON.stringify({ caseId, action: 'run' }),
       });
       const data = await res.json();
-      if (data?.error) {
-        toast({ title: 'Qidiruv xatosi', description: data.error, variant: 'destructive' });
-      } else if (data?.articles) {
-        setArticleCandidates(data.articles);
-        // Auto-select only confirmed (tasdiqlangan) articles
-        const autoSelect = new Set(
-          data.articles.filter((a: any) => a.match_type === 'tasdiqlangan').map((a: any) => a.id)
-        );
-        // Merge with already selected
-        const merged = new Set([...Array.from(selectedArticleIds), ...Array.from(autoSelect)]);
-        setSelectedArticleIds(merged);
-        const confirmed = data.articles.filter((a: any) => a.match_type === 'tasdiqlangan').length;
-        const unconfirmed = data.articles.length - confirmed;
-        if (data.articles.length === 0) {
-          toast({ title: 'Mos modda topilmadi', description: 'AI hech qanday modda taklif qila olmadi' });
-        } else {
-          toast({
-            title: `${data.articles.length} ta nomzod modda topildi`,
-            description: `${confirmed} tasdiqlangan, ${unconfirmed} umumiy bilim — tasdiqlanganlar avtomatik tanlandi`
-          });
-        }
+      if (data?.success) {
+        const holat = data.holat || 'tayyor';
+        const tasdiqSoni = data.step2?.tasdiqlanganlar?.length || 0;
+        toast({
+          title: holat === 'tayyor' ? 'Tadqiqot tayyor' : holat === 'qisman' ? 'Tadqiqot qisman' : 'Tadqiqot xatosi',
+          description: holat === 'tayyor' ? `${tasdiqSoni} ta qonun moddasi tasdiqlandi` : holat === 'qisman' ? 'AI modda topa olmadi yoki bazada qonunlar yetarli emas' : data.error || 'Xatolik yuz berdi',
+        });
+        loadCases();
+      } else if (data?.error) {
+        toast({ title: 'Tadqiqot xatosi', description: data.error, variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Tarmoq xatosi', description: 'Vektor qidiruv amalga oshmadi', variant: 'destructive' });
+      toast({ title: 'Tarmoq xatosi', description: 'Tadqiqot amalga oshmadi', variant: 'destructive' });
     } finally {
-      setSearchingArticles(false);
-    }
-  };
-
-  const toggleArticleSelection = (id: string) => {
-    setSelectedArticleIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const loadLinkedArticles = async (caseId: string) => {
-    const { data } = await supabase
-      .from('moot_court_case_articles')
-      .select('modda_id, qonun_moddalari(id, kodeks_nomi, modda_raqami)')
-      .eq('case_id', caseId);
-    if (data) {
-      const ids = new Set(data.map((d: any) => d.modda_id));
-      setSelectedArticleIds(ids);
-      setLinkedArticles(data.map((d: any) => ({ id: d.modda_id, kodeks_nomi: d.qonun_moddalari?.kodeks_nomi || '', modda_raqami: d.qonun_moddalari?.modda_raqami || '' })));
-    } else {
-      setSelectedArticleIds(new Set());
-      setLinkedArticles([]);
+      setTriggeringResearch(false);
     }
   };
 
@@ -315,7 +257,6 @@ export default function MootCourtUstoz() {
     setDifficulty((c.difficulty as 'yengil' | 'orta' | 'qattiq') || 'orta');
     setAllowRetry(c.allow_retry !== false);
     setIsPublicDemo(c.is_public_demo === true);
-    loadLinkedArticles(c.id);
     setShowForm(true);
   };
 
@@ -608,108 +549,20 @@ export default function MootCourtUstoz() {
               />
             </div>
 
-            <div>
-              <Label className="text-xs font-bold">Tegishli qonun moddalari (vektor qidiruv)</Label>
-              <div className="mt-1.5 space-y-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={searchRelevantArticles}
-                  disabled={searchingArticles}
-                  className="rounded-xl w-full border-blue-200 text-blue-600 hover:bg-blue-50"
-                >
-                  {searchingArticles ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-                  Mos moddalarni topish (AI + baza tekshiruvi)
-                </Button>
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  AI kazus tavsifiga tayanib mos moddalarni taklif qiladi, keyin ular bazadagi tasdiqlangan moddalar bilan solishtiriladi. Tasdiqlangan moddalar yashil, tekshirilmaganlar sariq belgi bilan ko'rsatiladi.
-                </p>
-
-                {/* Selected articles */}
-                {selectedArticleIds.size > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {Array.from(selectedArticleIds).map(id => {
-                      const cand = articleCandidates.find(a => a.id === id);
-                      const linked = linkedArticles.find(a => a.id === id);
-                      const kodeks = cand?.kodeks_nomi || linked?.kodeks_nomi || '';
-                      const raqam = cand?.modda_raqami || linked?.modda_raqami || '';
-                      return (
-                        <Badge key={id} variant="default" className="text-[10px] cursor-pointer bg-blue-100 text-blue-700 border border-blue-200" onClick={() => toggleArticleSelection(id)}>
-                          {kodeks} {raqam}-modda ✕
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Candidates from vector search */}
-                {articleCandidates.length > 0 && (
-                  <div className="space-y-1.5 max-h-60 overflow-y-auto rounded-xl border border-gray-200/80 p-2 bg-gray-50/50">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nomzod moddalar (AI taklifi + baza tekshiruvi):</p>
-                    {articleCandidates.map(a => {
-                      const selected = selectedArticleIds.has(a.id);
-                      const isConfirmed = a.match_type === 'tasdiqlangan';
-                      return (
-                        <button
-                          key={a.id}
-                          type="button"
-                          onClick={() => toggleArticleSelection(a.id)}
-                          className={`w-full text-left p-2 rounded-lg transition-all duration-200 ${
-                            selected
-                              ? isConfirmed
-                                ? 'bg-emerald-50/80 border border-emerald-200'
-                                : 'bg-amber-50/80 border border-amber-200'
-                              : 'bg-white border border-transparent hover:border-gray-200'
-                          }`}
-                        >
-                          <div className="flex items-start gap-2">
-                            {selected ? <CheckSquare className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" /> : <Square className="h-4 w-4 text-gray-300 shrink-0 mt-0.5" />}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                                <span className="text-[10px] font-bold text-blue-700">{a.kodeks_nomi}</span>
-                                <span className="text-[10px] font-bold text-gray-600">{a.modda_raqami}-modda</span>
-                                {isConfirmed ? (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">✅ Tasdiqlangan</span>
-                                ) : (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">⚠️ Umumiy bilim</span>
-                                )}
-                                {a.match_type === 'hybrid' && (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">Gibrid</span>
-                                )}
-                                {a.match_type === 'vector' && (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">Semantik</span>
-                                )}
-                                {a.match_type === 'text' && (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">Kalit so'z</span>
-                                )}
-                              </div>
-                              <p className={`text-[10px] leading-tight line-clamp-2 ${
-                                isConfirmed ? 'text-gray-600' : 'text-amber-600/70 italic'
-                              }`}>{a.modda_matni}</p>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Already linked articles (when editing) */}
-                {linkedArticles.length > 0 && articleCandidates.length === 0 && (
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Biriktirilgan moddalar:</p>
-                    {linkedArticles.map(a => (
-                      <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg bg-blue-50/50 border border-blue-100">
-                        <BookMarked className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                        <span className="text-[11px] font-bold text-blue-700">{a.kodeks_nomi} {a.modda_raqami}-modda</span>
-                        <button type="button" onClick={() => toggleArticleSelection(a.id)} className="ml-auto text-gray-400 hover:text-red-500">
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            <div className="rounded-2xl border border-blue-100/80 bg-blue-50/40 p-3.5">
+              <div className="flex items-start gap-2">
+                <RefreshCw className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-blue-700">Qonun moddalari avtomatik tadqiq etiladi</p>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                    Kazus yaratilgach, sun'iy intellekt tavsifga tayanib mos qonun moddalarini nomzod qilib ko'rsatadi va ular bazadagi tasdiqlangan moddalar bilan solishtiriladi. Natija kazus kartasida ko'rinadi.
+                  </p>
+                  {editingCase?.tadqiqot_holati && (
+                    <div className="mt-2">
+                      <ResearchBadge holat={editingCase.tadqiqot_holati} moddalarSoni={editingCase.tasdiqlangan_moddalar?.length || 0} />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -721,7 +574,7 @@ export default function MootCourtUstoz() {
                 placeholder="Masalan: Fuqarolik kodeksi 123-modda, 124-modda"
                 className="mt-1.5 rounded-xl"
               />
-              <p className="text-[10px] text-gray-400 mt-1">Vektor qidiruv topa olmagan moddalar uchun qo'lda yozishingiz mumkin</p>
+              <p className="text-[10px] text-gray-400 mt-1">Avtomatik tadqiqot topa olmagan moddalar uchun qo'lda yozishingiz mumkin</p>
             </div>
 
             <div>
@@ -1016,6 +869,7 @@ export default function MootCourtUstoz() {
                                 {c.is_public_demo && (
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">Demo</span>
                                 )}
+                                <ResearchBadge holat={c.tadqiqot_holati || 'kutmoqda'} moddalarSoni={c.tasdiqlangan_moddalar?.length || 0} />
                               </div>
                             </div>
                           </div>
@@ -1029,6 +883,10 @@ export default function MootCourtUstoz() {
                               ) : (
                                 <><ToggleLeft className="h-3.5 w-3.5 mr-1 text-gray-400" /> Nofaol</>
                               )}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => triggerResearch(c.id)} disabled={triggeringResearch} className="text-xs h-7 rounded-lg">
+                              {triggeringResearch ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                              Tadqiqot
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)} className="text-xs h-7 text-red-500 hover:text-red-600 rounded-lg">
                               <Trash2 className="h-3 w-3 mr-1" /> O'chirish
@@ -1193,6 +1051,42 @@ export default function MootCourtUstoz() {
         )
       )}
     </div>
+  );
+}
+
+function ResearchBadge({ holat, moddalarSoni }: { holat: string; moddalarSoni: number }) {
+  if (holat === 'tayyor') {
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+        <CheckCircle className="h-2.5 w-2.5" /> {moddalarSoni} modda
+      </span>
+    );
+  }
+  if (holat === 'jarayonda') {
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 inline-flex items-center gap-1">
+        <Loader2 className="h-2.5 w-2.5 animate-spin" /> Tadqiqot
+      </span>
+    );
+  }
+  if (holat === 'qisman') {
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
+        <AlertCircle className="h-2.5 w-2.5" /> Qisman
+      </span>
+    );
+  }
+  if (holat === 'xato') {
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 inline-flex items-center gap-1">
+        <XCircle className="h-2.5 w-2.5" /> Xato
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 inline-flex items-center gap-1">
+      <Clock className="h-2.5 w-2.5" /> Kutmoqda
+    </span>
   );
 }
 

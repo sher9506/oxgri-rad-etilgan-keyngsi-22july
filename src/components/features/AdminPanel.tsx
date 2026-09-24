@@ -23,6 +23,8 @@ import Analitika from './Analitika';
 import AdminChunking from './AdminChunking';
 import AiKvotaWidget from './AiKvotaWidget';
 import QonunlarBazasi from './QonunlarBazasi';
+import LexUzQidiruvchi from './LexUzQidiruvchi';
+import QidiruvJurnali from './QidiruvJurnali';
 
 const ADMIN_CODE = 'adminchit';
 
@@ -1532,6 +1534,8 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
       {/* ─────────── CHUNKING ─────────── */}
       {view === 'chunking' && <AdminChunking />}
       {view === 'qonun_bazasi' && <QonunlarBazasi />}
+      {view === 'lex_uz_qidiruvchi' && <LexUzQidiruvchi />}
+      {view === 'qidiruv_jurnali' && <QidiruvJurnali />}
 
       {/* ─────────── SHIKOYATLAR ─────────── */}
       {view === 'shikoyatlar' && (
