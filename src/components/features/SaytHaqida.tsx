@@ -53,33 +53,6 @@ const staggerContainerFast = {
   visible: { transition: { staggerChildren: 0.06 } }
 };
 
-/* ═══ Animated Counter with easing ═══ */
-function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: string }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-50px' });
-
-  useEffect(() => {
-    if (!inView) return;
-    let start = 0;
-    const duration = 2000;
-    const startTime = performance.now();
-
-    const animate = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.floor(eased * target);
-      setCount(current);
-      if (progress < 1) requestAnimationFrame(animate);
-      else setCount(target);
-    };
-    requestAnimationFrame(animate);
-  }, [inView, target]);
-
-  return <span ref={ref}>{count.toLocaleString()}{suffix}</span>;
-}
-
 /* ═══ 3D Tilt Card Wrapper ═══ */
 function TiltCard({ children, className = '', intensity = 8 }: { children: React.ReactNode; className?: string; intensity?: number }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -928,6 +901,8 @@ function HeroGlassCard({
 /* ═══════════════════════════════════════════════════════════════════════════
    STATISTICS — Redesigned: glass cards, count-up, 3D icon plates, micro-visuals
    Sub-components: useCountUp, StatMicroVisual, StatCard, StatsGrid
+   Key fix: micro-visuals and CTA shapes are FULLY VISIBLE (opacity 0.6–1.0).
+   Touch devices get auto-animating tilt; only prefers-reduced-motion disables.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as [number, number, number, number];
@@ -942,6 +917,18 @@ function usePrefersReducedMotion() {
     return () => mq.removeEventListener('change', handler);
   }, []);
   return reduce;
+}
+
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: none), (pointer: coarse)');
+    const handler = () => setIsTouch(mq.matches);
+    handler();
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isTouch;
 }
 
 function useInViewOnce(margin = '-60px') {
@@ -972,25 +959,25 @@ function useCountUp(target: number, start: boolean, reduce: boolean, duration = 
   return value;
 }
 
-/* ── StatMicroVisual: per-card nooku animation (opacity ≤ 0.5) ── */
+/* ── StatMicroVisual: per-card decorative animation — FULLY VISIBLE ── */
 function StatMicroVisual({ type, accent, reduce }: { type: string; accent: string; reduce: boolean }) {
   if (type === 'users') {
     return (
-      <svg className="w-16 h-16" viewBox="0 0 64 64" aria-hidden="true" style={{ opacity: 0.4 }}>
+      <svg className="w-14 h-14" viewBox="0 0 64 64" aria-hidden="true" style={{ opacity: 0.9 }}>
         {[16, 24, 32].map((r, i) => (
           <motion.circle
             key={i}
             cx="32" cy="32" r={r}
-            fill="none" stroke={accent} strokeWidth="1"
-            strokeDasharray="3 5"
+            fill="none" stroke={accent} strokeWidth="2"
+            strokeDasharray="4 4"
             animate={reduce ? {} : { rotate: 360 }}
             transition={{ duration: 20 - i * 4, repeat: Infinity, ease: 'linear' }}
             style={{ transformOrigin: '32px 32px' }}
           />
         ))}
         <motion.circle
-          cx="32" cy="32" r="3" fill={accent}
-          animate={reduce ? {} : { scale: [1, 1.4, 1] }}
+          cx="32" cy="32" r="4" fill={accent}
+          animate={reduce ? {} : { scale: [1, 1.5, 1] }}
           transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
         />
       </svg>
@@ -999,21 +986,21 @@ function StatMicroVisual({ type, accent, reduce }: { type: string; accent: strin
 
   if (type === 'tests') {
     return (
-      <div className="relative w-16 h-16" aria-hidden="true" style={{ opacity: 0.35 }}>
+      <div className="relative w-14 h-14" aria-hidden="true" style={{ opacity: 0.9 }}>
         {[0, 1, 2].map(i => (
           <motion.div
             key={i}
-            className="absolute inset-0 rounded-lg border"
-            style={{ borderColor: accent, transform: `translateY(${i * 3}px) translateX(${i * 2}px)` }}
-            animate={reduce ? {} : { rotate: [0, -3 + i, 0] }}
+            className="absolute inset-0 rounded-lg border-2"
+            style={{ borderColor: accent, transform: `translateY(${i * 4}px) translateX(${i * 3}px)` }}
+            animate={reduce ? {} : { rotate: [0, -4 + i * 2, 0] }}
             transition={{ duration: 4 + i, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
           />
         ))}
         <motion.div
-          className="absolute top-1/2 left-1/2 w-6 h-0.5 rounded-full -translate-x-1/2 -translate-y-1/2"
+          className="absolute top-1/2 left-1/2 w-7 h-1 rounded-full -translate-x-1/2 -translate-y-1/2"
           style={{ background: accent }}
           animate={reduce ? {} : { scaleX: [0, 1, 0] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
         />
       </div>
     );
@@ -1032,22 +1019,22 @@ function StatMicroVisual({ type, accent, reduce }: { type: string; accent: strin
       return () => clearInterval(id);
     }, [reduce]);
     return (
-      <svg className="w-16 h-16" viewBox="0 0 64 64" aria-hidden="true" style={{ opacity: 0.4 }}>
+      <svg className="w-14 h-14" viewBox="0 0 64 64" aria-hidden="true" style={{ opacity: 0.9 }}>
         {edges.map(([a, b], i) => (
           <line
             key={i}
             x1={nodes[a].x} y1={nodes[a].y}
             x2={nodes[b].x} y2={nodes[b].y}
-            stroke={accent} strokeWidth="0.8" strokeOpacity="0.5"
+            stroke={accent} strokeWidth="1.5" strokeOpacity="0.7"
           />
         ))}
         {nodes.map((n, i) => (
           <motion.circle
             key={i}
             cx={n.x} cy={n.y}
-            r={i === lit ? 3 : 2}
+            r={i === lit ? 4 : 2.5}
             fill={accent}
-            animate={reduce ? {} : { opacity: i === lit ? [0.5, 1, 0.5] : 0.5 }}
+            animate={reduce ? {} : { opacity: i === lit ? [0.7, 1, 0.7] : 0.7 }}
             transition={{ duration: 1.5, ease: 'easeInOut' }}
           />
         ))}
@@ -1056,15 +1043,13 @@ function StatMicroVisual({ type, accent, reduce }: { type: string; accent: strin
   }
 
   if (type === 'satisfaction') {
-    const ref = useRef<SVGCircleElement>(null);
     const { ref: wrapRef, inView } = useInViewOnce('-30px');
-    const reduce2 = reduce;
     const R = 26;
     const CIRC = 2 * Math.PI * R;
-    const [dash, setDash] = useState(reduce2 ? 0 : CIRC);
+    const [dash, setDash] = useState(reduce ? 0 : CIRC);
     useEffect(() => {
       if (!inView) return;
-      if (reduce2) { setDash(0); return; }
+      if (reduce) { setDash(0); return; }
       const startTime = performance.now();
       const duration = 1600;
       const tick = (now: number) => {
@@ -1074,15 +1059,14 @@ function StatMicroVisual({ type, accent, reduce }: { type: string; accent: strin
         if (p < 1) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
-    }, [inView, reduce2, CIRC]);
+    }, [inView, reduce, CIRC]);
     return (
-      <div ref={wrapRef} className="w-16 h-16 relative" aria-hidden="true" style={{ opacity: 0.45 }}>
+      <div ref={wrapRef} className="w-14 h-14 relative" aria-hidden="true" style={{ opacity: 0.95 }}>
         <svg className="w-full h-full -rotate-90" viewBox="0 0 64 64">
-          <circle cx="32" cy="32" r={R} fill="none" stroke={accent} strokeOpacity="0.15" strokeWidth="3" />
+          <circle cx="32" cy="32" r={R} fill="none" stroke={accent} strokeOpacity="0.2" strokeWidth="4" />
           <circle
-            ref={ref}
             cx="32" cy="32" r={R}
-            fill="none" stroke={accent} strokeWidth="3"
+            fill="none" stroke={accent} strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray={CIRC}
             strokeDashoffset={dash}
@@ -1095,7 +1079,6 @@ function StatMicroVisual({ type, accent, reduce }: { type: string; accent: strin
   return null;
 }
 
-/* ── StatCard: glass card with 3D icon plate, micro-visual, count-up ── */
 type StatItem = {
   icon: React.ComponentType<{ className?: string }>;
   value: number;
@@ -1106,7 +1089,11 @@ type StatItem = {
   microType: string;
 };
 
-function StatCard({ stat, index, reduce }: { stat: StatItem; index: number; reduce: boolean }) {
+/* ── StatCard: glass card with 3D icon plate, micro-visual, count-up ──
+   Touch devices: auto-sway tilt (pointer parallax disabled, but animation runs).
+   Desktop: pointer tilt + spotlight follow.
+   Reduced-motion: everything static, no tilt. */
+function StatCard({ stat, index, reduce, isTouch }: { stat: StatItem; index: number; reduce: boolean; isTouch: boolean }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const { ref: inViewRef, inView } = useInViewOnce('-30px');
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
@@ -1115,21 +1102,39 @@ function StatCard({ stat, index, reduce }: { stat: StatItem; index: number; redu
   const count = useCountUp(stat.value, inView, reduce);
   const Icon = stat.icon;
 
+  /* Touch: gentle auto-sway — not pointer-driven, not reduced-motion */
+  const touchTilt = useRef({ x: 0, y: 0 });
+  const [autoTilt, setAutoTilt] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    if (reduce || !isTouch) return;
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = (now - start) / 1000;
+      setAutoTilt({ x: Math.sin(t * 0.8 + index) * 3, y: Math.cos(t * 0.6 + index) * 3 });
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [reduce, isTouch, index]);
+
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!cardRef.current || reduce) return;
+    if (!cardRef.current || reduce || isTouch) return;
     const rect = cardRef.current.getBoundingClientRect();
     const dx = (e.clientX - rect.left) / rect.width;
     const dy = (e.clientY - rect.top) / rect.height;
     setTilt({ x: -(dy - 0.5) * 6, y: (dx - 0.5) * 6 });
     setSpotX(dx * 100);
     setSpotY(dy * 100);
-  }, [reduce]);
+  }, [reduce, isTouch]);
 
   const handleMouseLeave = useCallback(() => {
     setTilt({ x: 0, y: 0 });
     setSpotX(50);
     setSpotY(50);
   }, []);
+
+  const effectiveTilt = isTouch ? autoTilt : tilt;
 
   return (
     <motion.div
@@ -1145,31 +1150,31 @@ function StatCard({ stat, index, reduce }: { stat: StatItem; index: number; redu
         onMouseLeave={handleMouseLeave}
         className="relative h-full rounded-2xl border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm overflow-hidden transition-shadow duration-500 hover:shadow-xl"
         style={{
-          transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-          transition: 'transform 0.2s ease-out',
+          transform: `perspective(800px) rotateX(${effectiveTilt.x}deg) rotateY(${effectiveTilt.y}deg)`,
+          transition: isTouch ? 'none' : 'transform 0.2s ease-out',
           transformStyle: 'preserve-3d',
         }}
       >
-        {/* Pointer-following radial highlight */}
+        {/* Pointer-following radial highlight — visible 12% alpha */}
         <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
-            background: `radial-gradient(180px circle at ${spotX}% ${spotY}%, ${stat.accent}12, transparent 60%)`,
+            background: `radial-gradient(200px circle at ${spotX}% ${spotY}%, ${stat.accent}18, transparent 60%)`,
           }}
         />
 
         <div className="p-5 flex flex-col items-center text-center gap-3 relative z-10" style={{ transformStyle: 'preserve-3d' }}>
-          {/* 3D icon plate — breathing + pointer parallax */}
+          {/* 3D icon plate — breathing */}
           <motion.div
             className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center shadow-lg`}
             style={{ transform: 'translateZ(8px)' }}
-            animate={reduce ? {} : { translateZ: [8, 10, 8] }}
+            animate={reduce ? {} : { translateZ: [8, 11, 8] }}
             transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: index * 0.5 }}
           >
             <Icon className="h-5 w-5 text-white" />
           </motion.div>
 
-          {/* Micro-visual */}
+          {/* Micro-visual — top-right corner, fully visible */}
           <div className="absolute top-3 right-3">
             <StatMicroVisual type={stat.microType} accent={stat.accent} reduce={reduce} />
           </div>
@@ -1190,17 +1195,17 @@ function StatCard({ stat, index, reduce }: { stat: StatItem; index: number; redu
 }
 
 /* ── StatsGrid: 4 stat cards with shared pointer spotlight ── */
-function StatsGrid({ stats, reduce }: { stats: StatItem[]; reduce: boolean }) {
+function StatsGrid({ stats, reduce, isTouch }: { stats: StatItem[]; reduce: boolean; isTouch: boolean }) {
   const gridRef = useRef<HTMLDivElement>(null);
   const [spotX, setSpotX] = useState(50);
   const [spotY, setSpotY] = useState(50);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!gridRef.current || reduce) return;
+    if (!gridRef.current || reduce || isTouch) return;
     const rect = gridRef.current.getBoundingClientRect();
     setSpotX(((e.clientX - rect.left) / rect.width) * 100);
     setSpotY(((e.clientY - rect.top) / rect.height) * 100);
-  }, [reduce]);
+  }, [reduce, isTouch]);
 
   return (
     <div
@@ -1208,15 +1213,17 @@ function StatsGrid({ stats, reduce }: { stats: StatItem[]; reduce: boolean }) {
       onMouseMove={handleMouseMove}
       className="relative grid grid-cols-2 md:grid-cols-4 gap-4"
     >
-      {/* Shared pointer-following radial highlight across all cards */}
-      <div
-        className="absolute inset-0 pointer-events-none rounded-3xl"
-        style={{
-          background: `radial-gradient(400px circle at ${spotX}% ${spotY}%, rgba(56,189,248,0.06), transparent 50%)`,
-        }}
-      />
+      {/* Shared pointer-following radial highlight — visible 10% alpha */}
+      {!isTouch && (
+        <div
+          className="absolute inset-0 pointer-events-none rounded-3xl transition-all duration-300"
+          style={{
+            background: `radial-gradient(400px circle at ${spotX}% ${spotY}%, rgba(56,189,248,0.10), transparent 50%)`,
+          }}
+        />
+      )}
       {stats.map((s, i) => (
-        <StatCard key={i} stat={s} index={i} reduce={reduce} />
+        <StatCard key={i} stat={s} index={i} reduce={reduce} isTouch={isTouch} />
       ))}
     </div>
   );
@@ -1225,14 +1232,16 @@ function StatsGrid({ stats, reduce }: { stats: StatItem[]; reduce: boolean }) {
 /* ═══════════════════════════════════════════════════════════════════════════
    CTA BANNER — Redesigned: raised plate, sheen, concentric rings, magnetic button
    Sub-components: CtaRingsIcon, CtaBanner
+   Floating shapes: opacity 0.25–0.35 (fully visible, not ghostly).
+   Touch: auto-pulse rings; Desktop: hover to collapse rings.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function CtaRingsIcon({ reduce }: { reduce: boolean }) {
+function CtaRingsIcon({ reduce, isTouch }: { reduce: boolean; isTouch: boolean }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div
       className="relative w-14 h-14 flex items-center justify-center"
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => !isTouch && setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {[0, 1, 2].map(i => (
@@ -1243,11 +1252,11 @@ function CtaRingsIcon({ reduce }: { reduce: boolean }) {
             borderColor: '#f59e0b',
             width: `${(i + 1) * 14}px`,
             height: `${(i + 1) * 14}px`,
-            opacity: 0.7 - i * 0.2,
+            opacity: 0.8 - i * 0.15,
           }}
           animate={reduce ? {} : hovered
             ? { scale: 0.3, opacity: 0 }
-            : { scale: [1, 1.08, 1], opacity: [0.7 - i * 0.2, 0.5 - i * 0.15, 0.7 - i * 0.2] }
+            : { scale: [1, 1.1, 1], opacity: [0.8 - i * 0.15, 0.6 - i * 0.1, 0.8 - i * 0.15] }
           }
           transition={reduce ? {} : hovered
             ? { duration: 0.4, ease: EASE_OUT_EXPO }
@@ -1262,13 +1271,13 @@ function CtaRingsIcon({ reduce }: { reduce: boolean }) {
   );
 }
 
-function CtaBanner({ reduce, onCta }: { reduce: boolean; onCta: () => void }) {
+function CtaBanner({ reduce, isTouch, onCta }: { reduce: boolean; isTouch: boolean; onCta: () => void }) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [pressed, setPressed] = useState(false);
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!btnRef.current || reduce) return;
+    if (!btnRef.current || reduce || isTouch) return;
     const rect = btnRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left - rect.width / 2;
     const y = e.clientY - rect.top - rect.height / 2;
@@ -1282,20 +1291,26 @@ function CtaBanner({ reduce, onCta }: { reduce: boolean; onCta: () => void }) {
       viewport={{ once: true, margin: '-60px' }}
       transition={{ duration: 0.6, ease: EASE_OUT_EXPO }}
     >
-      <div className="relative rounded-3xl border border-amber-100/80 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 overflow-hidden shadow-md">
-        {/* Floating background shapes */}
+      <div className="relative rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 overflow-hidden shadow-md">
+        {/* Floating background shapes — VISIBLE (0.25–0.35) */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
           <motion.div
-            className="absolute top-[15%] right-[10%] w-24 h-24 rounded-full border-2 border-amber-300"
-            style={{ opacity: 0.07 }}
+            className="absolute top-[15%] right-[10%] w-24 h-24 rounded-full border-2 border-amber-400"
+            style={{ opacity: 0.25 }}
             animate={reduce ? {} : { y: [0, -15, 0], rotate: [0, 10, 0] }}
             transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
           />
           <motion.div
             className="absolute bottom-[10%] left-[8%] w-16 h-16 rounded-lg border-2 border-orange-400"
-            style={{ opacity: 0.08 }}
+            style={{ opacity: 0.3 }}
             animate={reduce ? {} : { y: [0, 12, 0], rotate: [0, -8, 0] }}
             transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+          />
+          <motion.div
+            className="absolute top-[60%] right-[25%] w-12 h-12 rounded-full border-2 border-yellow-400"
+            style={{ opacity: 0.25 }}
+            animate={reduce ? {} : { y: [0, 10, 0], rotate: [0, 15, 0] }}
+            transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
           />
         </div>
 
@@ -1304,23 +1319,23 @@ function CtaBanner({ reduce, onCta }: { reduce: boolean; onCta: () => void }) {
           <motion.div
             className="absolute inset-0 pointer-events-none"
             style={{
-              background: 'linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.35) 50%, transparent 65%)',
+              background: 'linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.4) 50%, transparent 65%)',
             }}
             animate={{ x: ['-100%', '200%'] }}
             transition={{ duration: 2, repeat: Infinity, repeatDelay: 5, ease: 'easeInOut' }}
           />
         )}
 
-        {/* Existing ambient glow */}
+        {/* Ambient glow */}
         <motion.div
-          className="absolute top-0 right-0 w-64 h-64 rounded-full bg-orange-200/20 blur-3xl translate-x-1/3 -translate-y-1/3"
+          className="absolute top-0 right-0 w-64 h-64 rounded-full bg-orange-200/30 blur-3xl translate-x-1/3 -translate-y-1/3"
           animate={reduce ? {} : { scale: [1, 1.2, 1] }}
           transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
         />
 
         <div className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-5 relative z-10">
           <div className="flex items-center gap-4">
-            <CtaRingsIcon reduce={reduce} />
+            <CtaRingsIcon reduce={reduce} isTouch={isTouch} />
             <div>
               <h2 className="text-lg font-black text-slate-900">Bilim darajangizni aniqlang</h2>
               <p className="text-sm text-slate-500 font-medium">Ro'yxatdan o'tib, shaxsiy o'quv rejangizni yarating</p>
@@ -1360,6 +1375,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
 
   const heroRef = useRef<HTMLDivElement>(null);
   const reduce = usePrefersReducedMotion();
+  const isTouch = useIsTouch();
 
   const { scrollYProgress } = useScroll();
 
@@ -1644,7 +1660,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
           STATISTICS — Animated counters with glass cards
           ═══════════════════════════════════════════════════════════════════ */}
       <section className="mb-12">
-        <StatsGrid stats={stats} reduce={reduce} />
+        <StatsGrid stats={stats} reduce={reduce} isTouch={isTouch} />
       </section>
 
       {/* ═══════════════════════════════════════════════════════════════════
@@ -1688,7 +1704,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
         </section>
       ) : (
         <section className="mb-12">
-          <CtaBanner reduce={reduce} onCta={() => window.dispatchEvent(new Event('open-login-modal'))} />
+          <CtaBanner reduce={reduce} isTouch={isTouch} onCta={() => window.dispatchEvent(new Event('open-login-modal'))} />
         </section>
       )}
 
