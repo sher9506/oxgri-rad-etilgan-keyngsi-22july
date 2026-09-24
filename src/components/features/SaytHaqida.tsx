@@ -7,7 +7,8 @@ import {
   ChevronRight, Mail, Phone,
   GraduationCap, Play, TrendingUp, Target, Brain,
   HelpCircle, Lock, Info, ChevronDown,
-  CheckCircle2, Quote, Star, Compass, Eye, Lightbulb, Heart
+  CheckCircle2, Quote, Star, Compass, Eye, Lightbulb, Heart,
+  Send, Link2, LogOut, Lock
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLang } from '@/contexts/LangContext';
@@ -237,6 +238,496 @@ function FormatMatn({ text }: { text: string }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   "QANDAY ISHLAYDI?" — Redesigned section
+   Sub-components: ConnectingLine, PhoneMockup, HowItWorksSection
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+type HowItWorksStep = {
+  num: string;
+  title: string;
+  desc: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  glow: string;
+  accent: string;
+};
+
+const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
+  {
+    num: '01',
+    title: 'Telegram botni oching',
+    desc: "Botni oching va «Start» tugmasini bosing.",
+    icon: Send,
+    color: 'from-blue-500 to-cyan-500',
+    glow: 'shadow-blue-500/25',
+    accent: '#3b82f6',
+  },
+  {
+    num: '02',
+    title: 'Havolani bosing',
+    desc: "Bot sizga profilingizga kirish havolasini yuboradi. Havolani bosasiz va profilingiz ochiladi.",
+    icon: Link2,
+    color: 'from-cyan-500 to-teal-500',
+    glow: 'shadow-cyan-500/25',
+    accent: '#06b6d4',
+  },
+  {
+    num: '03',
+    title: 'Bir marta kirasiz',
+    desc: "Bu ishni har safar qilish shart emas. Profilingiz qurilmangizda saqlanib qoladi. O'zingiz «Chiqish»ni bosmaguningizcha qayta kirmaysiz.",
+    icon: Lock,
+    color: 'from-sky-500 to-blue-500',
+    glow: 'shadow-sky-500/25',
+    accent: '#0ea5e9',
+  },
+  {
+    num: '04',
+    title: "O'rganing va natijani ko'ring",
+    desc: "Kursni tanlang, savollarga javob yozing. Sun'iy intellekt javobingizni tahlil qilib baho beradi, statistikangiz esa zaif tomonlaringizni ko'rsatadi.",
+    icon: TrendingUp,
+    color: 'from-emerald-500 to-teal-500',
+    glow: 'shadow-emerald-500/25',
+    accent: '#10b981',
+  },
+];
+
+/* ── ConnectingLine: SVG stroke that draws itself when in view ── */
+function ConnectingLine({ activeStep, isMobile }: { activeStep: number; isMobile: boolean }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-60px' });
+  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (isMobile) {
+    return (
+      <svg ref={ref} className="absolute left-[27px] top-0 bottom-0 w-2 pointer-events-none" aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 2 100">
+        <line x1="1" y1="0" x2="1" y2="100" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+        <line
+          x1="1" y1="0" x2="1" y2="100"
+          stroke="url(#vline-grad)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          pathLength={1}
+          strokeDasharray={1}
+          strokeDashoffset={reduce ? 0 : inView ? 1 - (activeStep + 1) / 4 : 1}
+          style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.22,1,0.36,1)' }}
+        />
+        <defs>
+          <linearGradient id="vline-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" />
+            <stop offset="50%" stopColor="#06b6d4" />
+            <stop offset="100%" stopColor="#10b981" />
+          </linearGradient>
+        </defs>
+      </svg>
+    );
+  }
+
+  return (
+    <svg ref={ref} className="absolute top-[44px] left-0 right-0 h-2 pointer-events-none" aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 100 2">
+      <line x1="0" y1="1" x2="100" y2="1" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+      <line
+        x1="0" y1="1" x2="100" y2="1"
+        stroke="url(#hline-grad)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        pathLength={1}
+        strokeDasharray={1}
+        strokeDashoffset={reduce ? 0 : inView ? 1 - (activeStep + 1) / 4 : 1}
+        style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.22,1,0.36,1)' }}
+      />
+      <defs>
+        <linearGradient id="hline-grad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#3b82f6" />
+          <stop offset="33%" stopColor="#06b6d4" />
+          <stop offset="66%" stopColor="#0ea5e9" />
+          <stop offset="100%" stopColor="#10b981" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+/* ── PhoneMockup: CSS 3D phone with animated scenes synced to activeStep ── */
+function PhoneMockup({ activeStep }: { activeStep: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = useState({ x: -8, y: 12 });
+  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / (rect.width / 2);
+    const dy = (e.clientY - cy) / (rect.height / 2);
+    setTilt({ x: -8 + -dy * 6, y: 12 + dx * 8 });
+  }, []);
+
+  const handleMouseLeave = useCallback(() => setTilt({ x: -8, y: 12 }), []);
+
+  const scene = (idx: number) => (
+    <motion.div
+      key={idx}
+      initial={reduce ? false : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="absolute inset-0 flex flex-col"
+    >
+      {idx === 0 && (
+        <div className="flex flex-col h-full p-3 gap-2">
+          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+              <Send className="w-2.5 h-2.5 text-white" />
+            </div>
+            <span className="text-[8px] font-bold text-slate-700">FanFaster Bot</span>
+          </div>
+          <div className="flex-1 flex flex-col justify-end gap-1.5">
+            <div className="self-end max-w-[70%] bg-blue-500 text-white text-[7px] rounded-xl rounded-tr-sm px-2 py-1.5 font-medium">
+              /start
+            </div>
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.4 }}
+              className="self-start max-w-[80%] bg-slate-100 text-slate-700 text-[7px] rounded-xl rounded-tl-sm px-2 py-1.5"
+            >
+              Assalomu alaykum! Profilingizga kirish uchun tugmani bosing.
+            </motion.div>
+            <motion.button
+              initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.7, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="self-start max-w-[80%] bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-[7px] font-bold rounded-lg px-2.5 py-1.5 shadow-sm flex items-center gap-1"
+            >
+              <Link2 className="w-2.5 h-2.5" /> Profilga kirish
+            </motion.button>
+          </div>
+        </div>
+      )}
+      {idx === 1 && (
+        <div className="flex flex-col h-full p-3 gap-1.5">
+          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
+            <div>
+              <div className="text-[7px] font-bold text-slate-800 leading-tight">FanFaster</div>
+              <div className="text-[6px] text-emerald-500 font-medium">online</div>
+            </div>
+          </div>
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            className="flex-1 flex flex-col items-center justify-center gap-1"
+          >
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-md">
+              <GraduationCap className="w-4 h-4 text-white" />
+            </div>
+            <div className="text-[8px] font-black text-slate-800">Xush kelibsiz!</div>
+            <div className="text-[6px] text-slate-400">O'quvchi kabineti</div>
+          </motion.div>
+        </div>
+      )}
+      {idx === 2 && (
+        <div className="flex flex-col h-full p-3 gap-1.5">
+          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
+            <div className="text-[7px] font-bold text-slate-800">FanFaster</div>
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center gap-2">
+            <motion.div
+              initial={reduce ? false : { scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              className="relative"
+            >
+              <div className="w-12 h-12 rounded-full border-2 border-emerald-400 flex items-center justify-center bg-emerald-50">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+              </div>
+              <motion.div
+                animate={reduce ? {} : { scale: [1, 1.3, 1], opacity: [0.4, 0, 0.4] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                className="absolute inset-0 rounded-full border-2 border-emerald-400"
+              />
+            </motion.div>
+            <div className="text-[7px] font-bold text-slate-600 text-center leading-tight">
+              Profil saqlandi<br />
+              <span className="text-[6px] text-slate-400 font-normal">Chiqishni bosmaguningizcha qoladi</span>
+            </div>
+            <div className="flex items-center gap-1 text-[6px] text-slate-300 mt-0.5">
+              <LogOut className="w-2.5 h-2.5" />
+              <span>Chiqish</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {idx === 3 && (
+        <div className="flex flex-col h-full p-3 gap-1.5">
+          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
+            <div className="text-[7px] font-bold text-slate-800">Kurs · Modul 1</div>
+          </div>
+          <div className="flex-1 flex flex-col gap-1.5">
+            <div className="bg-slate-50 rounded-lg p-1.5 border border-slate-100">
+              <div className="text-[6px] text-slate-400 mb-0.5">Savol</div>
+              <div className="text-[7px] text-slate-700 leading-tight">Huquqning asosiy tushunchasi nima?</div>
+              <div className="text-[6px] text-slate-400 mt-1 mb-0.5">Javob</div>
+              <div className="text-[6px] text-slate-600 leading-tight">Huquq — bu davlat tomonidan...</div>
+            </div>
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.4 }}
+              className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-1.5 border border-emerald-100 flex items-center gap-1.5"
+            >
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shrink-0">
+                <Brain className="w-3 h-3 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="text-[6px] font-bold text-emerald-700">AI bahosi: 92/100</div>
+                <div className="h-1 bg-emerald-100 rounded-full mt-0.5 overflow-hidden">
+                  <motion.div
+                    initial={reduce ? { width: '92%' } : { width: '0%' }}
+                    animate={{ width: '92%' }}
+                    transition={{ delay: 0.5, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
+                  />
+                </div>
+              </div>
+            </motion.div>
+            <motion.div
+              initial={reduce ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.6, duration: 0.4 }}
+              className="flex items-end gap-[2px] h-5 px-0.5"
+            >
+              {[40, 55, 48, 70, 62, 85, 92].map((h, i) => (
+                <motion.div
+                  key={i}
+                  initial={reduce ? { height: `${h}%` } : { height: '0%' }}
+                  animate={{ height: `${h}%` }}
+                  transition={{ delay: 0.7 + i * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className={`flex-1 rounded-sm ${i >= 5 ? 'bg-gradient-to-t from-emerald-500 to-teal-400' : 'bg-slate-200'}`}
+                />
+              ))}
+            </motion.div>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+
+  return (
+    <div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className="relative"
+      style={{ perspective: '900px' }}
+    >
+      <div
+        className="relative mx-auto"
+        style={{
+          transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+          transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
+          transformStyle: 'preserve-3d',
+        }}
+      >
+        {/* Phone frame */}
+        <div className="relative w-[180px] h-[360px] rounded-[2rem] bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl p-2">
+          {/* Screen */}
+          <div className="relative w-full h-full rounded-[1.5rem] bg-white overflow-hidden" style={{ transform: 'translateZ(1px)' }}>
+            {/* Notch */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-3 bg-slate-800 rounded-b-xl z-10" />
+
+            <AnimatePresence mode="wait">
+              {scene(activeStep)}
+            </AnimatePresence>
+
+            {/* Home indicator */}
+            <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-slate-300 rounded-full" />
+          </div>
+        </div>
+
+        {/* Reflection shadow */}
+        <div
+          className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-[140px] h-8 rounded-full blur-xl"
+          style={{ background: 'radial-gradient(ellipse, rgba(56,189,248,0.15), transparent 70%)' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ── FloatingBackgroundShapes: very subtle 3D wire shapes ── */
+function FloatingBackgroundShapes() {
+  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      <motion.div
+        animate={reduce ? {} : { y: [0, -20, 0], rotate: [0, 6, 0] }}
+        transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute top-[10%] left-[8%] w-20 h-20 opacity-[0.07]"
+        style={{ transformStyle: 'preserve-3d' }}
+      >
+        <div className="w-full h-full border-2 border-blue-400 rounded-lg" style={{ transform: 'rotateY(35deg) rotateX(15deg)' }} />
+      </motion.div>
+      <motion.div
+        animate={reduce ? {} : { y: [0, 15, 0], rotate: [0, -8, 0] }}
+        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+        className="absolute top-[60%] right-[10%] w-16 h-16 opacity-[0.08]"
+      >
+        <div className="w-full h-full border-2 border-cyan-400 rounded-lg" style={{ transform: 'rotateY(-30deg) rotateZ(10deg)' }} />
+      </motion.div>
+      <motion.div
+        animate={reduce ? {} : { y: [0, -12, 0], rotate: [0, 4, 0] }}
+        transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
+        className="absolute top-[30%] right-[20%] w-12 h-12 opacity-[0.06]"
+      >
+        <div className="w-full h-full border-2 border-emerald-400 rounded-lg" style={{ transform: 'rotateX(25deg) rotateY(20deg)' }} />
+      </motion.div>
+    </div>
+  );
+}
+
+/* ── HowItWorksSection: main composed section ── */
+function HowItWorksSection() {
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const [activeStep, setActiveStep] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  const inView = useInView(sectionRef, { margin: '-80px' });
+  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    setIsMobile(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  // Auto-advance the active step when in view (unless reduced motion)
+  useEffect(() => {
+    if (!inView || reduce) return;
+    if (isMobile && window.matchMedia('(hover: none)').matches) {
+      // On touch mobile, auto-advance too
+    }
+    const interval = setInterval(() => {
+      setActiveStep((prev) => (prev + 1) % 4);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [inView, reduce, isMobile]);
+
+  return (
+    <section className="mb-12" ref={sectionRef}>
+      <div className="relative">
+        <FloatingBackgroundShapes />
+
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: '-80px' }}
+          className="relative z-10 space-y-10"
+        >
+          {/* Heading */}
+          <motion.div variants={fadeUp} className="text-center space-y-2">
+            <p className="text-xs font-black text-blue-600 uppercase tracking-[0.35em]">Jarayon</p>
+            <h2 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900">Qanday ishlaydi?</h2>
+            <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+              Bir marta kirasiz — qolganini FanFaster o'zi eslab qoladi.
+            </p>
+          </motion.div>
+
+          {/* Desktop: phone left, steps right | Mobile: phone top, steps below */}
+          <div className="flex flex-col md:flex-row gap-8 md:gap-12 items-center md:items-start justify-center">
+            {/* Phone mockup */}
+            <motion.div
+              variants={fadeUp}
+              className="shrink-0 md:sticky md:top-8"
+            >
+              <PhoneMockup activeStep={activeStep} />
+            </motion.div>
+
+            {/* Steps */}
+            <motion.div variants={fadeUp} className="flex-1 max-w-2xl w-full">
+              <div className="relative">
+                <ConnectingLine activeStep={activeStep} isMobile={isMobile} />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {HOW_IT_WORKS_STEPS.map((s, i) => {
+                    const isActive = i === activeStep;
+                    const Icon = s.icon;
+                    return (
+                      <motion.div
+                        key={i}
+                        variants={fadeUp}
+                        onMouseEnter={() => setActiveStep(i)}
+                        onClick={() => setActiveStep(i)}
+                        className="relative cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setActiveStep(i);
+                          }
+                        }}
+                        aria-label={`${s.num}-qadam: ${s.title}`}
+                      >
+                        <div
+                          className={`relative rounded-2xl border bg-white/80 backdrop-blur-xl overflow-hidden transition-all duration-500`}
+                          style={{
+                            borderColor: isActive ? s.accent + '40' : 'rgba(255,255,255,0.6)',
+                            boxShadow: isActive ? `0 8px 30px ${s.accent}15` : '0 1px 3px rgba(0,0,0,0.04)',
+                            transform: isActive ? 'translateY(-2px)' : 'translateY(0)',
+                          }}
+                        >
+                          <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${s.color} transition-opacity duration-500`} style={{ opacity: isActive ? 1 : 0.3 }} />
+
+                          <div className="p-5 flex flex-col gap-3 pt-6" style={{ transformStyle: 'preserve-3d' }}>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] font-black tabular-nums" style={{ color: isActive ? s.accent : '#cbd5e1' }}>
+                                {s.num}
+                              </span>
+                              <div
+                                className={`w-10 h-10 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-lg ${s.glow} transition-transform duration-500`}
+                                style={{
+                                  transform: isActive ? 'translateZ(12px) scale(1.05)' : 'translateZ(4px) scale(1)',
+                                }}
+                              >
+                                <Icon className="h-5 w-5 text-white" />
+                              </div>
+                              {/* Node dot */}
+                              <div className="ml-auto flex items-center gap-2">
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full transition-all duration-500"
+                                  style={{
+                                    background: isActive ? s.accent : '#e2e8f0',
+                                    boxShadow: isActive ? `0 0 8px ${s.accent}80` : 'none',
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <h3 className="font-black text-slate-900 text-sm mb-1.5">{s.title}</h3>
+                              <p className="text-xs text-slate-500 leading-relaxed">{s.desc}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -457,12 +948,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
     { icon: BookOpen, value: 98, suffix: '%', label: 'Mamnunlik darajasi', color: 'from-emerald-500 to-teal-500' }
   ];
 
-  const steps = [
-    { step: '01', icon: User, title: "Ro'yxatdan o'ting", desc: "Telegram bot orqali bir daqiqada hisob yarating.", color: 'from-blue-500 to-cyan-500', glow: 'shadow-blue-500/30' },
-    { step: '02', icon: BookOpen, title: 'Kursni tanlang', desc: "Modulli kurslar va o'quv materiallaridan kerakligini toping.", color: 'from-cyan-500 to-teal-500', glow: 'shadow-cyan-500/30' },
-    { step: '03', icon: Brain, title: "O'rganing va yozing", desc: "Sun'iy intellekt javoblaringizni tahlil qilib to'liq baho beradi.", color: 'from-sky-500 to-blue-500', glow: 'shadow-sky-500/30' },
-    { step: '04', icon: TrendingUp, title: "Natijani ko'ring", desc: "Statistika va zaif tomonlaringizni mustahkamlang.", color: 'from-emerald-500 to-teal-500', glow: 'shadow-emerald-500/30' }
-  ];
+
 
   const features = [
     { icon: BookOpen, color: 'from-blue-500 to-cyan-500', glow: 'group-hover:shadow-blue-500/25', badge: "Modulli ta'lim", title: 'Kurslar', desc: "Coursera uslubida Kurs → Modul → Dars tuzilmasi. Video, PDF, Audio va test bilan to'liq o'quv jarayoni.", btn: "Kurslarga o'tish", tab: 'kurslar' },
@@ -836,59 +1322,9 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════
-          HOW IT WORKS — Steps with connecting line
+          HOW IT WORKS — Redesigned with 3D phone mockup & animated connecting line
           ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} className="space-y-8">
-          <motion.div variants={fadeUp} className="text-center space-y-2">
-            <p className="text-xs font-black text-blue-600 uppercase tracking-[0.35em]">Jarayon</p>
-            <h2 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900">Qanday ishlaydi?</h2>
-            <p className="text-sm text-slate-500 max-w-md mx-auto">To'rt qadamda bilim olishga to'liq yo'l</p>
-          </motion.div>
-
-          <div className="relative">
-            {/* Connecting line */}
-            <div className="hidden md:block absolute top-[40px] left-[10%] right-[10%] h-0.5 bg-gradient-to-r from-blue-200 via-cyan-200 to-emerald-200" />
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-              {steps.map((s, i) => (
-                <motion.div key={i} variants={fadeUp} className="relative">
-                  <TiltCard intensity={5} className="h-full">
-                    <Card className="group border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm rounded-2xl h-full hover:shadow-xl transition-all duration-300 overflow-hidden">
-                      <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${s.color}`} />
-                      <CardContent className="p-5 flex flex-col gap-3 pt-6">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] font-black text-slate-300 tabular-nums">{s.step}</span>
-                          <motion.div
-                            whileHover={{ scale: 1.15, rotate: 5 }}
-                            className={`w-10 h-10 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-lg ${s.glow}`}
-                          >
-                            <s.icon className="h-5 w-5 text-white" />
-                          </motion.div>
-                        </div>
-                        <div>
-                          <h3 className="font-black text-slate-900 text-sm mb-1">{s.title}</h3>
-                          <p className="text-xs text-slate-500 leading-relaxed">{s.desc}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </TiltCard>
-                  {/* Step number badge */}
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    whileInView={{ scale: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ type: 'spring', stiffness: 200, delay: 0.3 + i * 0.1 }}
-                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border-2 border-blue-200 flex items-center justify-center shadow-md z-10"
-                  >
-                    <span className="text-[9px] font-black text-blue-600">{i + 1}</span>
-                  </motion.div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      </section>
+      <HowItWorksSection />
 
       {/* ═══════════════════════════════════════════════════════════════════
           FEATURE CARDS — Premium hover with glow
