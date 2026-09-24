@@ -166,20 +166,22 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
     <div className="w-full mx-auto font-sans text-slate-900 selection:bg-blue-100">
 
       {/* ══ HERO ══ */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white mb-10 px-6 py-14 md:px-16 md:py-20">
-        <div aria-hidden="true">
-          <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full bg-violet-500/10 blur-3xl translate-y-1/2 -translate-x-1/2" />
+      <section className="relative overflow-hidden rounded-[2rem] border border-blue-100/80 bg-white text-slate-950 mb-10 px-6 py-10 shadow-[0_24px_80px_rgba(37,99,235,0.12)] md:px-12 md:py-14 lg:px-14 lg:py-16">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-blue-100/60 blur-3xl" />
+          <div className="absolute -bottom-32 right-1/3 h-72 w-72 rounded-full bg-violet-100/50 blur-3xl" />
+          <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-blue-50/70 via-white/30 to-transparent lg:block" />
         </div>
-        <div className="relative z-10 max-w-2xl">
+        <div className="relative z-10 grid items-center gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)] lg:gap-6">
+          <div className="max-w-2xl">
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-[11px] font-bold uppercase tracking-widest text-cyan-300 mb-6 backdrop-blur-sm">
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[11px] font-black uppercase tracking-widest text-blue-600 mb-6 shadow-sm">
             <Zap className="h-3 w-3 fill-yellow-400 text-yellow-400" />
             <span>SIZ KUTGAN FORMATDAGI TA'LIM</span>
           </motion.div>
           <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.1 }}
-          className="text-4xl md:text-6xl font-black tracking-tighter leading-[1.05] mb-5">
-            <span className="text-white">Fan</span>
+          className="text-4xl md:text-6xl font-black tracking-tighter leading-[1.05] mb-5 text-slate-950">
+            <span className="text-slate-950">Fan</span>
             <span className="faster-gradient-text">Faster</span>
             <style>{`
               @keyframes faster-flow {
@@ -245,25 +247,61 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.25 }}
-            className="text-base md:text-lg text-slate-300 leading-relaxed max-w-xl mb-7"
+            className="text-base md:text-lg text-slate-600 leading-relaxed max-w-xl mb-7"
           >
             <span className="text-cyan-300 font-bold">AI+Human metodi</span> yordamida bilimni yodlamang
             — uni chuqur tushunib, amalda qo&apos;llang.{' '}
-            <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
+            <span className="text-blue-700 font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.4 }}
           className="flex flex-wrap gap-3">
             <button onClick={() => handleNav('kurslar')}
-            className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-blue-500 to-violet-600 text-white font-black text-sm rounded-2xl shadow-[0_8px_30px_rgba(59,130,246,0.5)] hover:shadow-[0_12px_40px_rgba(139,92,246,0.6)] hover:-translate-y-1 active:scale-[0.98] transition-all border border-white/20"
-            style={{ boxShadow: '0 0 20px rgba(99,102,241,0.4), 0 8px 30px rgba(59,130,246,0.35)' }}>
+            className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-blue-500 to-violet-600 text-white font-black text-sm rounded-2xl shadow-[0_12px_28px_rgba(59,130,246,0.28)] hover:shadow-[0_16px_38px_rgba(139,92,246,0.36)] hover:-translate-y-1 active:scale-[0.98] transition-all">
               <Play className="h-4 w-4 fill-white" />O'qishni boshlash
             </button>
             <button onClick={() => handleNav('oqmatlar')}
-            className="flex items-center gap-2 px-7 py-3.5 bg-white/10 border border-white/25 text-white font-bold text-sm rounded-2xl hover:bg-white/20 hover:border-yellow-400/40 active:scale-[0.98] transition-all backdrop-blur-sm"
-            style={{ transition: 'all 0.25s ease' }}>
+            className="flex items-center gap-2 px-7 py-3.5 bg-white border border-blue-200 text-slate-800 font-bold text-sm rounded-2xl shadow-sm hover:border-blue-400 hover:bg-blue-50 active:scale-[0.98] transition-all">
               Materiallar
             </button>
+          </motion.div>
+          </div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, x: 24 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
+            className="relative hidden min-h-[320px] items-center justify-center lg:flex"
+          >
+            <div className="absolute right-4 top-0 h-64 w-64 rounded-full bg-blue-100/70 blur-3xl" />
+            <div className="absolute bottom-2 left-8 h-40 w-40 rounded-full bg-violet-100/60 blur-3xl" />
+            <div className="relative w-full max-w-[520px] overflow-hidden rounded-[1.75rem] border border-blue-100/80 bg-gradient-to-br from-blue-50 via-white to-violet-50 p-6 shadow-[0_20px_60px_rgba(37,99,235,0.14)] ring-1 ring-white">
+              <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-blue-200/50 blur-2xl" />
+              <div className="absolute -bottom-20 -left-12 h-48 w-48 rounded-full bg-violet-200/40 blur-2xl" />
+              <div className="relative flex min-h-[290px] items-center justify-center">
+                <div className="absolute left-3 top-4 rounded-2xl border border-blue-200 bg-white/90 p-3 shadow-lg shadow-blue-200/30 -rotate-6">
+                  <Scale className="h-8 w-8 text-blue-600" />
+                </div>
+                <div className="absolute right-3 top-2 rounded-2xl border border-violet-200 bg-white/90 p-3 shadow-lg shadow-violet-200/30 rotate-6">
+                  <GraduationCap className="h-8 w-8 text-violet-600" />
+                </div>
+                <div className="absolute bottom-6 left-4 rounded-2xl border border-cyan-200 bg-white/90 p-3 shadow-lg shadow-cyan-200/30 rotate-3">
+                  <BookOpen className="h-8 w-8 text-cyan-600" />
+                </div>
+                <div className="absolute bottom-4 right-5 rounded-2xl border border-amber-200 bg-white/90 p-3 shadow-lg shadow-amber-200/30 -rotate-6">
+                  <Trophy className="h-8 w-8 text-amber-500" />
+                </div>
+                <div className="relative flex h-48 w-48 items-center justify-center rounded-full border border-blue-200/80 bg-white/80 shadow-[0_18px_50px_rgba(37,99,235,0.18)]">
+                  <div className="absolute inset-4 rounded-full border border-dashed border-cyan-300/70" />
+                  <div className="absolute inset-8 rounded-full bg-gradient-to-br from-blue-500 via-cyan-400 to-violet-600 opacity-15 blur-xl" />
+                  <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-600 to-violet-600 shadow-xl shadow-blue-500/30">
+                    <BrainCircuit className="h-12 w-12 text-white" />
+                  </div>
+                </div>
+                <div className="absolute bottom-7 left-1/2 -translate-x-1/2 rounded-full border border-blue-100 bg-white/90 px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] text-blue-700 shadow-md whitespace-nowrap">
+                  Bilim · Amaliyot · Kelajak
+                </div>
+              </div>
+            </div>
           </motion.div>
         </div>
       </section>
