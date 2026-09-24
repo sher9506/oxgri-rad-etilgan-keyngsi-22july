@@ -925,6 +925,432 @@ function HeroGlassCard({
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATISTICS — Redesigned: glass cards, count-up, 3D icon plates, micro-visuals
+   Sub-components: useCountUp, StatMicroVisual, StatCard, StatsGrid
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as [number, number, number, number];
+
+function usePrefersReducedMotion() {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handler = () => setReduce(mq.matches);
+    handler();
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return reduce;
+}
+
+function useInViewOnce(margin = '-60px') {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin });
+  return { ref, inView };
+}
+
+/* ── useCountUp: 0 → target with easeOutExpo, ~1.6s, respects reduced motion ── */
+function useCountUp(target: number, start: boolean, reduce: boolean, duration = 1600) {
+  const [value, setValue] = useState(reduce ? target : 0);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!start) return;
+    if (reduce) { setValue(target); return; }
+    const startTime = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - startTime) / duration, 1);
+      const eased = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+      setValue(Math.round(eased * target));
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [start, target, reduce, duration]);
+
+  return value;
+}
+
+/* ── StatMicroVisual: per-card nooku animation (opacity ≤ 0.5) ── */
+function StatMicroVisual({ type, accent, reduce }: { type: string; accent: string; reduce: boolean }) {
+  if (type === 'users') {
+    return (
+      <svg className="w-16 h-16" viewBox="0 0 64 64" aria-hidden="true" style={{ opacity: 0.4 }}>
+        {[16, 24, 32].map((r, i) => (
+          <motion.circle
+            key={i}
+            cx="32" cy="32" r={r}
+            fill="none" stroke={accent} strokeWidth="1"
+            strokeDasharray="3 5"
+            animate={reduce ? {} : { rotate: 360 }}
+            transition={{ duration: 20 - i * 4, repeat: Infinity, ease: 'linear' }}
+            style={{ transformOrigin: '32px 32px' }}
+          />
+        ))}
+        <motion.circle
+          cx="32" cy="32" r="3" fill={accent}
+          animate={reduce ? {} : { scale: [1, 1.4, 1] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </svg>
+    );
+  }
+
+  if (type === 'tests') {
+    return (
+      <div className="relative w-16 h-16" aria-hidden="true" style={{ opacity: 0.35 }}>
+        {[0, 1, 2].map(i => (
+          <motion.div
+            key={i}
+            className="absolute inset-0 rounded-lg border"
+            style={{ borderColor: accent, transform: `translateY(${i * 3}px) translateX(${i * 2}px)` }}
+            animate={reduce ? {} : { rotate: [0, -3 + i, 0] }}
+            transition={{ duration: 4 + i, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
+          />
+        ))}
+        <motion.div
+          className="absolute top-1/2 left-1/2 w-6 h-0.5 rounded-full -translate-x-1/2 -translate-y-1/2"
+          style={{ background: accent }}
+          animate={reduce ? {} : { scaleX: [0, 1, 0] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+    );
+  }
+
+  if (type === 'kazuslar') {
+    const nodes = [
+      { x: 12, y: 20 }, { x: 52, y: 14 }, { x: 32, y: 38 },
+      { x: 14, y: 52 }, { x: 50, y: 50 },
+    ];
+    const edges = [[0, 1], [1, 2], [2, 3], [3, 4], [2, 4], [0, 2]];
+    const [lit, setLit] = useState(0);
+    useEffect(() => {
+      if (reduce) return;
+      const id = setInterval(() => setLit(p => (p + 1) % nodes.length), 2200);
+      return () => clearInterval(id);
+    }, [reduce]);
+    return (
+      <svg className="w-16 h-16" viewBox="0 0 64 64" aria-hidden="true" style={{ opacity: 0.4 }}>
+        {edges.map(([a, b], i) => (
+          <line
+            key={i}
+            x1={nodes[a].x} y1={nodes[a].y}
+            x2={nodes[b].x} y2={nodes[b].y}
+            stroke={accent} strokeWidth="0.8" strokeOpacity="0.5"
+          />
+        ))}
+        {nodes.map((n, i) => (
+          <motion.circle
+            key={i}
+            cx={n.x} cy={n.y}
+            r={i === lit ? 3 : 2}
+            fill={accent}
+            animate={reduce ? {} : { opacity: i === lit ? [0.5, 1, 0.5] : 0.5 }}
+            transition={{ duration: 1.5, ease: 'easeInOut' }}
+          />
+        ))}
+      </svg>
+    );
+  }
+
+  if (type === 'satisfaction') {
+    const ref = useRef<SVGCircleElement>(null);
+    const { ref: wrapRef, inView } = useInViewOnce('-30px');
+    const reduce2 = reduce;
+    const R = 26;
+    const CIRC = 2 * Math.PI * R;
+    const [dash, setDash] = useState(reduce2 ? 0 : CIRC);
+    useEffect(() => {
+      if (!inView) return;
+      if (reduce2) { setDash(0); return; }
+      const startTime = performance.now();
+      const duration = 1600;
+      const tick = (now: number) => {
+        const p = Math.min((now - startTime) / duration, 1);
+        const eased = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+        setDash(CIRC - eased * CIRC * 0.98);
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, [inView, reduce2, CIRC]);
+    return (
+      <div ref={wrapRef} className="w-16 h-16 relative" aria-hidden="true" style={{ opacity: 0.45 }}>
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r={R} fill="none" stroke={accent} strokeOpacity="0.15" strokeWidth="3" />
+          <circle
+            ref={ref}
+            cx="32" cy="32" r={R}
+            fill="none" stroke={accent} strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={CIRC}
+            strokeDashoffset={dash}
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/* ── StatCard: glass card with 3D icon plate, micro-visual, count-up ── */
+type StatItem = {
+  icon: React.ComponentType<{ className?: string }>;
+  value: number;
+  suffix: string;
+  label: string;
+  color: string;
+  accent: string;
+  microType: string;
+};
+
+function StatCard({ stat, index, reduce }: { stat: StatItem; index: number; reduce: boolean }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const { ref: inViewRef, inView } = useInViewOnce('-30px');
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [spotX, setSpotX] = useState(50);
+  const [spotY, setSpotY] = useState(50);
+  const count = useCountUp(stat.value, inView, reduce);
+  const Icon = stat.icon;
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!cardRef.current || reduce) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const dx = (e.clientX - rect.left) / rect.width;
+    const dy = (e.clientY - rect.top) / rect.height;
+    setTilt({ x: -(dy - 0.5) * 6, y: (dx - 0.5) * 6 });
+    setSpotX(dx * 100);
+    setSpotY(dy * 100);
+  }, [reduce]);
+
+  const handleMouseLeave = useCallback(() => {
+    setTilt({ x: 0, y: 0 });
+    setSpotX(50);
+    setSpotY(50);
+  }, []);
+
+  return (
+    <motion.div
+      ref={inViewRef}
+      initial={reduce ? { opacity: 1 } : { opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.6, delay: index * 0.12, ease: EASE_OUT_EXPO }}
+    >
+      <div
+        ref={cardRef}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        className="relative h-full rounded-2xl border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm overflow-hidden transition-shadow duration-500 hover:shadow-xl"
+        style={{
+          transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+          transition: 'transform 0.2s ease-out',
+          transformStyle: 'preserve-3d',
+        }}
+      >
+        {/* Pointer-following radial highlight */}
+        <div
+          className="absolute inset-0 pointer-events-none transition-opacity duration-500"
+          style={{
+            background: `radial-gradient(180px circle at ${spotX}% ${spotY}%, ${stat.accent}12, transparent 60%)`,
+          }}
+        />
+
+        <div className="p-5 flex flex-col items-center text-center gap-3 relative z-10" style={{ transformStyle: 'preserve-3d' }}>
+          {/* 3D icon plate — breathing + pointer parallax */}
+          <motion.div
+            className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center shadow-lg`}
+            style={{ transform: 'translateZ(8px)' }}
+            animate={reduce ? {} : { translateZ: [8, 10, 8] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: index * 0.5 }}
+          >
+            <Icon className="h-5 w-5 text-white" />
+          </motion.div>
+
+          {/* Micro-visual */}
+          <div className="absolute top-3 right-3">
+            <StatMicroVisual type={stat.microType} accent={stat.accent} reduce={reduce} />
+          </div>
+
+          {/* Count-up number */}
+          <p
+            className="text-2xl md:text-3xl font-black text-slate-900 tabular-nums"
+            aria-label={`${stat.value.toLocaleString()}${stat.suffix}`}
+          >
+            {count.toLocaleString()}{stat.suffix}
+          </p>
+
+          <p className="text-xs text-slate-500 font-semibold leading-tight">{stat.label}</p>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ── StatsGrid: 4 stat cards with shared pointer spotlight ── */
+function StatsGrid({ stats, reduce }: { stats: StatItem[]; reduce: boolean }) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [spotX, setSpotX] = useState(50);
+  const [spotY, setSpotY] = useState(50);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!gridRef.current || reduce) return;
+    const rect = gridRef.current.getBoundingClientRect();
+    setSpotX(((e.clientX - rect.left) / rect.width) * 100);
+    setSpotY(((e.clientY - rect.top) / rect.height) * 100);
+  }, [reduce]);
+
+  return (
+    <div
+      ref={gridRef}
+      onMouseMove={handleMouseMove}
+      className="relative grid grid-cols-2 md:grid-cols-4 gap-4"
+    >
+      {/* Shared pointer-following radial highlight across all cards */}
+      <div
+        className="absolute inset-0 pointer-events-none rounded-3xl"
+        style={{
+          background: `radial-gradient(400px circle at ${spotX}% ${spotY}%, rgba(56,189,248,0.06), transparent 50%)`,
+        }}
+      />
+      {stats.map((s, i) => (
+        <StatCard key={i} stat={s} index={i} reduce={reduce} />
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CTA BANNER — Redesigned: raised plate, sheen, concentric rings, magnetic button
+   Sub-components: CtaRingsIcon, CtaBanner
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function CtaRingsIcon({ reduce }: { reduce: boolean }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      className="relative w-14 h-14 flex items-center justify-center"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {[0, 1, 2].map(i => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full border-2"
+          style={{
+            borderColor: '#f59e0b',
+            width: `${(i + 1) * 14}px`,
+            height: `${(i + 1) * 14}px`,
+            opacity: 0.7 - i * 0.2,
+          }}
+          animate={reduce ? {} : hovered
+            ? { scale: 0.3, opacity: 0 }
+            : { scale: [1, 1.08, 1], opacity: [0.7 - i * 0.2, 0.5 - i * 0.15, 0.7 - i * 0.2] }
+          }
+          transition={reduce ? {} : hovered
+            ? { duration: 0.4, ease: EASE_OUT_EXPO }
+            : { duration: 3 + i, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }
+          }
+        />
+      ))}
+      <div className="relative z-10 w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
+        <Target className="h-4 w-4 text-white" />
+      </div>
+    </div>
+  );
+}
+
+function CtaBanner({ reduce, onCta }: { reduce: boolean; onCta: () => void }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [pressed, setPressed] = useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!btnRef.current || reduce) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left - rect.width / 2;
+    const y = e.clientY - rect.top - rect.height / 2;
+    setOffset({ x: x * 0.15, y: y * 0.15 });
+  };
+
+  return (
+    <motion.div
+      initial={reduce ? { opacity: 1 } : { opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.6, ease: EASE_OUT_EXPO }}
+    >
+      <div className="relative rounded-3xl border border-amber-100/80 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 overflow-hidden shadow-md">
+        {/* Floating background shapes */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+          <motion.div
+            className="absolute top-[15%] right-[10%] w-24 h-24 rounded-full border-2 border-amber-300"
+            style={{ opacity: 0.07 }}
+            animate={reduce ? {} : { y: [0, -15, 0], rotate: [0, 10, 0] }}
+            transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute bottom-[10%] left-[8%] w-16 h-16 rounded-lg border-2 border-orange-400"
+            style={{ opacity: 0.08 }}
+            animate={reduce ? {} : { y: [0, 12, 0], rotate: [0, -8, 0] }}
+            transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+          />
+        </div>
+
+        {/* Sheen — diagonal light sweep every ~7s */}
+        {!reduce && (
+          <motion.div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: 'linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.35) 50%, transparent 65%)',
+            }}
+            animate={{ x: ['-100%', '200%'] }}
+            transition={{ duration: 2, repeat: Infinity, repeatDelay: 5, ease: 'easeInOut' }}
+          />
+        )}
+
+        {/* Existing ambient glow */}
+        <motion.div
+          className="absolute top-0 right-0 w-64 h-64 rounded-full bg-orange-200/20 blur-3xl translate-x-1/3 -translate-y-1/3"
+          animate={reduce ? {} : { scale: [1, 1.2, 1] }}
+          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+
+        <div className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-5 relative z-10">
+          <div className="flex items-center gap-4">
+            <CtaRingsIcon reduce={reduce} />
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Bilim darajangizni aniqlang</h2>
+              <p className="text-sm text-slate-500 font-medium">Ro'yxatdan o'tib, shaxsiy o'quv rejangizni yarating</p>
+            </div>
+          </div>
+          <button
+            ref={btnRef}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => { setOffset({ x: 0, y: 0 }); setPressed(false); }}
+            onMouseDown={() => setPressed(true)}
+            onMouseUp={() => setPressed(false)}
+            onClick={onCta}
+            className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-xl whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 transition-all"
+            style={{
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${pressed ? 0.98 : 1})`,
+              boxShadow: pressed
+                ? '0 4px 12px rgba(245,158,11,0.3)'
+                : '0 8px 24px rgba(245,158,11,0.35)',
+              transition: 'transform 0.15s ease-out, box-shadow 0.15s ease-out',
+            }}
+          >
+            Bepul boshlash
+            <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   const { t } = useLang();
   const { user, isAuthenticated } = useAuth();
@@ -933,6 +1359,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
 
   const heroRef = useRef<HTMLDivElement>(null);
+  const reduce = usePrefersReducedMotion();
 
   const { scrollYProgress } = useScroll();
 
@@ -941,11 +1368,11 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
     onNavigate(tab);
   };
 
-  const stats = [
-    { icon: Users, value: 1200, suffix: '+', label: 'Faol foydalanuvchilar', color: 'from-blue-500 to-cyan-500' },
-    { icon: FileText, value: 4500, suffix: '+', label: 'Testlar va savollar', color: 'from-cyan-500 to-teal-500' },
-    { icon: BrainCircuit, value: 850, suffix: '+', label: 'AI baholangan kazuslar', color: 'from-sky-500 to-blue-500' },
-    { icon: BookOpen, value: 98, suffix: '%', label: 'Mamnunlik darajasi', color: 'from-emerald-500 to-teal-500' }
+  const stats: StatItem[] = [
+    { icon: Users, value: 1200, suffix: '+', label: 'Faol foydalanuvchilar', color: 'from-blue-500 to-cyan-500', accent: '#3b82f6', microType: 'users' },
+    { icon: FileText, value: 4500, suffix: '+', label: 'Testlar va savollar', color: 'from-cyan-500 to-teal-500', accent: '#06b6d4', microType: 'tests' },
+    { icon: BrainCircuit, value: 850, suffix: '+', label: 'AI baholangan kazuslar', color: 'from-sky-500 to-blue-500', accent: '#0ea5e9', microType: 'kazuslar' },
+    { icon: BookOpen, value: 98, suffix: '%', label: 'Mamnunlik darajasi', color: 'from-emerald-500 to-teal-500', accent: '#10b981', microType: 'satisfaction' }
   ];
 
 
@@ -1217,32 +1644,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
           STATISTICS — Animated counters with glass cards
           ═══════════════════════════════════════════════════════════════════ */}
       <section className="mb-12">
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          className="grid grid-cols-2 md:grid-cols-4 gap-4"
-        >
-          {stats.map((s, i) => (
-            <motion.div key={i} variants={scaleIn}>
-              <TiltCard intensity={6} className="h-full">
-                <Card className="group relative border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm rounded-2xl hover:shadow-xl transition-all duration-300 overflow-hidden h-full">
-                  <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br ${s.color} pointer-events-none`} style={{ mixBlendMode: 'overlay' }} />
-                  <CardContent className="p-5 flex flex-col items-center text-center gap-2 relative z-10">
-                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-lg`}>
-                      <s.icon className="h-5 w-5 text-white" />
-                    </div>
-                    <p className="text-2xl md:text-3xl font-black text-slate-900 tabular-nums">
-                      <AnimatedCounter target={s.value} suffix={s.suffix} />
-                    </p>
-                    <p className="text-xs text-slate-500 font-semibold leading-tight">{s.label}</p>
-                  </CardContent>
-                </Card>
-              </TiltCard>
-            </motion.div>
-          ))}
-        </motion.div>
+        <StatsGrid stats={stats} reduce={reduce} />
       </section>
 
       {/* ═══════════════════════════════════════════════════════════════════
@@ -1286,38 +1688,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
         </section>
       ) : (
         <section className="mb-12">
-          <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
-            <Card className="border border-amber-100/80 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 rounded-3xl shadow-md overflow-hidden relative">
-              <motion.div
-                className="absolute top-0 right-0 w-64 h-64 rounded-full bg-orange-200/20 blur-3xl translate-x-1/3 -translate-y-1/3"
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-              />
-              <CardContent className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-5 relative z-10">
-                <div className="flex items-center gap-4">
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    whileInView={{ scale: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                    className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg"
-                  >
-                    <Target className="h-6 w-6 text-white" />
-                  </motion.div>
-                  <div>
-                    <h2 className="text-lg font-black text-slate-900">Bilim darajangizni aniqlang</h2>
-                    <p className="text-sm text-slate-500 font-medium">Ro'yxatdan o'tib, shaxsiy o'quv rejangizni yarating</p>
-                  </div>
-                </div>
-                <MagneticButton
-                  onClick={() => window.dispatchEvent(new Event('open-login-modal'))}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-xl shadow-lg transition-all active:scale-[0.98] whitespace-nowrap"
-                >
-                  Bepul boshlash<ArrowRight className="h-4 w-4" />
-                </MagneticButton>
-              </CardContent>
-            </Card>
-          </motion.div>
+          <CtaBanner reduce={reduce} onCta={() => window.dispatchEvent(new Event('open-login-modal'))} />
         </section>
       )}
 
