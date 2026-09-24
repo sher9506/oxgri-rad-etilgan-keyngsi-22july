@@ -21,7 +21,6 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['iceberg-js'],
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
