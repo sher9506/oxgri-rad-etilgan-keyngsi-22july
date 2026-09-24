@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, useInView, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import {
   Award, Code2, Library, MessageSquare, BarChart3, ArrowRight,
@@ -300,6 +300,69 @@ function FormatMatn({ text }: { text: string }) {
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════════════ */
 
+function Meteors({ number = 40 }: { number?: number }) {
+  const meteors = useMemo(
+    () =>
+      Array.from({ length: number }, (_, i) => ({
+        left: -10 + (i / number) * 115 + Math.random() * 4,
+        top: -10 + Math.random() * 45,
+        delay: Math.random() * 8,
+        duration: 3 + Math.random() * 4,
+        tail: 60 + Math.random() * 60,
+      })),
+    [number]
+  );
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+      <style>{`
+        @keyframes ff-meteor {
+          0%   { transform: rotate(35deg) translateX(0); opacity: 0; }
+          8%   { opacity: 1; }
+          70%  { opacity: 1; }
+          100% { transform: rotate(35deg) translateX(900px); opacity: 0; }
+        }
+        .ff-meteor {
+          position: absolute;
+          width: 2px;
+          height: 2px;
+          border-radius: 9999px;
+          background: #67e8f9;
+          box-shadow: 0 0 6px 1px rgba(34, 211, 238, 0.6);
+          animation-name: ff-meteor;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+        .ff-meteor::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          right: 100%;
+          transform: translateY(-50%);
+          width: var(--tail, 90px);
+          height: 1px;
+          background: linear-gradient(to left, rgba(103, 232, 249, 0.8), transparent);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ff-meteor { display: none; }
+        }
+      `}</style>
+      {meteors.map((m, i) => (
+        <span
+          key={i}
+          className="ff-meteor"
+          style={{
+            left: `${m.left}%`,
+            top: `${m.top}%`,
+            animationDelay: `${m.delay}s`,
+            animationDuration: `${m.duration}s`,
+            ['--tail' as string]: `${m.tail}px`,
+          } as React.CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   const { t } = useLang();
   const { user, isAuthenticated } = useAuth();
@@ -364,6 +427,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
       >
         <GradientMesh />
         <FloatingParticles />
+        <Meteors number={40} />
 
         {/* Grid overlay */}
         <div
