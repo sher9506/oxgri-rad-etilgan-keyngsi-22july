@@ -6,8 +6,8 @@ import {
   Users, FileText,
   ChevronRight, Mail, Phone,
   GraduationCap, Play, TrendingUp, Target, Brain,
-  HelpCircle, Lock, Info, ChevronDown,
-  Scale, Search, ShieldCheck, Sparkles, Trophy } from 'lucide-react';
+  HelpCircle, Lock, Info, ChevronDown } from
+'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLang } from '@/contexts/LangContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +18,7 @@ const fadeUp = {
 };
 const staggerContainer = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.1 } }
+  visible: { transition: { staggerChildren: 0.12 } }
 };
 
 function AnimatedCounter({ target, suffix = '' }: {target: number;suffix?: string;}) {
@@ -41,14 +41,10 @@ function AnimatedCounter({ target, suffix = '' }: {target: number;suffix?: strin
 }
 
 const featureColors = {
-  blue: { iconBg: 'from-blue-500 to-blue-700', btn: 'from-blue-500 to-blue-700', glow: 'shadow-blue-500/25', ring: 'ring-blue-400/30' },
-  purple: { iconBg: 'from-violet-500 to-violet-700', btn: 'from-violet-500 to-violet-700', glow: 'shadow-violet-500/25', ring: 'ring-violet-400/30' },
-  orange: { iconBg: 'from-orange-400 to-orange-600', btn: 'from-orange-400 to-orange-600', glow: 'shadow-orange-500/25', ring: 'ring-orange-400/30' },
-  emerald: { iconBg: 'from-emerald-500 to-emerald-700', btn: 'from-emerald-500 to-emerald-700', glow: 'shadow-emerald-500/25', ring: 'ring-emerald-400/30' },
-  cyan: { iconBg: 'from-cyan-400 to-cyan-600', btn: 'from-cyan-500 to-cyan-700', glow: 'shadow-cyan-500/25', ring: 'ring-cyan-400/30' },
-  rose: { iconBg: 'from-rose-500 to-rose-700', btn: 'from-rose-500 to-rose-700', glow: 'shadow-rose-500/25', ring: 'ring-rose-400/30' },
-  amber: { iconBg: 'from-amber-400 to-amber-600', btn: 'from-amber-500 to-amber-700', glow: 'shadow-amber-500/25', ring: 'ring-amber-400/30' },
-  indigo: { iconBg: 'from-indigo-500 to-indigo-700', btn: 'from-indigo-500 to-indigo-700', glow: 'shadow-indigo-500/25', ring: 'ring-indigo-400/30' }
+  blue: { iconBg: 'from-blue-500 to-blue-700', btn: 'from-blue-500 to-blue-700' },
+  purple: { iconBg: 'from-violet-500 to-violet-700', btn: 'from-violet-500 to-violet-700' },
+  orange: { iconBg: 'from-orange-400 to-orange-600', btn: 'from-orange-400 to-orange-600' },
+  emerald: { iconBg: 'from-emerald-500 to-emerald-700', btn: 'from-emerald-500 to-emerald-700' }
 };
 
 interface SaytHaqidaProps {
@@ -66,7 +62,7 @@ const FAQ_ITEMS = [
 { q: "Qaysi qurilmalardan foydalanish mumkin?", a: "Internetga ulangan har qanday kompyuter, noutbuk, planshet yoki smartfondan foydalanish mumkin. Chrome, Firefox, Safari yoki Edge brauzerlaridan foydalanish tavsiya etiladi." }];
 
 
-const MAXFIYLIK_MATN = `FanFaster.uz (keyingi o'rinlarda "Biz", "Platforma" yoki "FanFaster") o'quvchilar uchun mo'ljallangan intellektual ta'lim platformasi bo'lib, sun'iy intellekt va inson tafakkori sintezidan foydalanadi.
+const MAXFIYLIK_MATN = `FanFaster.uz (keyingi o'rinlarda "Biz", "Platforma" yoki "FanFaster") o'quvchilar uchun mo'ljallangan intellektual ta'lim platformasi bo'lib, sun'iy intellekt va inson tafakkuri sintezidan foydalanadi.
 
 **Oxirgi yangilanish:** 2026-yil 4-iyun
 
@@ -137,10 +133,10 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   };
 
   const stats = [
-  { icon: Users, value: 1200, suffix: '+', label: 'Faol foydalanuvchilar', grad: 'from-blue-500 to-cyan-400' },
-  { icon: FileText, value: 4500, suffix: '+', label: 'Testlar va savollar', grad: 'from-violet-500 to-purple-400' },
-  { icon: BrainCircuit, value: 850, suffix: '+', label: 'AI baholangan kazuslar', grad: 'from-emerald-500 to-teal-400' },
-  { icon: Sparkles, value: 15000, suffix: '+', label: 'AI Mentor javoblari', grad: 'from-amber-400 to-orange-400' }];
+  { icon: Users, value: 1200, suffix: '+', label: 'Faol foydalanuvchilar' },
+  { icon: FileText, value: 4500, suffix: '+', label: 'Testlar va savollar' },
+  { icon: BrainCircuit, value: 850, suffix: '+', label: 'AI baholangan kazuslar' },
+  { icon: BookOpen, value: 98, suffix: '%', label: 'Mamnunlik darajasi' }];
 
 
   const steps = [
@@ -149,39 +145,32 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   { step: '03', icon: Brain, title: "O'rganing va yozing", desc: "Sun'iy intellekt javoblaringizni tahlil qilib to'liq baho beradi.", color: 'bg-orange-500' },
   { step: '04', icon: TrendingUp, title: "Natijani ko'ring", desc: "Statistika va zaif tomonlaringizni mustahkamlang.", color: 'bg-emerald-600' }];
 
-  const coreFeatures = [
+
+  const features = [
   { icon: BookOpen, color: 'blue' as const, badge: 'Modulli ta\'lim', title: 'Kurslar', desc: "Coursera uslubida Kurs → Modul → Dars tuzilmasi. Video, PDF, Audio va test bilan to'liq o'quv jarayoni.", btn: "Kurslarga o'tish", tab: 'kurslar' },
   { icon: Library, color: 'purple' as const, badge: "O'quv markazi", title: "O'quv materiallari", desc: "Sara va miyaga tez muhrlanadigan kontent. Murakkab mavzular oddiy tilda tushuntirilgan.", btn: "Materiallarni ko'rish", tab: 'oqmatlar' },
   { icon: BarChart3, color: 'orange' as const, badge: 'Bilim sinovi', title: 'Mavjud testlar', desc: "Xolis va qat'iy filtrlardan o'tgan testlar. O'z kuchingizni amalda tasdiqlang.", btn: 'Testlarni boshlash', tab: 'mavjud_testlar' },
   { icon: BrainCircuit, color: 'emerald' as const, badge: 'AI tahlil', title: 'Mavjud kazuslar', desc: "Haqiqiy muammolar, murakkab ssenariylar va ularga AI ning xolis bahosi.", btn: 'Kazus yechishni boshlash', tab: 'mavjud_kazuslar' }];
-
-  const aiFeatures = [
-  { icon: Scale, color: 'cyan' as const, badge: 'AI sud simulyatsiyasi', title: 'Moot Court', desc: "Real kazus bo'yicha AI bilan (sudya yoki qarshi tomon rolida) jonli bahslashasiz. AI suhbatni 5 mezon bo'yicha avtomatik baholaydi.", btn: 'Moot Court boshlash', tab: 'moot_court' },
-  { icon: ShieldCheck, color: 'indigo' as const, badge: 'Ishonchli AI javob', title: 'Qonunlar bazasi (AI qidiruv)', desc: "Har bir savolga taxmin emas, aynan qonun matniga asoslangan aniq javob — AI hech qachon \"o'ylab topmaydi\", faqat bazadagi haqiqiy moddalarga tayanadi.", btn: 'Qonunlarni qidirish', tab: 'qonunlar' },
-  { icon: Sparkles, color: 'amber' as const, badge: '24/7 shaxsiy repetitor', title: 'AI Mentor', desc: "Istalgan mavzuni tushuntirib beradigan, test/kazus yaratib beradigan shaxsiy AI yordamchi. Istalgan vaqtda savol berish mumkin.", btn: 'AI Mentor bilan suhbat', tab: 'mentor' },
-  { icon: Trophy, color: 'rose' as const, badge: 'Gamifikatsiya', title: 'Reyting va yutuqlar', desc: "XP ball, daraja va nishonlar (badge) orqali o'qish jarayonini kuzatish, boshqa o'quvchilar bilan solishtirish.", btn: "Reytingni ko'rish", tab: 'reyting' }];
 
 
   return (
     <div className="w-full mx-auto font-sans text-slate-900 selection:bg-blue-100">
 
       {/* ══ HERO ══ */}
-      <section className="relative overflow-hidden rounded-[2rem] border border-blue-100/80 bg-white text-slate-950 mb-10 px-6 py-10 shadow-[0_24px_80px_rgba(37,99,235,0.12)] md:px-12 md:py-14 lg:px-14 lg:py-16">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-blue-100/60 blur-3xl" />
-          <div className="absolute -bottom-32 right-1/3 h-72 w-72 rounded-full bg-violet-100/50 blur-3xl" />
-          <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-blue-50/70 via-white/30 to-transparent lg:block" />
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white mb-10 px-6 py-14 md:px-16 md:py-20">
+        <div aria-hidden="true">
+          <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full bg-violet-500/10 blur-3xl translate-y-1/2 -translate-x-1/2" />
         </div>
-        <div className="relative z-10 grid items-center gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)] lg:gap-6">
-          <div className="max-w-2xl">
+        <div className="relative z-10 max-w-2xl">
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[11px] font-black uppercase tracking-widest text-blue-600 mb-6 shadow-sm">
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-[11px] font-bold uppercase tracking-widest text-cyan-300 mb-6 backdrop-blur-sm">
             <Zap className="h-3 w-3 fill-yellow-400 text-yellow-400" />
             <span>SIZ KUTGAN FORMATDAGI TA'LIM</span>
           </motion.div>
           <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.1 }}
-          className="text-4xl md:text-6xl font-black tracking-tighter leading-[1.05] mb-5 text-slate-950">
-            <span className="text-slate-950">Fan</span>
+          className="text-4xl md:text-6xl font-black tracking-tighter leading-[1.05] mb-5">
+            <span className="text-white">Fan</span>
             <span className="faster-gradient-text">Faster</span>
             <style>{`
               @keyframes faster-flow {
@@ -247,61 +236,87 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.25 }}
-            className="text-base md:text-lg text-slate-600 leading-relaxed max-w-xl mb-7"
+            className="text-base md:text-lg text-slate-300 leading-relaxed max-w-xl mb-7"
           >
             <span className="text-cyan-300 font-bold">AI+Human metodi</span> yordamida bilimni yodlamang
             — uni chuqur tushunib, amalda qo&apos;llang.{' '}
-            <span className="text-blue-700 font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
+            <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
           </motion.p>
+          
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.4 }}
           className="flex flex-wrap gap-3">
             <button onClick={() => handleNav('kurslar')}
-            className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-blue-500 to-violet-600 text-white font-black text-sm rounded-2xl shadow-[0_12px_28px_rgba(59,130,246,0.28)] hover:shadow-[0_16px_38px_rgba(139,92,246,0.36)] hover:-translate-y-1 active:scale-[0.98] transition-all">
+            className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-blue-500 to-violet-600 text-white font-black text-sm rounded-2xl shadow-[0_8px_30px_rgba(59,130,246,0.5)] hover:shadow-[0_12px_40px_rgba(139,92,246,0.6)] hover:-translate-y-1 active:scale-[0.98] transition-all border border-white/20"
+            style={{ boxShadow: '0 0 20px rgba(99,102,241,0.4), 0 8px 30px rgba(59,130,246,0.35)' }}>
               <Play className="h-4 w-4 fill-white" />O'qishni boshlash
             </button>
             <button onClick={() => handleNav('oqmatlar')}
-            className="flex items-center gap-2 px-7 py-3.5 bg-white border border-blue-200 text-slate-800 font-bold text-sm rounded-2xl shadow-sm hover:border-blue-400 hover:bg-blue-50 active:scale-[0.98] transition-all">
+            className="flex items-center gap-2 px-7 py-3.5 bg-white/10 border border-white/25 text-white font-bold text-sm rounded-2xl hover:bg-white/20 hover:border-yellow-400/40 active:scale-[0.98] transition-all backdrop-blur-sm"
+            style={{ transition: 'all 0.25s ease' }}>
               Materiallar
             </button>
-          </motion.div>
-          </div>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, x: 24 }}
-            animate={{ opacity: 1, scale: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
-            className="relative hidden min-h-[320px] items-center justify-center lg:flex"
-          >
-            <div className="absolute right-4 top-0 h-64 w-64 rounded-full bg-blue-100/70 blur-3xl" />
-            <div className="absolute bottom-2 left-8 h-40 w-40 rounded-full bg-violet-100/60 blur-3xl" />
-            <div className="relative w-full max-w-[520px] overflow-hidden rounded-[1.75rem] border border-blue-100/80 bg-gradient-to-br from-blue-50 via-white to-violet-50 p-6 shadow-[0_20px_60px_rgba(37,99,235,0.14)] ring-1 ring-white">
-              <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-blue-200/50 blur-2xl" />
-              <div className="absolute -bottom-20 -left-12 h-48 w-48 rounded-full bg-violet-200/40 blur-2xl" />
-              <div className="relative flex min-h-[290px] items-center justify-center">
-                <div className="absolute left-3 top-4 rounded-2xl border border-blue-200 bg-white/90 p-3 shadow-lg shadow-blue-200/30 -rotate-6">
-                  <Scale className="h-8 w-8 text-blue-600" />
-                </div>
-                <div className="absolute right-3 top-2 rounded-2xl border border-violet-200 bg-white/90 p-3 shadow-lg shadow-violet-200/30 rotate-6">
-                  <GraduationCap className="h-8 w-8 text-violet-600" />
-                </div>
-                <div className="absolute bottom-6 left-4 rounded-2xl border border-cyan-200 bg-white/90 p-3 shadow-lg shadow-cyan-200/30 rotate-3">
-                  <BookOpen className="h-8 w-8 text-cyan-600" />
-                </div>
-                <div className="absolute bottom-4 right-5 rounded-2xl border border-amber-200 bg-white/90 p-3 shadow-lg shadow-amber-200/30 -rotate-6">
-                  <Trophy className="h-8 w-8 text-amber-500" />
-                </div>
-                <div className="relative flex h-48 w-48 items-center justify-center rounded-full border border-blue-200/80 bg-white/80 shadow-[0_18px_50px_rgba(37,99,235,0.18)]">
-                  <div className="absolute inset-4 rounded-full border border-dashed border-cyan-300/70" />
-                  <div className="absolute inset-8 rounded-full bg-gradient-to-br from-blue-500 via-cyan-400 to-violet-600 opacity-15 blur-xl" />
-                  <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-600 to-violet-600 shadow-xl shadow-blue-500/30">
-                    <BrainCircuit className="h-12 w-12 text-white" />
-                  </div>
-                </div>
-                <div className="absolute bottom-7 left-1/2 -translate-x-1/2 rounded-full border border-blue-100 bg-white/90 px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] text-blue-700 shadow-md whitespace-nowrap">
-                  Bilim · Amaliyot · Kelajak
-                </div>
-              </div>
-            </div>
           </motion.div>
         </div>
       </section>
@@ -312,14 +327,10 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
         className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((s, i) =>
           <motion.div key={i} variants={fadeUp}>
-              <Card className="group relative border border-white/60 bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                <div className={`absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r ${s.grad} opacity-60 group-hover:opacity-100 transition-opacity`} />
-                <CardContent className="p-5 flex flex-col items-center text-center gap-2 relative">
-                  <div className="relative">
-                    <div className={`absolute inset-0 rounded-xl bg-gradient-to-r ${s.grad} opacity-20 blur-md group-hover:opacity-40 transition-opacity`} />
-                    <div className="relative w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center ring-1 ring-slate-200/60">
-                      <s.icon className="h-5 w-5 text-slate-700 group-hover:text-slate-900 transition-colors" />
-                    </div>
+              <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-2xl hover:shadow-md transition-shadow">
+                <CardContent className="p-5 flex flex-col items-center text-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                    <s.icon className="h-5 w-5 text-blue-600" />
                   </div>
                   <p className="text-2xl md:text-3xl font-black text-slate-900 tabular-nums">
                     <AnimatedCounter target={s.value} suffix={s.suffix} />
@@ -395,19 +406,15 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
             <p className="text-xs font-black text-blue-600 uppercase tracking-[0.35em]">Jarayon</p>
             <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Qanday ishlaydi?</h2>
           </motion.div>
-          <div className="relative grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Connecting progress line */}
-            <div className="hidden md:block absolute top-[28px] left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-blue-300 via-violet-300 to-emerald-300 opacity-50" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {steps.map((s, i) =>
-            <motion.div key={i} variants={fadeUp} className="relative z-10">
-                <Card className="group border border-white/60 bg-white/80 backdrop-blur-md rounded-2xl h-full overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                  <div className={`absolute inset-x-0 top-0 h-0.5 ${s.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
+            <motion.div key={i} variants={fadeUp}>
+                <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-2xl h-full hover:shadow-md transition-shadow">
                   <CardContent className="p-5 flex flex-col gap-3">
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] font-black text-slate-300 tabular-nums">{s.step}</span>
-                      <div className={`relative w-9 h-9 rounded-xl ${s.color} flex items-center justify-center shadow-sm transition-transform duration-300 group-hover:scale-110`}>
-                        <div className={`absolute inset-0 rounded-xl ${s.color} opacity-40 blur-md group-hover:opacity-60 transition-opacity`} />
-                        <s.icon className="relative h-[18px] w-[18px] text-white" />
+                      <div className={`w-9 h-9 rounded-xl ${s.color} flex items-center justify-center shadow-sm`}>
+                        <s.icon className="h-[18px] w-[18px] text-white" />
                       </div>
                     </div>
                     <div>
@@ -422,80 +429,38 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
         </motion.div>
       </section>
 
-      {/* ══ ASOSIY IMKONIYATLAR ══ */}
+      {/* ══ FEATURE KARTALAR ══ */}
       <section className="mb-10">
         <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true }} className="space-y-6">
           <motion.div variants={fadeUp} className="text-center space-y-1.5">
             <p className="text-xs font-black text-violet-600 uppercase tracking-[0.35em]">Imkoniyatlar</p>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Asosiy imkoniyatlar</h2>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Nima o'rganishingiz mumkin?</h2>
           </motion.div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {coreFeatures.map((f, i) => {
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {features.map((f, i) => {
               const colors = featureColors[f.color];
               return (
                 <motion.div key={i} variants={fadeUp}>
-                  <Card className={`group relative border border-white/60 bg-white/80 backdrop-blur-md rounded-3xl overflow-hidden h-full hover:shadow-xl ${colors.glow} hover:-translate-y-1 transition-all duration-300`}>
-                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${colors.iconBg} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-                    <CardContent className="p-5 md:p-6 flex flex-col gap-4 h-full">
-                      <div className="relative">
-                        <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${colors.iconBg} opacity-20 blur-lg group-hover:opacity-40 transition-opacity duration-300`} />
-                        <div className={`relative w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.iconBg} flex items-center justify-center shadow-md shrink-0 ring-1 ${colors.ring} transition-transform duration-300 group-hover:scale-105`}>
+                  <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-3xl overflow-hidden h-full hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+                    <CardContent className="p-6 md:p-8 flex flex-col gap-5 h-full">
+                      <div className="flex items-start gap-4">
+                        <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.iconBg} flex items-center justify-center shadow-md shrink-0`}>
                           <f.icon className="h-6 w-6 text-white" />
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="inline-block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{f.badge}</span>
+                          <h3 className="text-lg font-black text-slate-900 leading-tight">{f.title}</h3>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <span className="inline-block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{f.badge}</span>
-                        <h3 className="text-base font-black text-slate-900 leading-tight mb-1.5">{f.title}</h3>
-                        <p className="text-xs text-slate-500 leading-relaxed">{f.desc}</p>
-                      </div>
+                      <p className="text-sm text-slate-500 leading-relaxed flex-1">{f.desc}</p>
                       <button onClick={() => handleNav(f.tab)}
-                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r ${colors.btn} text-white font-black text-[11px] rounded-2xl shadow-md hover:shadow-lg hover:opacity-90 active:scale-[0.98] transition-all`}>
-                        {f.btn}<ArrowRight className="h-3 w-3" />
+                      className={`w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-gradient-to-r ${colors.btn} text-white font-black text-xs rounded-2xl shadow-md hover:opacity-90 active:scale-[0.98] transition-all`}>
+                        {f.btn}<ArrowRight className="h-3.5 w-3.5" />
                       </button>
                     </CardContent>
                   </Card>
                 </motion.div>);
-            })}
-          </div>
-        </motion.div>
-      </section>
 
-      {/* ══ AI BILAN ISHLASH ══ */}
-      <section className="mb-10">
-        <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true }} className="space-y-6">
-          <motion.div variants={fadeUp} className="text-center space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-50 to-indigo-50 border border-cyan-200/60 mb-1">
-              <Sparkles className="h-3 w-3 text-cyan-500" />
-              <span className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">AI bilan ishlash</span>
-            </div>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Sun'iy intellekt imkoniyatlari</h2>
-          </motion.div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {aiFeatures.map((f, i) => {
-              const colors = featureColors[f.color];
-              return (
-                <motion.div key={i} variants={fadeUp}>
-                  <Card className={`group relative border border-white/60 bg-white/80 backdrop-blur-md rounded-3xl overflow-hidden h-full hover:shadow-xl ${colors.glow} hover:-translate-y-1 transition-all duration-300`}>
-                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${colors.iconBg} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-                    <CardContent className="p-5 md:p-6 flex flex-col gap-4 h-full">
-                      <div className="relative">
-                        <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${colors.iconBg} opacity-20 blur-lg group-hover:opacity-40 transition-opacity duration-300`} />
-                        <div className={`relative w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.iconBg} flex items-center justify-center shadow-md shrink-0 ring-1 ${colors.ring} transition-transform duration-300 group-hover:scale-105`}>
-                          <f.icon className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <span className="inline-block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{f.badge}</span>
-                        <h3 className="text-base font-black text-slate-900 leading-tight mb-1.5">{f.title}</h3>
-                        <p className="text-xs text-slate-500 leading-relaxed">{f.desc}</p>
-                      </div>
-                      <button onClick={() => handleNav(f.tab)}
-                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r ${colors.btn} text-white font-black text-[11px] rounded-2xl shadow-md hover:shadow-lg hover:opacity-90 active:scale-[0.98] transition-all`}>
-                        {f.btn}<ArrowRight className="h-3 w-3" />
-                      </button>
-                    </CardContent>
-                  </Card>
-                </motion.div>);
             })}
           </div>
         </motion.div>
@@ -515,13 +480,11 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
             { icon: Code2, color: 'from-slate-700 to-slate-900', role: t('about.author2_role'), name: t('about.author2_name'), desc: t('about.author2_desc') }].
             map((a, i) =>
             <motion.div key={i} variants={fadeUp}>
-                <Card className="group border border-white/60 bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                  <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${a.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
+                <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-2xl hover:shadow-md transition-shadow">
                   <CardContent className="p-6">
                     <div className="flex items-center gap-5">
-                      <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${a.color} flex items-center justify-center shadow-md shrink-0 transition-transform duration-300 group-hover:scale-105`}>
-                        <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${a.color} opacity-30 blur-md group-hover:opacity-50 transition-opacity`} />
-                        <a.icon className="relative h-7 w-7 text-white" />
+                      <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${a.color} flex items-center justify-center shadow-md shrink-0`}>
+                        <a.icon className="h-7 w-7 text-white" />
                       </div>
                       <div>
                         <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{a.role}</p>
@@ -541,12 +504,6 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
       <section className="mb-10">
         <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
           <Card className="border-none bg-slate-950 text-white overflow-hidden rounded-3xl relative">
-            {/* Animated gradient mesh background */}
-            <div className="absolute inset-0 opacity-60">
-              <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-blue-500/20 blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
-              <div className="absolute bottom-0 left-1/3 w-72 h-72 rounded-full bg-violet-500/15 blur-3xl animate-pulse" style={{ animationDuration: '5s', animationDelay: '1s' }} />
-              <div className="absolute top-1/3 left-0 w-64 h-64 rounded-full bg-cyan-500/10 blur-3xl animate-pulse" style={{ animationDuration: '6s', animationDelay: '2s' }} />
-            </div>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.2),transparent_50%)]" />
             <CardContent className="p-8 md:p-14 relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
               <div className="space-y-4 md:max-w-xl">
@@ -573,7 +530,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
                 </div>
               </div>
               <div className="relative flex-shrink-0 flex items-center justify-center w-48 h-48 md:w-60 md:h-60">
-                <div className="absolute inset-0 rounded-full border border-blue-400/20 animate-ping" style={{ animationDuration: '3s' }} />
+                <div className="absolute inset-0 rounded-full border border-blue-400/20" />
                 <div className="absolute inset-6 rounded-full border border-cyan-300/30" />
                 <Globe className="relative z-10 h-28 w-28 md:h-36 md:w-36 text-blue-400/70" />
               </div>
