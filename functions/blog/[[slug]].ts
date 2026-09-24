@@ -327,38 +327,23 @@ export const onRequest: PagesFunction = async (context) => {
           : DEFAULT_OG_IMAGE;
         const pageUrl = `${SITE_URL}/blog/muallif/${author.muallif_slug}`;
 
-        const personImageUrl = author.face_photo_url
-          ? toSeoImageUrl(author.face_photo_url)
-          : null;
-        const personEntity: Record<string, unknown> = {
+        const jsonLd: Record<string, unknown> = {
+          "@context": "https://schema.org",
           "@type": "Person",
           "@id": `${pageUrl}#person`,
           name: author.full_name,
           url: pageUrl,
-          jobTitle: "FanFaster Ustozi",
-          worksFor: {
-            "@type": "Organization",
-            name: "FanFaster",
-            url: "https://fanfaster.uz",
-          },
           ...(notePart ? { description: notePart } : {}),
-          ...(personImageUrl
+          ...(author.face_photo_url
             ? {
                 image: {
                   "@type": "ImageObject",
-                  url: personImageUrl,
-                  contentUrl: personImageUrl,
+                  url: toSeoImageUrl(author.face_photo_url),
+                  contentUrl: toSeoImageUrl(author.face_photo_url),
                   caption: `${author.full_name} — FanFaster muallifi`,
-                  width: "1200",
-                  height: "1200",
                 },
               }
             : {}),
-        };
-        const jsonLd: Record<string, unknown> = {
-          "@context": "https://schema.org",
-          "@type": "ProfilePage",
-          mainEntity: personEntity,
         };
 
         const headContent = buildHead(
