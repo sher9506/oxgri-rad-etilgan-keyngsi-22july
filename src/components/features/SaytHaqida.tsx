@@ -6,8 +6,8 @@ import {
   Users, FileText,
   ChevronRight, Mail, Phone,
   GraduationCap, Play, TrendingUp, Target, Brain,
-  HelpCircle, Lock, Info, ChevronDown } from
-'lucide-react';
+  HelpCircle, Lock, Info, ChevronDown,
+  Scale, Search, ShieldCheck, Sparkles, Trophy } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLang } from '@/contexts/LangContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +18,7 @@ const fadeUp = {
 };
 const staggerContainer = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.12 } }
+  visible: { transition: { staggerChildren: 0.1 } }
 };
 
 function AnimatedCounter({ target, suffix = '' }: {target: number;suffix?: string;}) {
@@ -41,10 +41,14 @@ function AnimatedCounter({ target, suffix = '' }: {target: number;suffix?: strin
 }
 
 const featureColors = {
-  blue: { iconBg: 'from-blue-500 to-blue-700', btn: 'from-blue-500 to-blue-700' },
-  purple: { iconBg: 'from-violet-500 to-violet-700', btn: 'from-violet-500 to-violet-700' },
-  orange: { iconBg: 'from-orange-400 to-orange-600', btn: 'from-orange-400 to-orange-600' },
-  emerald: { iconBg: 'from-emerald-500 to-emerald-700', btn: 'from-emerald-500 to-emerald-700' }
+  blue: { iconBg: 'from-blue-500 to-blue-700', btn: 'from-blue-500 to-blue-700', glow: 'shadow-blue-500/25', ring: 'ring-blue-400/30' },
+  purple: { iconBg: 'from-violet-500 to-violet-700', btn: 'from-violet-500 to-violet-700', glow: 'shadow-violet-500/25', ring: 'ring-violet-400/30' },
+  orange: { iconBg: 'from-orange-400 to-orange-600', btn: 'from-orange-400 to-orange-600', glow: 'shadow-orange-500/25', ring: 'ring-orange-400/30' },
+  emerald: { iconBg: 'from-emerald-500 to-emerald-700', btn: 'from-emerald-500 to-emerald-700', glow: 'shadow-emerald-500/25', ring: 'ring-emerald-400/30' },
+  cyan: { iconBg: 'from-cyan-400 to-cyan-600', btn: 'from-cyan-500 to-cyan-700', glow: 'shadow-cyan-500/25', ring: 'ring-cyan-400/30' },
+  rose: { iconBg: 'from-rose-500 to-rose-700', btn: 'from-rose-500 to-rose-700', glow: 'shadow-rose-500/25', ring: 'ring-rose-400/30' },
+  amber: { iconBg: 'from-amber-400 to-amber-600', btn: 'from-amber-500 to-amber-700', glow: 'shadow-amber-500/25', ring: 'ring-amber-400/30' },
+  indigo: { iconBg: 'from-indigo-500 to-indigo-700', btn: 'from-indigo-500 to-indigo-700', glow: 'shadow-indigo-500/25', ring: 'ring-indigo-400/30' }
 };
 
 interface SaytHaqidaProps {
@@ -62,7 +66,7 @@ const FAQ_ITEMS = [
 { q: "Qaysi qurilmalardan foydalanish mumkin?", a: "Internetga ulangan har qanday kompyuter, noutbuk, planshet yoki smartfondan foydalanish mumkin. Chrome, Firefox, Safari yoki Edge brauzerlaridan foydalanish tavsiya etiladi." }];
 
 
-const MAXFIYLIK_MATN = `FanFaster.uz (keyingi o'rinlarda "Biz", "Platforma" yoki "FanFaster") o'quvchilar uchun mo'ljallangan intellektual ta'lim platformasi bo'lib, sun'iy intellekt va inson tafakkuri sintezidan foydalanadi.
+const MAXFIYLIK_MATN = `FanFaster.uz (keyingi o'rinlarda "Biz", "Platforma" yoki "FanFaster") o'quvchilar uchun mo'ljallangan intellektual ta'lim platformasi bo'lib, sun'iy intellekt va inson tafakkori sintezidan foydalanadi.
 
 **Oxirgi yangilanish:** 2026-yil 4-iyun
 
@@ -133,10 +137,10 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   };
 
   const stats = [
-  { icon: Users, value: 1200, suffix: '+', label: 'Faol foydalanuvchilar' },
-  { icon: FileText, value: 4500, suffix: '+', label: 'Testlar va savollar' },
-  { icon: BrainCircuit, value: 850, suffix: '+', label: 'AI baholangan kazuslar' },
-  { icon: BookOpen, value: 98, suffix: '%', label: 'Mamnunlik darajasi' }];
+  { icon: Users, value: 1200, suffix: '+', label: 'Faol foydalanuvchilar', grad: 'from-blue-500 to-cyan-400' },
+  { icon: FileText, value: 4500, suffix: '+', label: 'Testlar va savollar', grad: 'from-violet-500 to-purple-400' },
+  { icon: BrainCircuit, value: 850, suffix: '+', label: 'AI baholangan kazuslar', grad: 'from-emerald-500 to-teal-400' },
+  { icon: Sparkles, value: 15000, suffix: '+', label: 'AI Mentor javoblari', grad: 'from-amber-400 to-orange-400' }];
 
 
   const steps = [
@@ -145,12 +149,17 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   { step: '03', icon: Brain, title: "O'rganing va yozing", desc: "Sun'iy intellekt javoblaringizni tahlil qilib to'liq baho beradi.", color: 'bg-orange-500' },
   { step: '04', icon: TrendingUp, title: "Natijani ko'ring", desc: "Statistika va zaif tomonlaringizni mustahkamlang.", color: 'bg-emerald-600' }];
 
-
-  const features = [
+  const coreFeatures = [
   { icon: BookOpen, color: 'blue' as const, badge: 'Modulli ta\'lim', title: 'Kurslar', desc: "Coursera uslubida Kurs → Modul → Dars tuzilmasi. Video, PDF, Audio va test bilan to'liq o'quv jarayoni.", btn: "Kurslarga o'tish", tab: 'kurslar' },
   { icon: Library, color: 'purple' as const, badge: "O'quv markazi", title: "O'quv materiallari", desc: "Sara va miyaga tez muhrlanadigan kontent. Murakkab mavzular oddiy tilda tushuntirilgan.", btn: "Materiallarni ko'rish", tab: 'oqmatlar' },
   { icon: BarChart3, color: 'orange' as const, badge: 'Bilim sinovi', title: 'Mavjud testlar', desc: "Xolis va qat'iy filtrlardan o'tgan testlar. O'z kuchingizni amalda tasdiqlang.", btn: 'Testlarni boshlash', tab: 'mavjud_testlar' },
   { icon: BrainCircuit, color: 'emerald' as const, badge: 'AI tahlil', title: 'Mavjud kazuslar', desc: "Haqiqiy muammolar, murakkab ssenariylar va ularga AI ning xolis bahosi.", btn: 'Kazus yechishni boshlash', tab: 'mavjud_kazuslar' }];
+
+  const aiFeatures = [
+  { icon: Scale, color: 'cyan' as const, badge: 'AI sud simulyatsiyasi', title: 'Moot Court', desc: "Real kazus bo'yicha AI bilan (sudya yoki qarshi tomon rolida) jonli bahslashasiz. AI suhbatni 5 mezon bo'yicha avtomatik baholaydi.", btn: 'Moot Court boshlash', tab: 'moot_court' },
+  { icon: ShieldCheck, color: 'indigo' as const, badge: 'Ishonchli AI javob', title: 'Qonunlar bazasi (AI qidiruv)', desc: "Har bir savolga taxmin emas, aynan qonun matniga asoslangan aniq javob — AI hech qachon \"o'ylab topmaydi\", faqat bazadagi haqiqiy moddalarga tayanadi.", btn: 'Qonunlarni qidirish', tab: 'qonunlar' },
+  { icon: Sparkles, color: 'amber' as const, badge: '24/7 shaxsiy repetitor', title: 'AI Mentor', desc: "Istalgan mavzuni tushuntirib beradigan, test/kazus yaratib beradigan shaxsiy AI yordamchi. Istalgan vaqtda savol berish mumkin.", btn: 'AI Mentor bilan suhbat', tab: 'mentor' },
+  { icon: Trophy, color: 'rose' as const, badge: 'Gamifikatsiya', title: 'Reyting va yutuqlar', desc: "XP ball, daraja va nishonlar (badge) orqali o'qish jarayonini kuzatish, boshqa o'quvchilar bilan solishtirish.", btn: "Reytingni ko'rish", tab: 'reyting' }];
 
 
   return (
@@ -242,69 +251,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
             — uni chuqur tushunib, amalda qo&apos;llang.{' '}
             <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
           </motion.p>
-          
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-          
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.4 }}
           className="flex flex-wrap gap-3">
             <button onClick={() => handleNav('kurslar')}
@@ -327,10 +274,14 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
         className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((s, i) =>
           <motion.div key={i} variants={fadeUp}>
-              <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-2xl hover:shadow-md transition-shadow">
-                <CardContent className="p-5 flex flex-col items-center text-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-                    <s.icon className="h-5 w-5 text-blue-600" />
+              <Card className="group relative border border-white/60 bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                <div className={`absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r ${s.grad} opacity-60 group-hover:opacity-100 transition-opacity`} />
+                <CardContent className="p-5 flex flex-col items-center text-center gap-2 relative">
+                  <div className="relative">
+                    <div className={`absolute inset-0 rounded-xl bg-gradient-to-r ${s.grad} opacity-20 blur-md group-hover:opacity-40 transition-opacity`} />
+                    <div className="relative w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center ring-1 ring-slate-200/60">
+                      <s.icon className="h-5 w-5 text-slate-700 group-hover:text-slate-900 transition-colors" />
+                    </div>
                   </div>
                   <p className="text-2xl md:text-3xl font-black text-slate-900 tabular-nums">
                     <AnimatedCounter target={s.value} suffix={s.suffix} />
@@ -406,15 +357,19 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
             <p className="text-xs font-black text-blue-600 uppercase tracking-[0.35em]">Jarayon</p>
             <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Qanday ishlaydi?</h2>
           </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="relative grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Connecting progress line */}
+            <div className="hidden md:block absolute top-[28px] left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-blue-300 via-violet-300 to-emerald-300 opacity-50" />
             {steps.map((s, i) =>
-            <motion.div key={i} variants={fadeUp}>
-                <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-2xl h-full hover:shadow-md transition-shadow">
+            <motion.div key={i} variants={fadeUp} className="relative z-10">
+                <Card className="group border border-white/60 bg-white/80 backdrop-blur-md rounded-2xl h-full overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                  <div className={`absolute inset-x-0 top-0 h-0.5 ${s.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
                   <CardContent className="p-5 flex flex-col gap-3">
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] font-black text-slate-300 tabular-nums">{s.step}</span>
-                      <div className={`w-9 h-9 rounded-xl ${s.color} flex items-center justify-center shadow-sm`}>
-                        <s.icon className="h-[18px] w-[18px] text-white" />
+                      <div className={`relative w-9 h-9 rounded-xl ${s.color} flex items-center justify-center shadow-sm transition-transform duration-300 group-hover:scale-110`}>
+                        <div className={`absolute inset-0 rounded-xl ${s.color} opacity-40 blur-md group-hover:opacity-60 transition-opacity`} />
+                        <s.icon className="relative h-[18px] w-[18px] text-white" />
                       </div>
                     </div>
                     <div>
@@ -429,38 +384,80 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
         </motion.div>
       </section>
 
-      {/* ══ FEATURE KARTALAR ══ */}
+      {/* ══ ASOSIY IMKONIYATLAR ══ */}
       <section className="mb-10">
         <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true }} className="space-y-6">
           <motion.div variants={fadeUp} className="text-center space-y-1.5">
             <p className="text-xs font-black text-violet-600 uppercase tracking-[0.35em]">Imkoniyatlar</p>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Nima o'rganishingiz mumkin?</h2>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Asosiy imkoniyatlar</h2>
           </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {features.map((f, i) => {
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {coreFeatures.map((f, i) => {
               const colors = featureColors[f.color];
               return (
                 <motion.div key={i} variants={fadeUp}>
-                  <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-3xl overflow-hidden h-full hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-                    <CardContent className="p-6 md:p-8 flex flex-col gap-5 h-full">
-                      <div className="flex items-start gap-4">
-                        <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.iconBg} flex items-center justify-center shadow-md shrink-0`}>
+                  <Card className={`group relative border border-white/60 bg-white/80 backdrop-blur-md rounded-3xl overflow-hidden h-full hover:shadow-xl ${colors.glow} hover:-translate-y-1 transition-all duration-300`}>
+                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${colors.iconBg} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+                    <CardContent className="p-5 md:p-6 flex flex-col gap-4 h-full">
+                      <div className="relative">
+                        <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${colors.iconBg} opacity-20 blur-lg group-hover:opacity-40 transition-opacity duration-300`} />
+                        <div className={`relative w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.iconBg} flex items-center justify-center shadow-md shrink-0 ring-1 ${colors.ring} transition-transform duration-300 group-hover:scale-105`}>
                           <f.icon className="h-6 w-6 text-white" />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="inline-block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{f.badge}</span>
-                          <h3 className="text-lg font-black text-slate-900 leading-tight">{f.title}</h3>
-                        </div>
                       </div>
-                      <p className="text-sm text-slate-500 leading-relaxed flex-1">{f.desc}</p>
+                      <div className="flex-1">
+                        <span className="inline-block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{f.badge}</span>
+                        <h3 className="text-base font-black text-slate-900 leading-tight mb-1.5">{f.title}</h3>
+                        <p className="text-xs text-slate-500 leading-relaxed">{f.desc}</p>
+                      </div>
                       <button onClick={() => handleNav(f.tab)}
-                      className={`w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-gradient-to-r ${colors.btn} text-white font-black text-xs rounded-2xl shadow-md hover:opacity-90 active:scale-[0.98] transition-all`}>
-                        {f.btn}<ArrowRight className="h-3.5 w-3.5" />
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r ${colors.btn} text-white font-black text-[11px] rounded-2xl shadow-md hover:shadow-lg hover:opacity-90 active:scale-[0.98] transition-all`}>
+                        {f.btn}<ArrowRight className="h-3 w-3" />
                       </button>
                     </CardContent>
                   </Card>
                 </motion.div>);
+            })}
+          </div>
+        </motion.div>
+      </section>
 
+      {/* ══ AI BILAN ISHLASH ══ */}
+      <section className="mb-10">
+        <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true }} className="space-y-6">
+          <motion.div variants={fadeUp} className="text-center space-y-1.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-50 to-indigo-50 border border-cyan-200/60 mb-1">
+              <Sparkles className="h-3 w-3 text-cyan-500" />
+              <span className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">AI bilan ishlash</span>
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Sun'iy intellekt imkoniyatlari</h2>
+          </motion.div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {aiFeatures.map((f, i) => {
+              const colors = featureColors[f.color];
+              return (
+                <motion.div key={i} variants={fadeUp}>
+                  <Card className={`group relative border border-white/60 bg-white/80 backdrop-blur-md rounded-3xl overflow-hidden h-full hover:shadow-xl ${colors.glow} hover:-translate-y-1 transition-all duration-300`}>
+                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${colors.iconBg} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+                    <CardContent className="p-5 md:p-6 flex flex-col gap-4 h-full">
+                      <div className="relative">
+                        <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${colors.iconBg} opacity-20 blur-lg group-hover:opacity-40 transition-opacity duration-300`} />
+                        <div className={`relative w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.iconBg} flex items-center justify-center shadow-md shrink-0 ring-1 ${colors.ring} transition-transform duration-300 group-hover:scale-105`}>
+                          <f.icon className="h-6 w-6 text-white" />
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <span className="inline-block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{f.badge}</span>
+                        <h3 className="text-base font-black text-slate-900 leading-tight mb-1.5">{f.title}</h3>
+                        <p className="text-xs text-slate-500 leading-relaxed">{f.desc}</p>
+                      </div>
+                      <button onClick={() => handleNav(f.tab)}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r ${colors.btn} text-white font-black text-[11px] rounded-2xl shadow-md hover:shadow-lg hover:opacity-90 active:scale-[0.98] transition-all`}>
+                        {f.btn}<ArrowRight className="h-3 w-3" />
+                      </button>
+                    </CardContent>
+                  </Card>
+                </motion.div>);
             })}
           </div>
         </motion.div>
@@ -480,11 +477,13 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
             { icon: Code2, color: 'from-slate-700 to-slate-900', role: t('about.author2_role'), name: t('about.author2_name'), desc: t('about.author2_desc') }].
             map((a, i) =>
             <motion.div key={i} variants={fadeUp}>
-                <Card className="border border-white/60 bg-white/80 backdrop-blur-md shadow-sm rounded-2xl hover:shadow-md transition-shadow">
+                <Card className="group border border-white/60 bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                  <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${a.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
                   <CardContent className="p-6">
                     <div className="flex items-center gap-5">
-                      <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${a.color} flex items-center justify-center shadow-md shrink-0`}>
-                        <a.icon className="h-7 w-7 text-white" />
+                      <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${a.color} flex items-center justify-center shadow-md shrink-0 transition-transform duration-300 group-hover:scale-105`}>
+                        <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${a.color} opacity-30 blur-md group-hover:opacity-50 transition-opacity`} />
+                        <a.icon className="relative h-7 w-7 text-white" />
                       </div>
                       <div>
                         <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{a.role}</p>
@@ -504,6 +503,12 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
       <section className="mb-10">
         <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
           <Card className="border-none bg-slate-950 text-white overflow-hidden rounded-3xl relative">
+            {/* Animated gradient mesh background */}
+            <div className="absolute inset-0 opacity-60">
+              <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-blue-500/20 blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
+              <div className="absolute bottom-0 left-1/3 w-72 h-72 rounded-full bg-violet-500/15 blur-3xl animate-pulse" style={{ animationDuration: '5s', animationDelay: '1s' }} />
+              <div className="absolute top-1/3 left-0 w-64 h-64 rounded-full bg-cyan-500/10 blur-3xl animate-pulse" style={{ animationDuration: '6s', animationDelay: '2s' }} />
+            </div>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.2),transparent_50%)]" />
             <CardContent className="p-8 md:p-14 relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
               <div className="space-y-4 md:max-w-xl">
@@ -530,7 +535,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
                 </div>
               </div>
               <div className="relative flex-shrink-0 flex items-center justify-center w-48 h-48 md:w-60 md:h-60">
-                <div className="absolute inset-0 rounded-full border border-blue-400/20" />
+                <div className="absolute inset-0 rounded-full border border-blue-400/20 animate-ping" style={{ animationDuration: '3s' }} />
                 <div className="absolute inset-6 rounded-full border border-cyan-300/30" />
                 <Globe className="relative z-10 h-28 w-28 md:h-36 md:w-36 text-blue-400/70" />
               </div>
