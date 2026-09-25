@@ -337,6 +337,15 @@ Deno.serve(async (req: Request) => {
     const result = parseLexUzHtml(html);
     console.log(`[import-qonun] Topildi: ${result.moddalar.length} ta modda, ${result.gaps.length} ta teshik, ${result.superscript_moddalar.length} ta superskript`);
 
+    if (result.moddalar.length === 0) {
+      const hint = result.qonun_nomi ? `Sahifa sarlavhasi: "${result.qonun_nomi}". ` : '';
+      return new Response(JSON.stringify({
+        error: `0 ta modda topildi. ${hint}Link to'g'ri ekanligini tekshiring — bu sahifa qonun kodeksi emas, balki alohida hujjat bo'lishi mumkin.`,
+      }), {
+        status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Qonun nomini aniqlash
     const qonunNom = nom || result.qonun_nomi || qonunKod;
 
