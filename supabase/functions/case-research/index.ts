@@ -464,7 +464,7 @@ Deno.serve(async (req: Request) => {
           .from('moot_court_cases')
           .update({
             tadqiqot_holati: 'qisman',
-            tasdiqlangan_moddalar: '[]'::any,
+            tasdiqlangan_moddalar: [],
             namunaviy_javob: null,
             updated_at: new Date().toISOString(),
           })
@@ -475,7 +475,7 @@ Deno.serve(async (req: Request) => {
             .from('qidiruv_jurnali')
             .update({
               holat: 'qisman',
-              nomzodlar: []::any,
+              nomzodlar: [],
               ai1_model: step1Result.model,
               ai1_tokens: step1Result.tokens,
               updated_at: new Date().toISOString(),

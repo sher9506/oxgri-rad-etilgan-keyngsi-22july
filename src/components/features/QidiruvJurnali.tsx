@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, CheckCircle, Clock, XCircle, AlertCircle, ChevronDown, ChevronUp, FileText, Cpu, Zap } from 'lucide-react';
+import { Search, Loader2, CheckCircle, Clock, XCircle, AlertCircle, ChevronDown, ChevronUp, FileText, Cpu, Zap, RotateCw, ExternalLink, Filter } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 
 interface JurnalEntry {
   id: string;
@@ -31,13 +32,25 @@ const holatConfig: Record<string, { color: string; icon: any; label: string }> =
   kutmoqda: { color: 'bg-gray-100 text-gray-500 border-gray-200', icon: Clock, label: 'Kutmoqda' },
 };
 
+const hukmLabels: Record<string, string> = {
+  tolliq_mos: "To'liq mos",
+  faqat_matn_mos: 'Faqat matn',
+  faqat_raqam_mos: 'Faqat raqam',
+  topilmadi: 'Topilmadi',
+  qonun_kiritilmagan: "Qonun yo'q",
+};
+
 export default function QidiruvJurnali() {
   const [entries, setEntries] = useState<JurnalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [holatFilter, setHolatFilter] = useState<string[]>([]);
+  const [faqatMuammoli, setFaqatMuammoli] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(20);
+  const [rerunning, setRerunning] = useState<string | null>(null);
+
+  const { toast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,12 +70,18 @@ export default function QidiruvJurnali() {
     load();
   }, [load]);
 
+  const isMuammoli = (e: JurnalEntry): boolean => {
+    const hukm = e.hukm_tarqatish || {};
+    return (hukm.faqat_raqam_mos || 0) > 0 || (hukm.topilmadi || 0) > 0 || (hukm.qonun_kiritilmagan || 0) > 0 || e.holat === 'xato' || e.holat === 'qisman';
+  };
+
   const filtered = entries.filter(e => {
     if (search) {
       const q = search.toLowerCase();
       if (!e.case_sarlavha?.toLowerCase().includes(q) && !e.case_id.toLowerCase().includes(q)) return false;
     }
     if (holatFilter.length > 0 && !holatFilter.includes(e.holat)) return false;
+    if (faqatMuammoli && !isMuammoli(e)) return false;
     return true;
   });
 
@@ -70,13 +89,48 @@ export default function QidiruvJurnali() {
     setHolatFilter(prev => prev.includes(h) ? prev.filter(x => x !== h) : [...prev, h]);
   };
 
-  const stats = {
-    jami: entries.length,
-    tayyor: entries.filter(e => e.holat === 'tayyor').length,
-    qisman: entries.filter(e => e.holat === 'qisman').length,
-    xato: entries.filter(e => e.holat === 'xato').length,
-    jamiToken: entries.reduce((sum, e) => sum + (e.jami_token || 0), 0),
-    jamiTasdiq: entries.reduce((sum, e) => sum + (e.tasdiqlangan_moddalar?.length || 0), 0),
+  // Statistics
+  const totalNomzodlar = entries.reduce((sum, e) => sum + (e.nomzodlar?.length || 0), 0);
+  const totalHukmlar = entries.reduce((sum, e) => {
+    const h = e.hukm_tarqatish || {};
+    return sum + Object.values(h).reduce((a: number, b: any) => a + (b as number), 0);
+  }, 0);
+  const totalTolliqMos = entries.reduce((sum, e) => sum + (e.hukm_tarqatish?.tolliq_mos || 0), 0);
+  const totalTopilmadi = entries.reduce((sum, e) => sum + (e.hukm_tarqatish?.topilmadi || 0), 0);
+  const tolliqFoiz = totalHukmlar > 0 ? Math.round((totalTolliqMos / totalHukmlar) * 100) : 0;
+  const topilmadiFoiz = totalHukmlar > 0 ? Math.round((totalTopilmadi / totalHukmlar) * 100) : 0;
+  const ortachaToken = entries.length > 0 ? Math.round(entries.reduce((sum, e) => sum + (e.jami_token || 0), 0) / entries.length) : 0;
+
+  const rerun = async (caseId: string, caseSarlavha: string) => {
+    setRerunning(caseId);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/case-research`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ caseId, action: 'run' }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        const holat = data.holat || 'tayyor';
+        const tasdiqSoni = data.step2?.tasdiqlanganlar?.length || 0;
+        toast({
+          title: holat === 'tayyor' ? 'Tadqiqot tayyor' : holat === 'qisman' ? 'Tadqiqot qisman' : 'Tadqiqot xatosi',
+          description: holat === 'tayyor' ? `${tasdiqSoni} ta qonun moddasi tasdiqlandi` : holat === 'qisman' ? 'AI modda topa olmadi yoki bazada qonunlar yetarli emas' : data.error || 'Xatolik yuz berdi',
+        });
+        load();
+      } else if (data?.error) {
+        toast({ title: 'Tadqiqot xatosi', description: data.error, variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Tarmoq xatosi', description: 'Tadqiqot amalga oshmadi', variant: 'destructive' });
+    } finally {
+      setRerunning(null);
+    }
   };
 
   return (
@@ -95,23 +149,23 @@ export default function QidiruvJurnali() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
           <div className="bg-white/10 rounded-xl p-2.5">
             <p className="text-[10px] text-blue-100 font-bold uppercase">Jami</p>
-            <p className="text-lg font-black">{stats.jami}</p>
+            <p className="text-lg font-black">{entries.length}</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
-            <p className="text-[10px] text-blue-100 font-bold uppercase">Tayyor</p>
-            <p className="text-lg font-black text-emerald-300">{stats.tayyor}</p>
+            <p className="text-[10px] text-blue-100 font-bold uppercase">To'liq mos</p>
+            <p className="text-lg font-black text-emerald-300">{tolliqFoiz}%</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
-            <p className="text-[10px] text-blue-100 font-bold uppercase">Qisman</p>
-            <p className="text-lg font-black text-amber-300">{stats.qisman}</p>
+            <p className="text-[10px] text-blue-100 font-bold uppercase">Topilmadi</p>
+            <p className="text-lg font-black text-red-300">{topilmadiFoiz}%</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
             <p className="text-[10px] text-blue-100 font-bold uppercase">Moddalar</p>
-            <p className="text-lg font-black">{stats.jamiTasdiq}</p>
+            <p className="text-lg font-black">{entries.reduce((s, e) => s + (e.tasdiqlangan_moddalar?.length || 0), 0)}</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
-            <p className="text-[10px] text-blue-100 font-bold uppercase">Token</p>
-            <p className="text-lg font-black">{stats.jamiToken.toLocaleString()}</p>
+            <p className="text-[10px] text-blue-100 font-bold uppercase">O'rtacha token</p>
+            <p className="text-lg font-black">{ortachaToken.toLocaleString()}</p>
           </div>
         </div>
       </div>
@@ -127,7 +181,15 @@ export default function QidiruvJurnali() {
             className="pl-9 rounded-xl"
           />
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <button
+            onClick={() => setFaqatMuammoli(!faqatMuammoli)}
+            className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg border transition-all flex items-center gap-1 ${
+              faqatMuammoli ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <Filter className="h-3 w-3" /> Faqat muammoli
+          </button>
           {Object.entries(holatConfig).map(([key, cfg]) => {
             const active = holatFilter.includes(key);
             return (
@@ -162,8 +224,9 @@ export default function QidiruvJurnali() {
             const cfg = holatConfig[e.holat] || holatConfig.kutmoqda;
             const Icon = cfg.icon;
             const expanded = expandedId === e.id;
+            const muammoli = isMuammoli(e);
             return (
-              <div key={e.id} className="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
+              <div key={e.id} className={`rounded-2xl bg-white border shadow-sm overflow-hidden ${muammoli ? 'border-orange-200' : 'border-gray-100'}`}>
                 <button
                   onClick={() => setExpandedId(expanded ? null : e.id)}
                   className="w-full p-3.5 flex items-center justify-between gap-3 hover:bg-gray-50/50 transition-colors text-left"
@@ -188,10 +251,25 @@ export default function QidiruvJurnali() {
                         <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
                           <Zap className="h-2.5 w-2.5" /> {e.jami_token || 0} token
                         </span>
+                        {muammoli && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                            Muammoli
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                  {expanded ? <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={(ev) => { ev.stopPropagation(); rerun(e.case_id, e.case_sarlavha || ''); }}
+                      disabled={rerunning === e.case_id}
+                      className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition-all flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {rerunning === e.case_id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
+                      Qayta ishga tushirish
+                    </button>
+                    {expanded ? <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />}
+                  </div>
                 </button>
 
                 {expanded && (
@@ -225,20 +303,11 @@ export default function QidiruvJurnali() {
                       <div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Hukm tarqatish</p>
                         <div className="flex gap-1.5 flex-wrap">
-                          {Object.entries(e.hukm_tarqatish).map(([hukm, count]) => {
-                            const labels: Record<string, string> = {
-                              tolliq_mos: 'To\'liq mos',
-                              faqat_matn_mos: 'Faqat matn',
-                              faqat_raqam_mos: 'Faqat raqam',
-                              topilmadi: 'Topilmadi',
-                              qonun_kiritilmagan: 'Qonun yo\'q',
-                            };
-                            return (
-                              <Badge key={hukm} variant="outline" className="text-[10px]">
-                                {labels[hukm] || hukm}: {count as number}
-                              </Badge>
-                            );
-                          })}
+                          {Object.entries(e.hukm_tarqatish).map(([hukm, count]) => (
+                            <Badge key={hukm} variant="outline" className="text-[10px]">
+                              {hukmLabels[hukm] || hukm}: {count as number}
+                            </Badge>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -262,8 +331,24 @@ export default function QidiruvJurnali() {
                                 {m.hukm === 'faqat_raqam_mos' && (
                                   <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">Raqam bo'yicha</span>
                                 )}
+                                {m.lex_element_id && (
+                                  <a
+                                    href={`https://lex.uz/uz/docs/-${m.qonun_kodi === 'JK' ? '111453' : ''}#${m.lex_element_id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-slate-400 hover:text-blue-500"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
                               </div>
                               <p className="text-[10px] text-gray-500 leading-relaxed">{m.sarlavha || m.matn?.slice(0, 120) + '...'}</p>
+                              {m.kalit_sozlar && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 italic">Kalit so'zlar: {m.kalit_sozlar?.join(', ')}</p>
+                              )}
+                              {m.nega_kerak && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 italic">Nega kerak: {m.nega_kerak}</p>
+                              )}
                             </div>
                           ))}
                         </div>
