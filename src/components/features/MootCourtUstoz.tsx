@@ -43,6 +43,7 @@ interface MootSession {
   oquvchi_tomon: string;
   messages: { role: string; text: string; timestamp?: number }[];
   status: string;
+  kelishmovchilik?: boolean;
   balo: number | null;
   izoh: string | null;
   ai_score: number | null;
@@ -439,6 +440,11 @@ export default function MootCourtUstoz() {
               <Badge variant={viewingSession.status === 'yakunlangan' ? 'default' : 'secondary'}>
                 {viewingSession.status === 'yakunlangan' ? 'Yakunlangan' : 'Faol'}
               </Badge>
+              {viewingSession.kelishmovchilik && (
+                <Badge variant="outline" className="border-orange-300 text-orange-700 bg-orange-50 text-[10px]">
+                  Kelishmovchilik
+                </Badge>
+              )}
             </div>
           </div>
           <div className="p-4">
@@ -990,6 +996,11 @@ export default function MootCourtUstoz() {
                               <Badge variant={s.status === 'yakunlangan' ? 'default' : 'secondary'} className="shrink-0 text-[10px]">
                                 {s.status === 'yakunlangan' ? 'Yakunlangan' : 'Faol'}
                               </Badge>
+                              {s.kelishmovchilik && (
+                                <Badge variant="outline" className="shrink-0 border-orange-300 text-orange-700 bg-orange-50 text-[10px]">
+                                  Kelishmovchilik
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-100/60">
                               <Button size="sm" variant="ghost" onClick={() => setViewingSession(s)} className="text-xs h-7 rounded-lg">
@@ -1032,6 +1043,9 @@ export default function MootCourtUstoz() {
                                 {g.sessions.length} ta natija
                                 {g.sessions.filter(s => s.status === 'yakunlangan').length > 0 && (
                                   <span className="ml-1.5">• {g.sessions.filter(s => s.status === 'yakunlangan').length} yakunlangan</span>
+                                )}
+                                {g.sessions.filter(s => s.kelishmovchilik).length > 0 && (
+                                  <span className="ml-1.5 text-orange-600">• {g.sessions.filter(s => s.kelishmovchilik).length} kelishmovchilik</span>
                                 )}
                               </p>
                             </div>
