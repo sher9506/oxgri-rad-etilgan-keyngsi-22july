@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
 
 // ─── NORMALIZATSIYA ────────────────────────────────────────────────────────────
 function normalizeText(text: string): string {
-  return text
+  return cyrillicToLatin(text)
     .toLowerCase()
     .replace(/[ʻʼ'’‘`]/g, "'")
     .replace(/\s+/g, ' ')
@@ -20,6 +20,27 @@ function normalizeModdaRaqam(raqam: string): string {
     .replace(/\s+/g, '')
     .replace(/[ʻʼ'’‘`]/g, "'")
     .toLowerCase();
+}
+
+// ─── KIRILL → LOTIN TRANSKRIPSIYASI ────────────────────────────────────────────
+function cyrillicToLatin(text: string): string {
+  const map: Record<string, string> = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j','з':'z',
+    'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+    'с':'s','т':'t','у':'u','ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh',
+    'ъ':"'",'ы':'i','ь':'','э':'e','ю':'yu','я':'ya',
+    'ў':"o'",'қ':'q','ғ':"g'",'ҳ':'h',
+    'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'J','З':'Z',
+    'И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R',
+    'С':'S','Т':'T','У':'U','Ф':'F','Х':'X','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sh',
+    'Ъ':"'",'Ы':'I','Ь':'','Э':'E','Ю':'Yu','Я':'Ya',
+    'Ў':"O'",'Қ':'Q','Ғ':"G'",'Ҳ':'H',
+  };
+  let result = '';
+  for (const ch of text) {
+    result += map[ch] ?? ch;
+  }
+  return result;
 }
 
 // ─── HTML'DAN MODDALARNI AJRATISH ─────────────────────────────────────────────
@@ -59,8 +80,8 @@ function parseToc(html: string): TocEntry[] {
     const text = match[2].trim();
     if (!text) continue;
 
-    const moddaMatch = text.match(/^(\d+)(?:<sup>(\d+)<\/sup>)?-modda\.\s*(.*)/);
-    const bobMatch = text.match(/^([IVX]+)\s*bob\.\s*(.*)/i);
+    const moddaMatch = text.match(/^(\d+)(?:<sup>(\d+)<\/sup>)?-(?:modda|модда)\.\s*(.*)/);
+    const bobMatch = text.match(/^([IVX]+)\s*(?:bob|боб|БОБ)\.\s*(.*)/i);
 
     if (moddaMatch) {
       const num = moddaMatch[2] ? `${moddaMatch[1]}-${moddaMatch[2]}` : moddaMatch[1];
@@ -76,13 +97,13 @@ function parseToc(html: string): TocEntry[] {
 
 // Modda sarlavhasini HTML'dan ajratib olish (superskript bilan)
 function extractModdaTitle(divHtml: string): { num: string; title: string } | null {
-  // Pattern: >N-modda. Title<  yoki  >N<sup>S</sup>-modda. Title<
-  const simpleMatch = divHtml.match(/>(\d+)-modda\.\s*([^<]*)</);
+  // Pattern: >N-modda. Title<  yoki  >N<sup>S</sup>-modda. Title< (Latin va Cyrillic)
+  const simpleMatch = divHtml.match(/>(\d+)-(?:modda|модда)\.\s*([^<]*)</);
   if (simpleMatch) {
     return { num: simpleMatch[1], title: simpleMatch[2].trim() };
   }
   // Superscript variant
-  const supMatch = divHtml.match(/>(\d+)<sup[^>]*>(\d+)<\/sup>-modda\.\s*([^<]*)</);
+  const supMatch = divHtml.match(/>(\d+)<sup[^>]*>(\d+)<\/sup>-(?:modda|модда)\.\s*([^<]*)</);
   if (supMatch) {
     return { num: `${supMatch[1]}-${supMatch[2]}`, title: supMatch[3].trim() };
   }
@@ -120,12 +141,14 @@ function extractSudAmaliyoti(commentHtml: string): string {
 
 // "O'z kuchini yo'qotgan" tekshiruvi
 function isExpired(text: string): boolean {
-  return /o[''']z\s*kuchini\s*yo[''']qotgan/i.test(text);
+  const latin = cyrillicToLatin(text);
+  return /o[''']z\s*kuchini\s*yo[''']qotgan/i.test(latin);
 }
 
 // Keraksiz elementlarni tozalash
 function shouldRemoveElement(text: string): boolean {
-  return /Hujjatga taklif yuborish|Audioni tinglash|Hujjat elementidan havola olish|Oldingi tahrirga qarang|SPiT:/.test(text);
+  const latin = cyrillicToLatin(text);
+  return /Hujjatga taklif yuborish|Audioni tinglash|Hujjat elementidan havola olish|Oldingi tahrirga qarang|SPiT:/.test(latin);
 }
 
 function parseLexUzHtml(html: string): ParseResult {
@@ -179,7 +202,7 @@ function parseLexUzHtml(html: string): ParseResult {
 
   // Barcha modda sarlavha elementlarini topish
   // Regex: class="...lx_elem"...> ichida id="(-\d+)"> raqam-modda. sarlavha
-  const titleRegex = /class="[^"]*(?:CLAUSE_DEFAULT|ACT_TITLE)[^"]*lx_elem[^"]*"[^>]*>.*?id="(-?\d+)"[^>]*>(\d+)(?:<sup[^>]*>(\d+)<\/sup>)?-modda\.\s*([^<]*)<\/div>/gs;
+  const titleRegex = /class="[^"]*(?:CLAUSE_DEFAULT|ACT_TITLE)[^"]*lx_elem[^"]*"[^>]*>.*?id="(-?\d+)"[^>]*>(\d+)(?:<sup[^>]*>(\d+)<\/sup>)?-(?:modda|модда)\.\s*([^<]*)<\/div>/gs;
 
   const titleMatches: { lexId: string; num: string; sup: string | undefined; title: string; fullMatch: string; index: number }[] = [];
   let tm;
