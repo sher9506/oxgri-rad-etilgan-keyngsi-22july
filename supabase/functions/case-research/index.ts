@@ -128,24 +128,29 @@ async function stage0_QonunAniqlash(
 ): Promise<{ qonunlar: string[]; model: string; tokens: any }> {
   const qonunlarStr = qonunlar.map(q => `- ${q.kod}: ${q.nom}`).join('\n');
 
-  const systemPrompt = `Siz huquq ekspertisiz. Vazifangiz — berilgan kazus matnini o'qib, qaysi qonun kodekslari tegishli ekanligini aniqlash.
+  const systemPrompt = `Siz huquq ekspertisiz. Vazifangiz — berilgan kazus matnini o'qib,
+quyidagi ro'yxatdagi qaysi qonun kodekslari unga tegishli ekanligini aniqlash.
+
+Mavjud qonunlar ro'yxati (kod: to'liq nomi):
+${qonunlarStr}
 
 QOIDALAR:
-1. Faqat ro'yxatdagi qonun kodlaridan tanlang.
-2. Kazus matnini e'tiborli o'qing va 1-3 ta eng tegishli qonun kodini tanlang.
-3. Jinoyat ishlari bo'yicha — JK (jinoyat kodeksi) va JPK (jinoyat-protsessual kodeksi) ni hisobga oling.
-4. Ma'muriy huquqbuzarliklar bo'yicha — MTK (ma'muriy javobgarlik kodeksi) ni hisobga oling.
-5. Fuqarolik munosabatlari bo'yicha — FK (fuqarolik kodeksi) ni hisobga oling.
-6. Agar biron qonun tegishli bo'lmasa, bo'sh ro'yxat qaytaring.
-7. Javob QAT'IY JSON formatida bo'lsin.
+1. Har bir qonunning NOMIGA (masalan "Fuqarolik kodeksi", "Mehnat kodeksi",
+   "Soliq kodeksi" va h.k.) qarab, kazus matnidagi huquqiy munosabat turi bilan
+   solishtiring — kod nomi sizga qaysi soha ekanini ko'rsatadi.
+2. Kazus bir nechta huquq sohasiga tegishli bo'lishi mumkin (masalan, jinoiy ish
+   davomida fuqarolik da'vosi ham ko'tarilgan bo'lishi mumkin) — shunday holatda
+   bir nechta kodni tanlang.
+3. 1 dan 3 gacha eng tegishli qonun kodini tanlang. RO'YXATDA HALI KO'RMAGAN yoki
+   unda yo'q nomni HECH QACHON o'ylab topmang — faqat yuqoridagi ro'yxatdan tanlang.
+4. Agar kazus matni hech qanday berilgan qonunga aniq mos kelmasa, bo'sh ro'yxat
+   qaytaring — taxmin qilib tanlashdan ko'ra aniq aytmaslik afzalroq.
+5. Javob QAT'IY JSON formatida bo'lsin.
 
 JSON format:
 {
-  "qonunlar": ["JK", "JPK"]
-}
-
-Mavjud qonunlar ro'yxati:
-${qonunlarStr}`;
+  "qonunlar": ["<ro'yxatdagi kod 1>", "<ro'yxatdagi kod 2>"]
+}`;
 
   const { text, provider } = await callAIWithFallback({
     systemPrompt,
@@ -174,18 +179,35 @@ async function stage0_5_LegalConcepts(
   qonunlar: string[]
 ): Promise<{ kalitSozlar: string[]; huquqiyMasalalar: string[]; model: string; tokens: any }> {
   const qonunlarStr = qonunlar.join(', ');
-  const systemPrompt = `Siz huquq ekspertisiz. Vazifangiz — berilgan kazus matnidan huquqiy masalalarni aniqlash va qidiruv kalit so'zlarini chiqarish.
+  const systemPrompt = `Siz huquq ekspertisiz. Kazus matnini o'qib, quyidagi UNIVERSAL
+(har qanday huquq sohasiga tegishli bo'lishi mumkin bo'lgan) toifalardan QAYSILARI
+unga tegishli ekanligini aniqlang.
+
+Toifalar ro'yxati:
+- tomonlar orasidagi huquqiy munosabat turi (shartnoma, mulkiy, mehnat, oilaviy,
+  ma'muriy, jinoiy, soliq va h.k. — kazusda aniq ko'ringan turini yozing)
+- huquqbuzarlik/zarar/javobgarlik asosi (kim, kimga nisbatan qanday huquqbuzarlik
+  yoki zarar keltirgan)
+- bir nechta shaxs/tomonning ishtiroki va ularning huquqiy maqomi (masalan
+  hamkorlikdagi javobgarlik, vakolat, ishtirokchilik)
+- muddatlar, protsessual tartib yoki shakliy talablar
+- oldingi shunga o'xshash holatlar, takroriylik yoki og'irlashtiruvchi/
+  yengillashtiruvchi holatlar
+- yashirish, xabar bermaslik yoki dalillarni yo'q qilish kabi qo'shimcha harakatlar
+- javobgarlikdan ozod qilish yoki mustasno holatlar
 
 QOIDALAR:
-1. Kazus matnini o'qib, asosiy huquqiy masalalarni aniqlang (masalan: "til huquqi", "tarjimon", "protsessual prinsiplar", "o'g'rilik tarkibi", "dalil sifati", "huquqbuzarlik", "moddiy zarar" va h.k.)
-2. Har bir masala uchun 3-5 ta qidiruv kalit so'zi bering — qonun matnida uchraydigan professional huquqiy atamalarni ishlating.
-3. Kazus faktlari emas, HUQUQIY TERMINLAR kerak. Masalan: "telefon" emas, "mulkiy zarar"; "o'g'irlangan" emas, "o'g'rilik"; "til" emas, "tarjimon" va "protsessual til".
+1. Faqat kazus faktlariga asoslanib, tegishli toifalarni tanlang (bir nechtasi
+   bo'lishi mumkin, hech qaysi bo'lmasligi ham mumkin).
+2. Har tanlangan toifa uchun 3-5 ta professional huquqiy kalit so'z bering —
+   kazus faktlari emas, qonun matnida uchraydigan terminlarni ishlating.
+3. O'ylab topmang — faqat kazusda aniq ko'rsatilgan holatlarga tayaning.
 4. Javob QAT'IY JSON formatida bo'lsin.
 
-JSON format:
+JSON format (bu FAQAT struktura namunasi, mazmuni haqiqiy emas):
 {
-  "huquqiy_masalalar": ["til huquqi", "tarjimon xizmati", "protsessual prinsiplar"],
-  "kalit_sozlar": ["tarjimon", "til", "protsessual", "huquq", "so'roq"]
+  "huquqiy_masalalar": ["<toifa 1 nomi>", "<toifa 2 nomi>"],
+  "kalit_sozlar": ["<termin 1>", "<termin 2>", "<termin 3>"]
 }
 
 Tegishli qonunlar: ${qonunlarStr}`;
@@ -369,7 +391,11 @@ async function stage1b_AISarlavha(
     ? `\nKazusning huquqiy masalalari: ${huquqiyMasalalar.join(', ')}\n`
     : '';
 
-  const systemPrompt = `Siz huquq ekspertisiz. Quyida kazus matni va shu kazusga oid bo'lishi mumkin bo'lgan qonun moddalari ro'yxati (sarlavhalari bilan) berilgan.${masalalarStr}
+  const systemPrompt = `Siz huquq ekspertisiz. Quyida kazus matni va shu kazusga oid
+bo'lishi mumkin bo'lgan qonun moddalari ro'yxati (sarlavhalari bilan) berilgan.
+Kazus istalgan huquq sohasidan bo'lishi mumkin — jinoiy, fuqarolik, ma'muriy,
+mehnat, soliq va h.k. Siz faqat quyidagi ro'yxatdagi moddalar bilan cheklanasiz.
+${masalalarStr}
 
 Vazifangiz — ro'yxatdan kazusga ENG TEGISHLI 15 ta moddani tanlash.
 
@@ -377,20 +403,27 @@ QOIDALAR:
 1. Faqat ro'yxatdagi moddalardan tanlang. Ro'yxatda yo'q moddani o'ylab topmang.
 2. Har modda uchun nega kazusga tegishli ekanligini 1 gapda yozing.
 3. Modda raqamini ro'yxatdagidek aniq yozing.
-4. KENG RO'YXAT TANLANG — kazus bilan biroz bog'liq bo'lgan moddalar ham kirsin. Moddiy/protsessual barcha jihatlarini qamrab oling.
-5. Huquqiy masalalar ro'yxatiga e'tibor bering — shu masalalarga tegishli moddalarni ustun ko'ring.
+4. KENG RO'YXAT TANLANG — kazus bilan biroz bog'liq bo'lgan moddalar ham kirsin.
+   Moddiy huquq normalari, protsessual/tartib normalari, tomonlarning huquq va
+   majburiyatlari, javobgarlik shakllari, muddatlar va boshqa jihatlarning
+   barchasini qamrab oling — bitta toifaga yoki bitta huquq sohasiga cheklanib
+   qolmang.
+5. Huquqiy masalalar ro'yxatiga e'tibor bering — shu masalalarga tegishli
+   moddalarni ustun ko'ring.
 6. Javob QAT'IY JSON formatida bo'lsin.
 
-JSON format:
+JSON format (DIQQAT: bu FAQAT struktura namunasi — undagi qiymatlar hech qanday
+haqiqiy qonunga tegishli emas, faqat maydonlar qanday to'ldirilishini ko'rsatadi;
+haqiqiy javobda FAQAT pastdagi "Moddalar ro'yxati"dan foydalaning):
 {
   "nomzodlar": [
     {
-      "qonun_kodi": "JK",
-      "modda_raqami": "105",
-      "kalit_sozlar": ["odam o'ldirish", "qasddan"],
-      "tushuncha": "Qasddan odam o'ldirish",
-      "bolim_bob": "Sog'liqqa qarshi jinoyatlar",
-      "nega_kerak": "Kazusdagi shaxs qasddan odam o'ldirgan"
+      "qonun_kodi": "<ro'yxatdagi kod>",
+      "modda_raqami": "<ro'yxatdagi aniq raqam>",
+      "kalit_sozlar": ["<termin 1>", "<termin 2>", "<termin 3>"],
+      "tushuncha": "<moddaning ro'yxatdagi sarlavhasiga asoslangan qisqa mazmuni>",
+      "bolim_bob": "<ro'yxatdagi bob/bo'lim nomi, agar bilinsa>",
+      "nega_kerak": "<kazusning aynan qaysi faktiga bu modda tegishli — 1 gap>"
     }
   ]
 }
@@ -434,13 +467,21 @@ async function stage1c_AIRaqam(
     ? `\nKazusning huquqiy masalalari: ${huquqiyMasalalar.join(', ')}\n`
     : '';
 
-  const systemPrompt = `Siz huquq ekspertisiz. Vazifangiz — berilgan kazus matni uchun tegishli qonun moddalarini nomzod qilib ko'rsatish.${masalalarStr}
+  const systemPrompt = `Siz huquq ekspertisiz. Vazifangiz — berilgan kazus matni uchun
+tegishli qonun moddalarini nomzod qilib ko'rsatish. Kazus istalgan huquq sohasidan
+(jinoiy, fuqarolik, ma'muriy, mehnat, soliq va h.k.) bo'lishi mumkin — quyidagi
+ro'yxatdagi qonun nomlariga qarab, kazusga qaysi biri mos kelishini o'zingiz aniqlang.
+${masalalarStr}
 
 QOIDALAR:
-1. Faqat ro'yxatdagi qonun kodlaridan tanlang.
+1. Faqat pastdagi ro'yxatdagi qonun kodlaridan tanlang.
 2. 12 ta nomzod bering — KENGROQ ro'yxat tuzing.
-3. Kazusning barcha huquqiy jihatlarini qamrab oling: moddiy huquq (jinoyat tarkibi), protsessual huquq (jarayon tartibi), ishtirokchilar huquqlari, dalillar, yurisdiksiya va boshqalar.
-4. Huquqiy masalalar ro'yxatiga e'tibor bering — shu masalalarga tegishli moddalarni ustun ko'ring.
+3. Kazusning barcha huquqiy jihatlarini qamrab oling: moddiy huquq normalari,
+   protsessual/tartib normalari, tomonlarning huquq va majburiyatlari, javobgarlik
+   shakllari, muddatlar, ishtirokchilik/vakolat masalalari — faqat bitta huquq
+   sohasiga yoki bitta toifaga cheklanib qolmang.
+4. Huquqiy masalalar ro'yxatiga e'tibor bering — shu masalalarga tegishli
+   moddalarni ustun ko'ring.
 5. Har nomzod uchun:
    - qonun_kodi: ro'yxatdagi kod
    - modda_raqami: taxminiy modda raqami (string)
@@ -450,16 +491,16 @@ QOIDALAR:
    - nega_kerak: 1 gap — bu modda kazusga nega tegishli
 6. Javob QAT'IY JSON formatida bo'lsin.
 
-JSON format:
+JSON format (DIQQAT: bu FAQAT struktura namunasi, qiymatlar haqiqiy emas):
 {
   "nomzodlar": [
     {
-      "qonun_kodi": "JK",
-      "modda_raqami": "105",
-      "kalit_sozlar": ["odam o'ldirish", "qasddan", "jazo"],
-      "tushuncha": "Qasddan odam o'ldirish uchun javobgarlik",
-      "bolim_bob": "Sog'liqqa qarshi jinoyatlar",
-      "nega_kerak": "Kazusdagi shaxs qasddan odam o'ldirgan"
+      "qonun_kodi": "<ro'yxatdagi kod>",
+      "modda_raqami": "<taxminiy raqam>",
+      "kalit_sozlar": ["<termin 1>", "<termin 2>"],
+      "tushuncha": "<qisqa mazmun>",
+      "bolim_bob": "<taxminiy bob nomi>",
+      "nega_kerak": "<sabab, 1 gap>"
     }
   ]
 }
@@ -700,14 +741,12 @@ async function stage2_Tasdiqlash(
 
   const limitedNomzodlar = nomzodlar
     .sort((a, b) => {
-      // AI-sourced nomzodlar (ai_sarlavha, ai_raqam) are more relevant than pure FTS
-      const manbaRank: Record<string, number> = { ai_raqam: 3, ai_sarlavha: 2, fts: 1 };
+      const manbaRank: Record<string, number> = { fts: 3, ai_sarlavha: 2, ai_raqam: 1 };
       return (manbaRank[b.manba] || 0) - (manbaRank[a.manba] || 0);
     })
-    .slice(0, 20);
+    .slice(0, 30);
 
   const moddalarStr = limitedNomzodlar.map((n, i) => {
-    // To'liq matn — qisqartirilgan matn noto'g'ri baholanishiga yo'l qo'ymaydi
     const matnTolik = n.modda.matn.length > 600 ? n.modda.matn.slice(0, 600) + '...' : n.modda.matn;
     return `### Modda ${i + 1}: ${n.qonun_kodi} ${n.modda.modda_raqami}-modda
 Sarlavha: ${n.modda.sarlavha}
@@ -715,29 +754,35 @@ Bob: ${n.modda.bob_nomi}
 Matn: ${matnTolik}`;
   }).join('\n\n');
 
-  const systemPrompt = `Siz huquq ekspertisiz. Quyida kazus matni va unga oid bo'lishi mumkin bo'lgan qonun moddalari (to'liq matni bilan) berilgan.
+  const systemPrompt = `Siz huquq ekspertisiz. Quyida kazus matni va unga oid bo'lishi
+mumkin bo'lgan qonun moddalari (to'liq matni bilan) berilgan. Kazus istalgan huquq
+sohasidan bo'lishi mumkin.
 
-Vazifangiz — har bir modda uchun kazusga RELEVANTLIK DARAJASINI 0 dan 10 gacha ball bilan baholash.
+Vazifangiz — har bir modda uchun kazusga RELEVANTLIK DARAJASINI 0 dan 10 gacha
+ball bilan baholash.
 
 QOIDALAR:
 1. Har modda uchun:
    - ball: 0-10 (10 = kazusga to'liq mos, 0 = umuman tegishli emas)
    - asoslash: 1 gap — bu ball nega berilgani
-2. Ball 6 va undan yuqori moddalar tasdiqlangan hisoblanadi.
-3. Modda matnini e'tiborli o'qing. Modda sarlavhasi emas, MATNI bo'yicha baholang.
-4. Modda kazusning qaysi jihatiga tegishli: moddiy huquq (jinoyat tarkibi), protsessual tartib, ishtirokchi huquqlari, dalillar — buni hisobga oling.
-5. Agar modda kazus bilan biroz bog'liq bo'lsa (masalan, protsessual norma moddiy normaga qo'shimcha), ball 5-7 bering.
-6. Agar modda kazus bilan bog'liq emas yoki noto'g'ri topilgan bo'lsa, ball 0-3 bering.
+2. Ball 6-10 = kuchli aloqador (bu moddalar tasdiqlanadi).
+3. Ball 3-5 = qo'shimcha yoki qisman bog'liq bo'lishi mumkin, lekin asosiy emas
+   (bu moddalar tasdiqlanmaydi).
+4. Ball 0-2 = umuman aloqasi yo'q.
+5. Modda matnini e'tiborli o'qing. Modda sarlavhasi emas, MATNI bo'yicha baholang.
+6. Kazusda bir nechta huquqiy masala bo'lishi mumkin (masalan, asosiy javobgarlik
+   normasi + protsessual norma + ishtirokchilik/muddat normasi) — har bir masalaga
+   tegishli moddani alohida-alohida yuqori baholang, faqat bittasiga cheklanmang.
 7. Javob QAT'IY JSON formatida bo'lsin.
 
 JSON format:
 {
   "baholar": [
     {
-      "modda_raqami": "105",
-      "qonun_kodi": "JK",
+      "modda_raqami": "<raqam>",
+      "qonun_kodi": "<kod>",
       "ball": 9,
-      "asoslash": "Modda qasddan badanga shikast yetkazishni nazarda tutadi, kazusda ham shu holat bor"
+      "asoslash": "<1 gap>"
     }
   ]
 }
@@ -751,7 +796,7 @@ ${moddalarStr}`;
   const { text, provider } = await callAIWithFallback({
     systemPrompt,
     messages: [{ role: 'user', text: 'Baholashni boshlang. Har bir modda uchun ball bering. Faqat JSON qaytaring.' }],
-    maxTokens: 4000,
+    maxTokens: 5000,
     temperature: 0.2,
     jsonMode: true,
     functionName: 'case-research-stage2',
