@@ -220,7 +220,6 @@ Tegishli qonunlar: ${qonunlarStr}`;
       temperature: 0.2,
       jsonMode: true,
       functionName: 'case-research-stage0-5',
-      forceGroq: true,
     });
 
     const parsed = extractJsonFromAI(text);
@@ -438,7 +437,6 @@ ${moddalarStr}`;
     temperature: 0.3,
     jsonMode: true,
     functionName: 'case-research-stage1b',
-    forceGroq: true,
   });
 
   const parsed = extractJsonFromAI(text);
@@ -515,7 +513,6 @@ ${qonunlarStr}`;
     temperature: 0.3,
     jsonMode: true,
     functionName: 'case-research-stage1c',
-    forceGroq: true,
   });
 
   const parsed = extractJsonFromAI(text);
@@ -763,6 +760,7 @@ ball bilan baholash.
 
 QOIDALAR:
 1. Har modda uchun:
+   - indeks: modda tartib raqami (yuqoridagi "### Modda N" dan N)
    - ball: 0-10 (10 = kazusga to'liq mos, 0 = umuman tegishli emas)
    - asoslash: 1 gap — bu ball nega berilgani
 2. Ball 6-10 = kuchli aloqador (bu moddalar tasdiqlanadi).
@@ -774,13 +772,14 @@ QOIDALAR:
    normasi + protsessual norma + ishtirokchilik/muddat normasi) — har bir masalaga
    tegishli moddani alohida-alohida yuqori baholang, faqat bittasiga cheklanmang.
 7. Javob QAT'IY JSON formatida bo'lsin.
+8. DIQQAT: "indeks" maydoni — bu moddaning yuqoridagi ro'yxatdagi tartib raqami
+   (1 dan boshlab). Modda raqamini yoki qonun kodini yozmang — faqat indeks.
 
 JSON format:
 {
   "baholar": [
     {
-      "modda_raqami": "<raqam>",
-      "qonun_kodi": "<kod>",
+      "indeks": 1,
       "ball": 9,
       "asoslash": "<1 gap>"
     }
@@ -805,18 +804,27 @@ ${moddalarStr}`;
   const parsed = extractJsonFromAI(text);
   const baholar: any[] = parsed?.baholar && Array.isArray(parsed.baholar) ? parsed.baholar : [];
 
-  const bahoMap = new Map<string, { ball: number; asoslash: string }>();
-  for (const b of baholar) {
-    const key = `${(b.qonun_kodi || '').toUpperCase()}::${normalizeModdaRaqam(b.modda_raqami || '')}`;
-    bahoMap.set(key, { ball: Number(b.ball) || 0, asoslash: b.asoslash || '' });
+  if (baholar.length === 0) {
+    console.warn(`[case-research] Stage2 AI javob parse qilinmadi yoki bo'sh. text(500)=${text.slice(0, 500)}`);
   }
 
+  // Indeks bo'yicha moslashtirish — modda raqami/kodi format farqlari muammosini chetlab o'tadi
+  const bahoMap = new Map<number, { ball: number; asoslash: string }>();
+  for (const b of baholar) {
+    const idx = Number(b.indeks) || Number(b.index) || 0;
+    if (idx >= 1 && idx <= limitedNomzodlar.length) {
+      bahoMap.set(idx, { ball: Number(b.ball) || 0, asoslash: b.asoslash || '' });
+    }
+  }
+
+  console.log(`[case-research] Stage2: ${baholar.length} ta baho, ${bahoMap.size} ta mos, ${limitedNomzodlar.length} ta nomzod`);
+
   const tasdiqlanganlar: TasdiqlanganModda[] = [];
-  for (const n of limitedNomzodlar) {
-    const key = `${n.qonun_kodi}::${normalizeModdaRaqam(n.modda.modda_raqami)}`;
-    const baho = bahoMap.get(key);
+  for (let i = 0; i < limitedNomzodlar.length; i++) {
+    const baho = bahoMap.get(i + 1);
     const ball = baho?.ball ?? 0;
     if (ball >= 6) {
+      const n = limitedNomzodlar[i];
       tasdiqlanganlar.push({
         modda: n.modda,
         qonun_kodi: n.qonun_kodi,
