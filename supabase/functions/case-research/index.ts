@@ -1,4 +1,4 @@
-// Pipeline v3.0 — improved recall: ILIKE fallback, full-text verification, wider candidate net
+// Pipeline v3.4 — robust JSON parsing, dual matching (indeks + modda_raqami), increased token limits, multi-key array extraction
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAIWithFallback } from '../_shared/ai-provider.ts';
@@ -433,7 +433,7 @@ ${moddalarStr}`;
   const { text, provider } = await callAIWithFallback({
     systemPrompt,
     messages: [{ role: 'user', text: `Kazus matni:\n\n${kazusMatn}` }],
-    maxTokens: 2000,
+    maxTokens: 4000,
     temperature: 0.3,
     jsonMode: true,
     functionName: 'case-research-stage1b',
@@ -509,7 +509,7 @@ ${qonunlarStr}`;
   const { text, provider } = await callAIWithFallback({
     systemPrompt,
     messages: [{ role: 'user', text: `Kazus matni:\n\n${kazusMatn}` }],
-    maxTokens: 1500,
+    maxTokens: 3000,
     temperature: 0.3,
     jsonMode: true,
     functionName: 'case-research-stage1c',
@@ -802,18 +802,47 @@ ${moddalarStr}`;
   });
 
   const parsed = extractJsonFromAI(text);
-  const baholar: any[] = parsed?.baholar && Array.isArray(parsed.baholar) ? parsed.baholar : [];
+  // Gemini turli kalit nomlari qaytarishi mumkin — bir nechtasini sinab ko'ramiz
+  const baholar: any[] = (() => {
+    if (!parsed) return [];
+    if (Array.isArray(parsed)) return parsed;
+    for (const key of ['baholar', 'moddalar', 'results', 'items', 'baho', 'baholash']) {
+      if (parsed[key] && Array.isArray(parsed[key])) return parsed[key];
+    }
+    // birinchi topilgan array ni olamiz
+    for (const v of Object.values(parsed)) {
+      if (Array.isArray(v)) return v as any[];
+    }
+    return [];
+  })();
 
   if (baholar.length === 0) {
     console.warn(`[case-research] Stage2 AI javob parse qilinmadi yoki bo'sh. text(500)=${text.slice(0, 500)}`);
   }
 
-  // Indeks bo'yicha moslashtirish — modda raqami/kodi format farqlari muammosini chetlab o'tadi
+  // 1-usul: indeks bo'yicha moslashtirish
   const bahoMap = new Map<number, { ball: number; asoslash: string }>();
   for (const b of baholar) {
-    const idx = Number(b.indeks) || Number(b.index) || 0;
+    const idx = Number(b.indeks) || Number(b.index) || Number(b.modda_indeks) || 0;
     if (idx >= 1 && idx <= limitedNomzodlar.length) {
-      bahoMap.set(idx, { ball: Number(b.ball) || 0, asoslash: b.asoslash || '' });
+      bahoMap.set(idx, { ball: Number(b.ball) || 0, asoslash: b.asoslash || b.sabab || b.izoh || '' });
+    }
+  }
+
+  // 2-usul: modda_raqami + qonun_kodi bo'yicha (indeks ishlamasa)
+  if (bahoMap.size === 0) {
+    for (const b of baholar) {
+      const qk = (b.qonun_kodi || '').toUpperCase();
+      const mr = normalizeModdaRaqam(String(b.modda_raqami || ''));
+      if (qk && mr) {
+        for (let i = 0; i < limitedNomzodlar.length; i++) {
+          const n = limitedNomzodlar[i];
+          if (n.qonun_kodi === qk && normalizeModdaRaqam(n.modda.modda_raqami) === mr) {
+            bahoMap.set(i + 1, { ball: Number(b.ball) || 0, asoslash: b.asoslash || b.sabab || b.izoh || '' });
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -1111,3 +1140,5 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
+// force redeploy
+// redeploy token fix
