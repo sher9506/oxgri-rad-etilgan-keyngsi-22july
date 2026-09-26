@@ -6,7 +6,7 @@
  *     systemPrompt, messages, maxTokens, temperature, functionName,
  *   });
  * 
- * Groq is used as fallback when Gemini returns 429 (quota exhausted).
+ * Groq is used as fallback when Gemini returns 429 (quota exhausted) or 503 (service unavailable).
  * If GROQ_API_KEY is not configured, falls through to Gemini error.
  * Also auto-routes to Groq if today's Gemini usage is >= 90% of daily quota.
  */
@@ -138,7 +138,9 @@ async function callGroq(config: AIConfig, systemPrompt: string, messages: ChatMe
     max_tokens: maxTokens,
     temperature,
   };
-  if (jsonMode) body.response_format = { type: 'json_object' };
+  // Note: we don't use response_format={type:'json_object'} because some Groq models
+  // reject it with json_validate_failed. Our extractJsonFromAI handles parsing.
+  // if (jsonMode) body.response_format = { type: 'json_object' };
   const res = await fetch(config.apiUrl, {
     method: 'POST',
     headers: {

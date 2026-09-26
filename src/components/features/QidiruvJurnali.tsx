@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, CheckCircle, Clock, XCircle, AlertCircle, ChevronDown, ChevronUp, FileText, Cpu, Zap, RotateCw, ExternalLink, Filter } from 'lucide-react';
+import { Search, Loader2, CheckCircle, Clock, XCircle, AlertCircle, ChevronDown, ChevronUp, FileText, Cpu, Zap, RotateCw, ExternalLink, Filter, Database, Brain, Target } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,11 @@ interface JurnalEntry {
   ai1_tokens: any;
   ai2_model: string | null;
   ai2_tokens: any;
+  step0_qonunlar: string[] | null;
+  step0_model: string | null;
+  step0_tokens: any;
+  step2_model: string | null;
+  step2_tokens: any;
   hukm_tarqatish: any;
   jami_token: number;
   created_at: string;
@@ -32,13 +37,24 @@ const holatConfig: Record<string, { color: string; icon: any; label: string }> =
   kutmoqda: { color: 'bg-gray-100 text-gray-500 border-gray-200', icon: Clock, label: 'Kutmoqda' },
 };
 
-const hukmLabels: Record<string, string> = {
-  tolliq_mos: "To'liq mos",
-  faqat_matn_mos: 'Faqat matn',
-  faqat_raqam_mos: 'Faqat raqam',
-  topilmadi: 'Topilmadi',
-  qonun_kiritilmagan: "Qonun yo'q",
+const manbaLabels: Record<string, string> = {
+  fts: 'Matn qidiruv',
+  ai_sarlavha: 'AI sarlavha',
+  ai_raqam: 'AI raqam',
 };
+
+const manbaColors: Record<string, string> = {
+  fts: 'bg-blue-100 text-blue-700 border-blue-200',
+  ai_sarlavha: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  ai_raqam: 'bg-orange-100 text-orange-700 border-orange-200',
+};
+
+function ballRang(ball: number): string {
+  if (ball >= 9) return 'bg-emerald-500 text-white';
+  if (ball >= 7) return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+  if (ball >= 5) return 'bg-amber-100 text-amber-700 border border-amber-200';
+  return 'bg-red-100 text-red-700 border border-red-200';
+}
 
 export default function QidiruvJurnali() {
   const [entries, setEntries] = useState<JurnalEntry[]>([]);
@@ -71,8 +87,7 @@ export default function QidiruvJurnali() {
   }, [load]);
 
   const isMuammoli = (e: JurnalEntry): boolean => {
-    const hukm = e.hukm_tarqatish || {};
-    return (hukm.faqat_raqam_mos || 0) > 0 || (hukm.topilmadi || 0) > 0 || (hukm.qonun_kiritilmagan || 0) > 0 || e.holat === 'xato' || e.holat === 'qisman';
+    return e.holat === 'xato' || e.holat === 'qisman' || (e.tasdiqlangan_moddalar?.length || 0) === 0;
   };
 
   const filtered = entries.filter(e => {
@@ -89,16 +104,14 @@ export default function QidiruvJurnali() {
     setHolatFilter(prev => prev.includes(h) ? prev.filter(x => x !== h) : [...prev, h]);
   };
 
-  // Statistics
+  const totalTasdiqlangan = entries.reduce((sum, e) => sum + (e.tasdiqlangan_moddalar?.length || 0), 0);
   const totalNomzodlar = entries.reduce((sum, e) => sum + (e.nomzodlar?.length || 0), 0);
-  const totalHukmlar = entries.reduce((sum, e) => {
-    const h = e.hukm_tarqatish || {};
-    return sum + Object.values(h).reduce((a: number, b: any) => a + (b as number), 0);
-  }, 0);
-  const totalTolliqMos = entries.reduce((sum, e) => sum + (e.hukm_tarqatish?.tolliq_mos || 0), 0);
-  const totalTopilmadi = entries.reduce((sum, e) => sum + (e.hukm_tarqatish?.topilmadi || 0), 0);
-  const tolliqFoiz = totalHukmlar > 0 ? Math.round((totalTolliqMos / totalHukmlar) * 100) : 0;
-  const topilmadiFoiz = totalHukmlar > 0 ? Math.round((totalTopilmadi / totalHukmlar) * 100) : 0;
+  const ortachaBall = entries.length > 0
+    ? (entries.reduce((sum, e) => {
+        const ballar = (e.tasdiqlangan_moddalar || []).map((m: any) => m.ball || 0);
+        return sum + (ballar.length > 0 ? ballar.reduce((a: number, b: number) => a + b, 0) / ballar.length : 0);
+      }, 0) / entries.length).toFixed(1)
+    : '0';
   const ortachaToken = entries.length > 0 ? Math.round(entries.reduce((sum, e) => sum + (e.jami_token || 0), 0) / entries.length) : 0;
 
   const rerun = async (caseId: string, caseSarlavha: string) => {
@@ -117,7 +130,7 @@ export default function QidiruvJurnali() {
       const data = await res.json();
       if (data?.success) {
         const holat = data.holat || 'tayyor';
-        const tasdiqSoni = data.step2?.tasdiqlanganlar?.length || 0;
+        const tasdiqSoni = data.stage2?.tasdiqlanganlar?.length || 0;
         toast({
           title: holat === 'tayyor' ? 'Tadqiqot tayyor' : holat === 'qisman' ? 'Tadqiqot qisman' : 'Tadqiqot xatosi',
           description: holat === 'tayyor' ? `${tasdiqSoni} ta qonun moddasi tasdiqlandi` : holat === 'qisman' ? 'AI modda topa olmadi yoki bazada qonunlar yetarli emas' : data.error || 'Xatolik yuz berdi',
@@ -152,16 +165,16 @@ export default function QidiruvJurnali() {
             <p className="text-lg font-black">{entries.length}</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
-            <p className="text-[10px] text-blue-100 font-bold uppercase">To'liq mos</p>
-            <p className="text-lg font-black text-emerald-300">{tolliqFoiz}%</p>
+            <p className="text-[10px] text-blue-100 font-bold uppercase">Tasdiqlangan</p>
+            <p className="text-lg font-black text-emerald-300">{totalTasdiqlangan}</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
-            <p className="text-[10px] text-blue-100 font-bold uppercase">Topilmadi</p>
-            <p className="text-lg font-black text-red-300">{topilmadiFoiz}%</p>
+            <p className="text-[10px] text-blue-100 font-bold uppercase">O'rtacha ball</p>
+            <p className="text-lg font-black text-emerald-300">{ortachaBall}</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
-            <p className="text-[10px] text-blue-100 font-bold uppercase">Moddalar</p>
-            <p className="text-lg font-black">{entries.reduce((s, e) => s + (e.tasdiqlangan_moddalar?.length || 0), 0)}</p>
+            <p className="text-[10px] text-blue-100 font-bold uppercase">Nomzodlar</p>
+            <p className="text-lg font-black">{totalNomzodlar}</p>
           </div>
           <div className="bg-white/10 rounded-xl p-2.5">
             <p className="text-[10px] text-blue-100 font-bold uppercase">O'rtacha token</p>
@@ -251,6 +264,11 @@ export default function QidiruvJurnali() {
                         <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
                           <Zap className="h-2.5 w-2.5" /> {e.jami_token || 0} token
                         </span>
+                        {e.step0_qonunlar && e.step0_qonunlar.length > 0 && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                            {e.step0_qonunlar.join(', ')}
+                          </span>
+                        )}
                         {muammoli && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
                             Muammoli
@@ -274,38 +292,50 @@ export default function QidiruvJurnali() {
 
                 {expanded && (
                   <div className="border-t border-gray-100 p-4 space-y-4 bg-gray-50/30">
-                    {/* AI info */}
-                    <div className="grid grid-cols-2 gap-3">
+                    {/* Pipeline stages info */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div className="bg-white rounded-xl p-3 border border-gray-100">
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <Cpu className="h-3.5 w-3.5 text-blue-500" />
-                          <p className="text-[10px] font-bold text-gray-400 uppercase">Step 1 — AI nomzod</p>
+                          <Target className="h-3.5 w-3.5 text-blue-500" />
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">Stage 0 — Qonun</p>
                         </div>
-                        <p className="text-xs font-bold text-gray-700">{e.ai1_model || 'Noma\'lum'}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {e.nomzodlar?.length || 0} nomzod • {e.ai1_tokens?.input || 0}+{e.ai1_tokens?.output || 0} token
-                        </p>
+                        <p className="text-xs font-bold text-gray-700">{e.step0_qonunlar?.join(', ') || '—'}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{e.step0_model || ''}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 border border-gray-100">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Database className="h-3.5 w-3.5 text-cyan-500" />
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">Stage 1 — Nomzod</p>
+                        </div>
+                        <p className="text-xs font-bold text-gray-700">{e.nomzodlar?.length || 0} ta birlashtirilgan</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{e.ai1_model || ''}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 border border-gray-100">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Brain className="h-3.5 w-3.5 text-purple-500" />
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">Stage 2 — Tasdiq</p>
+                        </div>
+                        <p className="text-xs font-bold text-gray-700">{e.tasdiqlangan_moddalar?.length || 0} ta tasdiqlangan</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{e.step2_model || ''}</p>
                       </div>
                       <div className="bg-white rounded-xl p-3 border border-gray-100">
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <Cpu className="h-3.5 w-3.5 text-emerald-500" />
-                          <p className="text-[10px] font-bold text-gray-400 uppercase">Step 3 — Namunaviy javob</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">Stage 3 — Javob</p>
                         </div>
-                        <p className="text-xs font-bold text-gray-700">{e.ai2_model || 'Noma\'lum'}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {e.namunaviy_javob ? `${e.namunaviy_javob.length} belgi` : 'Yo\'q'} • {e.ai2_tokens?.input || 0}+{e.ai2_tokens?.output || 0} token
-                        </p>
+                        <p className="text-xs font-bold text-gray-700">{e.namunaviy_javob ? `${e.namunaviy_javob.length} belgi` : 'Yo\'q'}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{e.ai2_model || ''}</p>
                       </div>
                     </div>
 
-                    {/* Hukm tarqatish */}
+                    {/* Manba tarqatish */}
                     {e.hukm_tarqatish && Object.keys(e.hukm_tarqatish).length > 0 && (
                       <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Hukm tarqatish</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Manba tarqatish</p>
                         <div className="flex gap-1.5 flex-wrap">
-                          {Object.entries(e.hukm_tarqatish).map(([hukm, count]) => (
-                            <Badge key={hukm} variant="outline" className="text-[10px]">
-                              {hukmLabels[hukm] || hukm}: {count as number}
+                          {Object.entries(e.hukm_tarqatish).map(([manba, count]) => (
+                            <Badge key={manba} variant="outline" className={`text-[10px] ${manbaColors[manba] || ''}`}>
+                              {manbaLabels[manba] || manba}: {count as number}
                             </Badge>
                           ))}
                         </div>
@@ -322,14 +352,15 @@ export default function QidiruvJurnali() {
                               <div className="flex items-center gap-2 flex-wrap mb-1">
                                 <span className="text-[10px] font-bold text-blue-700">{m.qonun_kodi}</span>
                                 <span className="text-[10px] font-bold text-gray-700">{m.modda_raqami}-modda</span>
-                                {m.hukm === 'tolliq_mos' && (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">To'liq mos</span>
+                                {typeof m.ball === 'number' && (
+                                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${ballRang(m.ball)}`}>
+                                    {m.ball}/10
+                                  </span>
                                 )}
-                                {m.hukm === 'faqat_matn_mos' && (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">Matn bo'yicha</span>
-                                )}
-                                {m.hukm === 'faqat_raqam_mos' && (
-                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">Raqam bo'yicha</span>
+                                {m.manba && (
+                                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${manbaColors[m.manba] || 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
+                                    {manbaLabels[m.manba] || m.manba}
+                                  </span>
                                 )}
                                 {m.lex_element_id && (
                                   <a
@@ -343,8 +374,11 @@ export default function QidiruvJurnali() {
                                 )}
                               </div>
                               <p className="text-[10px] text-gray-500 leading-relaxed">{m.sarlavha || m.matn?.slice(0, 120) + '...'}</p>
-                              {m.kalit_sozlar && (
-                                <p className="text-[10px] text-gray-400 mt-0.5 italic">Kalit so'zlar: {m.kalit_sozlar?.join(', ')}</p>
+                              {m.asoslash && (
+                                <p className="text-[10px] text-gray-600 mt-0.5 italic bg-gray-50 rounded px-1.5 py-1">Asoslash: {m.asoslash}</p>
+                              )}
+                              {m.kalit_sozlar?.length > 0 && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 italic">Kalit so'zlar: {m.kalit_sozlar.join(', ')}</p>
                               )}
                               {m.nega_kerak && (
                                 <p className="text-[10px] text-gray-400 mt-0.5 italic">Nega kerak: {m.nega_kerak}</p>
@@ -369,13 +403,20 @@ export default function QidiruvJurnali() {
                     {e.nomzodlar && e.nomzodlar.length > 0 && (
                       <details>
                         <summary className="text-[10px] font-bold text-gray-400 uppercase cursor-pointer hover:text-gray-600">
-                          AI nomzodlari ({e.nomzodlar.length})
+                          Birlashtirilgan nomzodlar ({e.nomzodlar.length})
                         </summary>
                         <div className="mt-2 space-y-1">
                           {e.nomzodlar.map((n: any, i: number) => (
                             <div key={i} className="text-[10px] text-gray-500 bg-white rounded-lg p-2 border border-gray-100">
-                              <span className="font-bold text-blue-600">{n.qonun_kodi} {n.modda_raqami}-modda</span>
-                              {n.tushuncha && <span className="ml-2">— {n.tushuncha}</span>}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-blue-600">{n.qonun_kodi} {n.modda_raqami}-modda</span>
+                                {n.manba && (
+                                  <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${manbaColors[n.manba] || 'bg-gray-100 text-gray-600'}`}>
+                                    {manbaLabels[n.manba] || n.manba}
+                                  </span>
+                                )}
+                              </div>
+                              {n.tushuncha && <span className="block mt-0.5">— {n.tushuncha}</span>}
                               {n.nega_kerak && <span className="block text-gray-400 mt-0.5 italic">{n.nega_kerak}</span>}
                             </div>
                           ))}

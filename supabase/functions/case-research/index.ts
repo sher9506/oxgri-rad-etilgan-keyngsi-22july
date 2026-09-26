@@ -1,3 +1,4 @@
+// Pipeline v2.5 — reduced Stage2 input size
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAIWithFallback } from '../_shared/ai-provider.ts';
@@ -7,9 +8,30 @@ const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// ─── KIRILL → LOTIN TRANSKRIPSIYASI ────────────────────────────────────────────
+function cyrillicToLatin(text: string): string {
+  const map: Record<string, string> = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j','з':'z',
+    'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+    'с':'s','т':'t','у':'u','ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh',
+    'ъ':"'",'ы':'i','ь':'','э':'e','ю':'yu','я':'ya',
+    'ў':"o'",'қ':'q','ғ':"g'",'ҳ':'h',
+    'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'J','З':'Z',
+    'И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R',
+    'С':'S','Т':'T','У':'U','Ф':'F','Х':'X','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sh',
+    'Ъ':"'",'Ы':'I','Ь':'','Э':'E','Ю':'Yu','Я':'Ya',
+    'Ў':"O'",'Қ':'Q','Ғ':"G'",'Ҳ':'H',
+  };
+  let result = '';
+  for (const ch of text) {
+    result += map[ch] ?? ch;
+  }
+  return result;
+}
+
 // ─── NORMALIZATSIYA ───────────────────────────────────────────────────────────
 function normalizeText(text: string): string {
-  return text
+  return cyrillicToLatin(text)
     .toLowerCase()
     .replace(/[ʻʼ'’‘`]/g, "'")
     .replace(/\s+/g, ' ')
@@ -21,10 +43,12 @@ function normalizeModdaRaqam(raqam: string): string {
     .replace(/\s+/g, '')
     .replace(/[ʻʼ'’‘`]/g, "'")
     .replace(/[²³]/g, (m) => m === '²' ? '2' : '3')
+    .replace(/-modda$/i, '')
+    .replace(/^modda\s*/i, '')
     .toLowerCase();
 }
 
-// ─── STEP 1: AI NOMZODLARI ────────────────────────────────────────────────────
+// ─── TYPES ────────────────────────────────────────────────────────────────────
 interface AINomzod {
   qonun_kodi: string;
   modda_raqami: string;
@@ -34,49 +58,238 @@ interface AINomzod {
   nega_kerak: string;
 }
 
-interface AIResponse {
-  nomzodlar: AINomzod[];
+interface ModdaDB {
+  id: string;
+  modda_raqami: string;
+  sarlavha: string;
+  bob_nomi: string;
+  matn: string;
+  lex_element_id: string | null;
 }
 
-function extractJsonFromAI(text: string): AIResponse | null {
-  // Try direct JSON parse
+interface BirlashtirilganNomzod {
+  modda: ModdaDB;
+  qonun_kodi: string;
+  manba: 'fts' | 'ai_sarlavha' | 'ai_raqam';
+  kalit_sozlar: string[];
+  tushuncha: string;
+  bolim_bob: string;
+  nega_kerak: string;
+}
+
+interface TasdiqlanganModda {
+  modda: ModdaDB;
+  qonun_kodi: string;
+  ball: number;
+  asoslash: string;
+  manba: 'fts' | 'ai_sarlavha' | 'ai_raqam';
+  kalit_sozlar: string[];
+  nega_kerak: string;
+}
+
+function extractJsonFromAI(text: string): any | null {
   try {
     const parsed = JSON.parse(text);
-    if (parsed?.nomzodlar && Array.isArray(parsed.nomzodlar)) return parsed;
+    return parsed;
   } catch {}
-
-  // Extract JSON block
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
   try {
     const cleaned = jsonMatch[0].replace(/```json\s*/g, '').replace(/```\s*/g, '');
-    const parsed = JSON.parse(cleaned);
-    if (parsed?.nomzodlar && Array.isArray(parsed.nomzodlar)) return parsed;
+    return JSON.parse(cleaned);
   } catch {}
   return null;
 }
 
-async function step1_AINomzodlar(
+// ─── STAGE 0: QONUNLARNI ANIQLASH ─────────────────────────────────────────────
+async function stage0_QonunAniqlash(
   kazusMatn: string,
-  qonunlarRoxyati: { kod: string; nom: string }[]
+  qonunlar: { kod: string; nom: string }[]
+): Promise<{ qonunlar: string[]; model: string; tokens: any }> {
+  const qonunlarStr = qonunlar.map(q => `- ${q.kod}: ${q.nom}`).join('\n');
+
+  const systemPrompt = `Siz huquq ekspertisiz. Vazifangiz — berilgan kazus matnini o'qib, qaysi qonun kodekslari tegishli ekanligini aniqlash.
+
+QOIDALAR:
+1. Faqat ro'yxatdagi qonun kodlaridan tanlang.
+2. Kazus matnini e'tiborli o'qing va 1-3 ta eng tegishli qonun kodini tanlang.
+3. Jinoyat ishlari bo'yicha — JK (jinoyat kodeksi) va JPK (jinoyat-protsessual kodeksi) ni hisobga oling.
+4. Ma'muriy huquqbuzarliklar bo'yicha — MTK (ma'muriy javobgarlik kodeksi) ni hisobga oling.
+5. Fuqarolik munosabatlari bo'yicha — FK (fuqarolik kodeksi) ni hisobga oling.
+6. Agar biron qonun tegishli bo'lmasa, bo'sh ro'yxat qaytaring.
+7. Javob QAT'IY JSON formatida bo'lsin.
+
+JSON format:
+{
+  "qonunlar": ["JK", "JPK"]
+}
+
+Mavjud qonunlar ro'yxati:
+${qonunlarStr}`;
+
+  const { text, provider } = await callAIWithFallback({
+    systemPrompt,
+    messages: [{ role: 'user', text: `Kazus matni:\n\n${kazusMatn}` }],
+    maxTokens: 300,
+    temperature: 0.2,
+    jsonMode: true,
+    functionName: 'case-research-stage0',
+  });
+
+  const parsed = extractJsonFromAI(text);
+  const kodlar = parsed?.qonunlar && Array.isArray(parsed.qonunlar)
+    ? parsed.qonunlar.filter((k: string) => qonunlar.some(q => q.kod.toUpperCase() === k.toUpperCase())).map((k: string) => k.toUpperCase())
+    : [];
+
+  return {
+    qonunlar: kodlar,
+    model: provider,
+    tokens: { input: systemPrompt.length + kazusMatn.length, output: text.length },
+  };
+}
+
+// ─── STAGE 1A: DATABASE FULL-TEXT SEARCH ──────────────────────────────────────
+async function stage1a_FTSQidiruv(
+  qonunKodi: string,
+  kazusMatn: string
+): Promise<{ moddalar: ModdaDB[]; kalitSozlar: string[] }> {
+  const kalitSozlar = extractKeywords(kazusMatn);
+
+  const { data, error } = await supabaseAdmin
+    .rpc('search_moddalar_v2_fts', {
+      p_qonun_kodi: qonunKodi,
+      p_keywords: kalitSozlar,
+      p_limit_count: 20,
+    });
+
+  if (error || !data) return { moddalar: [], kalitSozlar };
+
+  const moddalar: ModdaDB[] = (data as any[]).map((m) => ({
+    id: m.id,
+    modda_raqami: m.modda_raqami,
+    sarlavha: m.sarlavha || '',
+    bob_nomi: m.bob_nomi || '',
+    matn: m.matn || '',
+    lex_element_id: m.lex_element_id || null,
+  }));
+
+  return { moddalar, kalitSozlar };
+}
+
+function extractKeywords(text: string): string[] {
+  const stopWords = new Set([
+    'va', 'ham', 'bilan', 'uchun', 'bor', 'har', 'bu', 'shu', 'u', 'ular',
+    'bir', 'emas', 'edi', 'bo\'lib', 'bo\'lgan', 'qilingan', 'etilgan',
+    'kerak', 'lozim', 'the', 'and', 'for', 'is', 'are', 'was', 'were',
+    'qanday', 'nima', 'qiladi', 'qilgan', 'sud', 'sudga', 'sudda',
+    'shaxs', 'shaxsning', 'shuning', 'yoki', 'lekin', 'ammo', 'chunki',
+    'faqat', 'keyin', 'olding', 'so\'ng', 'hamda', 'yana', 'ko\'ra',
+    'kishi', 'kishining', 'narsa', 'holat', 'holatda', 'qaror', 'qarori',
+    'soat', 'kuni', 'yil', 'may', 'kun', 'ibb', 'hozir', 'berib', 'qilib',
+    'qarab', 'tomonidan', 'orqali', 'bundan', 'buni', 'uni', 'men', 'sen',
+    'biz', 'siz', 'ularning', 'uning', 'manning', 'sening', 'bizning',
+    'shu', 'bu', 'o\'sha', 'mana', 'ana', 'endi', 'yana', 'faqat', 'gina',
+  ]);
+
+  // So'z ildizlariga qisqartirish — FTS stemmer ishlatmaydi
+  function stem(word: string): string {
+    // O'zbekcha suffikslarni olib tashlash
+    return word
+      .replace(/(larini|lardan|larga|larda|lardir|lar)$/i, '')
+      .replace(/(ningdan|ningga|ningni|ningda|ning)$/i, '')
+      .replace(/(ini|idan|iga|ida|ini|ini|idan|iga|ida|iga)$/i, '')
+      .replace(/(dan|ga|da|ni|ka|ki|qa|qa)$/i, '')
+      .replace(/(lar|lar|lar)$/i, '')
+      .replace(/(sh|sh|sh)$/i, '');
+  }
+
+  return normalizeText(text)
+    .replace(/[^a-z0-9'\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !stopWords.has(w))
+    .map(w => stem(w))
+    .filter(w => w.length >= 3 && !stopWords.has(w))
+    .filter((w, i, arr) => arr.indexOf(w) === i)
+    .slice(0, 25);
+}
+
+// ─── STAGE 1B: AI WITH REAL ARTICLE TITLES ────────────────────────────────────
+async function stage1b_AISarlavha(
+  kazusMatn: string,
+  ftsModdalar: { qonun_kodi: string; moddalar: ModdaDB[] }[]
 ): Promise<{ nomzodlar: AINomzod[]; model: string; tokens: any }> {
-  const qonunlarStr = qonunlarRoxyati.map(q => `- ${q.kod}: ${q.nom}`).join('\n');
+  const moddalarStr = ftsModdalar.flatMap(fm =>
+    fm.moddalar.slice(0, 30).map(m => `- ${fm.qonun_kodi} ${m.modda_raqami}-modda: ${m.sarlavha}`)
+  ).join('\n');
+
+  if (!moddalarStr) return { nomzodlar: [], model: '', tokens: { input: 0, output: 0 } };
+
+  const systemPrompt = `Siz huquq ekspertisiz. Quyida kazus matni va shu kazusga oid bo'lishi mumkin bo'lgan qonun moddalari ro'yxati (sarlavhalari bilan) berilgan.
+
+Vazifangiz — ro'yxatdan kazusga ENG TEGISHLI 10 ta moddani tanlash.
+
+QOIDALAR:
+1. Faqat ro'yxatdagi moddalardan tanlang. Ro'yxatda yo'q moddani o'ylab topmang.
+2. Har modda uchun nega kazusga tegishli ekanligini 1 gapda yozing.
+3. Modda raqamini ro'yxatdagidek aniq yozing.
+4. Javob QAT'IY JSON formatida bo'lsin.
+
+JSON format:
+{
+  "nomzodlar": [
+    {
+      "qonun_kodi": "JK",
+      "modda_raqami": "105",
+      "kalit_sozlar": ["odam o'ldirish", "qasddan"],
+      "tushuncha": "Qasddan odam o'ldirish",
+      "bolim_bob": "Sog'liqqa qarshi jinoyatlar",
+      "nega_kerak": "Kazusdagi shaxs qasddan odam o'ldirgan"
+    }
+  ]
+}
+
+Moddalar ro'yxati:
+${moddalarStr}`;
+
+  const { text, provider } = await callAIWithFallback({
+    systemPrompt,
+    messages: [{ role: 'user', text: `Kazus matni:\n\n${kazusMatn}` }],
+    maxTokens: 2000,
+    temperature: 0.3,
+    jsonMode: true,
+    functionName: 'case-research-stage1b',
+  });
+
+  const parsed = extractJsonFromAI(text);
+  const nomzodlar = parsed?.nomzodlar && Array.isArray(parsed.nomzodlar) ? parsed.nomzodlar.slice(0, 10) : [];
+
+  return {
+    nomzodlar,
+    model: provider,
+    tokens: { input: systemPrompt.length + kazusMatn.length, output: text.length },
+  };
+}
+
+// ─── STAGE 1C: AI FREE RECALL (safety net) ────────────────────────────────────
+async function stage1c_AIRaqam(
+  kazusMatn: string,
+  qonunlar: { kod: string; nom: string }[]
+): Promise<{ nomzodlar: AINomzod[]; model: string; tokens: any }> {
+  const qonunlarStr = qonunlar.map(q => `- ${q.kod}: ${q.nom}`).join('\n');
 
   const systemPrompt = `Siz huquq ekspertisiz. Vazifangiz — berilgan kazus matni uchun tegishli qonun moddalarini nomzod qilib ko'rsatish.
 
 QOIDALAR:
-1. Faqat ro'yxatdagi qonun kodlaridan tanlang. Ro'yxatda yo'q qonunni o'ylab topmang.
-2. Agar kazusga mos qonun ro'yxatda bo'lmasa, "qonun kiritilmagan" deb javob bering.
-3. 12 ta nomzod bering. Imkon qadar har xil qonunlardan; kazus bitta qonunga oid bo'lsa, hammasi shu qonundan bo'lishi mumkin.
-4. Har nomzod uchun:
+1. Faqat ro'yxatdagi qonun kodlaridan tanlang.
+2. 8 ta nomzod bering.
+3. Har nomzod uchun:
    - qonun_kodi: ro'yxatdagi kod
    - modda_raqami: taxminiy modda raqami (string)
-   - kalit_sozlar: 3-5 ta kalit so'z (moddaning asosiy tushunchasi)
+   - kalit_sozlar: 3-5 ta kalit so'z
    - tushuncha: 1 gaplik modda mazmuni
    - bolim_bob: taxminiy bob/bo'lim nomi
    - nega_kerak: 1 gap — bu modda kazusga nega tegishli
-5. Modda sarlavhasini so'zma-so'z yozmang, modda matnini yozmang.
-6. Javob QAT'IY JSON formatida bo'lsin.
+4. Javob QAT'IY JSON formatida bo'lsin.
 
 JSON format:
 {
@@ -86,244 +299,286 @@ JSON format:
       "modda_raqami": "105",
       "kalit_sozlar": ["odam o'ldirish", "qasddan", "jazo"],
       "tushuncha": "Qasddan odam o'ldirish uchun javobgarlik",
-      "bolim_bob": "Jinoyatga qarshi jinoyatlar",
+      "bolim_bob": "Sog'liqqa qarshi jinoyatlar",
       "nega_kerak": "Kazusdagi shaxs qasddan odam o'ldirgan"
     }
   ]
 }
 
 Mavjud qonunlar ro'yxati:
-${qonunlarStr}
-
-Agar bu kazusga mos qonun ro'yxatda yo'q bo'lsa:
-{
-  "nomzodlar": []
-}`;
+${qonunlarStr}`;
 
   const { text, provider } = await callAIWithFallback({
     systemPrompt,
     messages: [{ role: 'user', text: `Kazus matni:\n\n${kazusMatn}` }],
-    maxTokens: 2000,
+    maxTokens: 1500,
     temperature: 0.3,
     jsonMode: true,
-    functionName: 'case-research-step1',
+    functionName: 'case-research-stage1c',
   });
 
   const parsed = extractJsonFromAI(text);
-  if (!parsed || !parsed.nomzodlar) {
-    return { nomzodlar: [], model: provider, tokens: { input: 0, output: 0 } };
-  }
+  const nomzodlar = parsed?.nomzodlar && Array.isArray(parsed.nomzodlar) ? parsed.nomzodlar.slice(0, 8) : [];
 
   return {
-    nomzodlar: parsed.nomzodlar.slice(0, 12),
+    nomzodlar,
     model: provider,
     tokens: { input: systemPrompt.length + kazusMatn.length, output: text.length },
   };
 }
 
-// ─── STEP 2: TASDIQLASH (AI'siz, faqat bazadan) ───────────────────────────────
-interface ModdaNatija {
-  modda_raqami: string;
-  sarlavha: string;
-  bob_nomi: string;
-  matn: string;
-  lex_element_id: string | null;
-  ball: number;
+// ─── FETCH MODDA FROM DB ──────────────────────────────────────────────────────
+async function fetchModdaFromDB(qonunKod: string, moddaRaqam: string): Promise<ModdaDB | null> {
+  // AI ba'zan "11-modda" formatida qaytaradi — raqam qismini ajratib olish
+  const raqam = moddaRaqam.replace(/^-?modda\.?\s*/i, '').replace(/-modda$/i, '').trim();
+  const { data } = await supabaseAdmin
+    .from('qonun_moddalari_v2')
+    .select('id, modda_raqami, sarlavha, bob_nomi, matn, lex_element_id')
+    .eq('qonun_kodi', qonunKod)
+    .ilike('modda_raqami', `${raqam}%`)
+    .limit(1);
+  if (!data || data.length === 0) return null;
+  const m = data[0];
+  return {
+    id: m.id,
+    modda_raqami: m.modda_raqami,
+    sarlavha: m.sarlavha || '',
+    bob_nomi: m.bob_nomi || '',
+    matn: m.matn || '',
+    lex_element_id: m.lex_element_id || null,
+  };
 }
 
-interface NomzodNatija {
-  ai_nomzod: AINomzod;
-  raqam_topildi: boolean;
-  matn_top3: ModdaNatija[];
-  hukm: 'tolliq_mos' | 'faqat_matn_mos' | 'faqat_raqam_mos' | 'topilmadi' | 'qonun_kiritilmagan';
-  tasdiqlangan: ModdaNatija | null;
-}
+// ─── STAGE 1: UCHALASINI BIRLASHTIRISH ────────────────────────────────────────
+async function stage1_NomzodBirlashtirish(
+  kazusMatn: string,
+  barchaQonunlar: { kod: string; nom: string }[]
+): Promise<{
+  birlashtirilgan: BirlashtirilganNomzod[];
+  step0: { qonunlar: string[]; model: string; tokens: any };
+  step1a: { moddalar: ModdaDB[]; kalitSozlar: string[] };
+  step1b: { nomzodlar: AINomzod[]; model: string; tokens: any };
+  step1c: { nomzodlar: AINomzod[]; model: string; tokens: any };
+}> {
+  const step0Result = await stage0_QonunAniqlash(kazusMatn, barchaQonunlar);
+  const activeQonunlar = step0Result.qonunlar.length > 0
+    ? step0Result.qonunlar
+    : barchaQonunlar.map(q => q.kod.toUpperCase());
 
-// So'z ozaklari bo'yicha ball berish
-function sozOzaklari(soz: string): string[] {
-  return soz
-    .toLowerCase()
-    .replace(/[ʻʼ'’‘`]/g, "'")
-    .split(/\s+/)
-    .filter(w => w.length > 2)
-    .map(w => w.replace(/^(nit|nik|ning|dan|ga|da|ni|ka)$/g, ''));
-}
-
-function sozOzakKesishma(aiSozlar: string[], dbSozlar: string[]): number {
-  let kesishma = 0;
-  for (const aiW of aiSozlar) {
-    for (const dbW of dbSozlar) {
-      if (dbW.startsWith(aiW) || aiW.startsWith(dbW)) {
-        kesishma++;
-        break;
-      }
-    }
-  }
-  return kesishma;
-}
-
-async function step2_Tasdiqlash(
-  nomzodlar: AINomzod[],
-  qonunlarRoxyati: { kod: string; nom: string }[]
-): Promise<{ natijalar: NomzodNatija[]; tasdiqlanganlar: NomzodNatija[] }> {
-  const natijalar: NomzodNatija[] = [];
-
-  for (const nomzod of nomzodlar) {
-    // Qonun ro'yxatda bormi?
-    const qonunBor = qonunlarRoxyati.some(q => q.kod.toUpperCase() === nomzod.qonun_kodi.toUpperCase());
-    if (!qonunBor) {
-      natijalar.push({
-        ai_nomzod: nomzod,
-        raqam_topildi: false,
-        matn_top3: [],
-        hukm: 'qonun_kiritilmagan',
-        tasdiqlangan: null,
-      });
-      continue;
-    }
-
-    const qonunKod = nomzod.qonun_kodi.toUpperCase();
-    const aiRaqamKey = normalizeModdaRaqam(nomzod.modda_raqami);
-
-    // (a) Modda raqami bo'yicha qidirish
-    let raqamNatija: any = null;
-    if (aiRaqamKey) {
-      const { data: raqamData } = await supabaseAdmin
-        .from('qonun_moddalari_v2')
-        .select('id, modda_raqami, sarlavha, bob_nomi, matn, lex_element_id')
-        .eq('qonun_kodi', qonunKod)
-        .ilike('modda_raqami', `${nomzod.modda_raqami}%`)
-        .limit(3);
-      raqamNatija = raqamData && raqamData.length > 0 ? raqamData[0] : null;
-    }
-
-    // (b) Kalit so'zlar + tushuncha bo'yicha qidirish
-    const kalitSozlar = [...(nomzod.kalit_sozlar || []), nomzod.tushuncha || '']
-      .join(' ');
-    const aiOzaklar = sozOzaklari(kalitSozlar);
-
-    const { data: textData } = await supabaseAdmin
-      .from('qonun_moddalari_v2')
-      .select('id, modda_raqami, sarlavha, bob_nomi, matn, lex_element_id')
-      .eq('qonun_kodi', qonunKod)
-      .limit(500);
-
-    let matnTop3: ModdaNatija[] = [];
-    if (textData && textData.length > 0) {
-      const scored = textData.map((m: any) => {
-        const dbOzaklar = sozOzaklari(`${m.sarlavha || ''} ${m.matn_normal || m.matn || ''}`);
-        let ball = sozOzakKesishma(aiOzaklar, dbOzaklar);
-        // bolim_bob mos kelsa qo'shimcha ball
-        if (nomzod.bolim_bob && m.bob_nomi) {
-          const bobNorm = normalizeText(nomzod.bolim_bob);
-          const dbBobNorm = normalizeText(m.bob_nomi);
-          if (bobNorm && dbBobNorm) {
-            const bobOzaklar = sozOzaklari(nomzod.bolim_bob);
-            const dbBobOzaklar = sozOzaklari(m.bob_nomi);
-            ball += sozOzakKesishma(bobOzaklar, dbBobOzaklar) * 2;
-          }
-        }
-        return {
-          modda_raqami: m.modda_raqami,
-          sarlavha: m.sarlavha || '',
-          bob_nomi: m.bob_nomi || '',
-          matn: m.matn || '',
-          lex_element_id: m.lex_element_id || null,
-          ball,
-        };
-      })
-      .filter((m: ModdaNatija) => m.ball > 0)
-      .sort((a: ModdaNatija, b: ModdaNatija) => b.ball - a.ball)
-      .slice(0, 3);
-      matnTop3 = scored;
-    }
-
-    // Hukm chiqarish
-    let hukm: NomzodNatija['hukm'] = 'topilmadi';
-    let tasdiqlangan: ModdaNatija | null = null;
-
-    if (raqamNatija && matnTop3.length > 0) {
-      // To'liq mos: raqam bo'yicha topilgan modda matn top-3 ichida bormi?
-      const raqamInTop3 = matnTop3.some(
-        m => normalizeModdaRaqam(m.modda_raqami) === normalizeModdaRaqam(raqamNatija.modda_raqami)
-      );
-      if (raqamInTop3) {
-        hukm = 'tolliq_mos';
-        tasdiqlangan = matnTop3.find(
-          m => normalizeModdaRaqam(m.modda_raqami) === normalizeModdaRaqam(raqamNatija.modda_raqami)
-        ) || null;
-      } else {
-        // Faqat raqam mos, matn top-3 da yo'q — gumonli
-        hukm = 'faqat_raqam_mos';
-        tasdiqlangan = {
-          modda_raqami: raqamNatija.modda_raqami,
-          sarlavha: raqamNatija.sarlavha || '',
-          bob_nomi: raqamNatija.bob_nomi || '',
-          matn: raqamNatija.matn || '',
-          lex_element_id: raqamNatija.lex_element_id || null,
-          ball: 0,
-        };
-      }
-    } else if (matnTop3.length > 0) {
-      // Faqat matn mos
-      hukm = 'faqat_matn_mos';
-      tasdiqlangan = matnTop3[0];
-    } else if (raqamNatija) {
-      hukm = 'faqat_raqam_mos';
-      tasdiqlangan = {
-        modda_raqami: raqamNatija.modda_raqami,
-        sarlavha: raqamNatija.sarlavha || '',
-        bob_nomi: raqamNatija.bob_nomi || '',
-        matn: raqamNatija.matn || '',
-        lex_element_id: raqamNatija.lex_element_id || null,
-        ball: 0,
-      };
-    }
-
-    natijalar.push({
-      ai_nomzod: nomzod,
-      raqam_topildi: !!raqamNatija,
-      matn_top3: matnTop3,
-      hukm,
-      tasdiqlangan,
-    });
-  }
-
-  // Eng ko'pi 8 ta tasdiqlangan modda olish
-  // Prioritet: tolliq_mos → faqat_matn_mos → faqat_raqam_mos (faqat 8 ta yetmasa)
-  const sorted = [...natijalar].sort((a, b) => {
-    const priority: Record<string, number> = {
-      tolliq_mos: 0,
-      faqat_matn_mos: 1,
-      faqat_raqam_mos: 2,
-      topilmadi: 3,
-      qonun_kiritilmagan: 4,
+  if (activeQonunlar.length === 0) {
+    return {
+      birlashtirilgan: [],
+      step0: step0Result,
+      step1a: { moddalar: [], kalitSozlar: [] },
+      step1b: { nomzodlar: [], model: '', tokens: { input: 0, output: 0 } },
+      step1c: { nomzodlar: [], model: '', tokens: { input: 0, output: 0 } },
     };
-    return priority[a.hukm] - priority[b.hukm];
+  }
+
+  // Path A: FTS for each law (parallel)
+  const ftsResults = await Promise.all(
+    activeQonunlar.map(async (kod) => {
+      const { moddalar, kalitSozlar } = await stage1a_FTSQidiruv(kod, kazusMatn);
+      return { qonun_kodi: kod, moddalar, kalitSozlar };
+    })
+  );
+
+  // Path B: AI with real article titles
+  const step1bInput = ftsResults.map(r => ({ qonun_kodi: r.qonun_kodi, moddalar: r.moddalar }));
+  const step1bResult = await stage1b_AISarlavha(kazusMatn, step1bInput);
+
+  // Path C: AI free recall
+  const activeQonunlarList = activeQonunlar
+    .map(k => barchaQonunlar.find(q => q.kod.toUpperCase() === k))
+    .filter(Boolean) as { kod: string; nom: string }[];
+  const step1cResult = await stage1c_AIRaqam(kazusMatn, activeQonunlarList);
+
+  // Merge
+  const merged: Map<string, BirlashtirilganNomzod> = new Map();
+
+  // Path A → FTS
+  for (const fts of ftsResults) {
+    for (const m of fts.moddalar) {
+      const key = `${fts.qonun_kodi}::${normalizeModdaRaqam(m.modda_raqami)}`;
+      if (!merged.has(key)) {
+        merged.set(key, {
+          modda: m,
+          qonun_kodi: fts.qonun_kodi,
+          manba: 'fts',
+          kalit_sozlar: [],
+          tushuncha: '',
+          bolim_bob: '',
+          nega_kerak: '',
+        });
+      }
+    }
+  }
+
+  // Path B → AI with titles (match by raqam)
+  for (const nomzod of step1bResult.nomzodlar) {
+    const qonunKod = nomzod.qonun_kodi?.toUpperCase() || '';
+    const raqamKey = normalizeModdaRaqam(nomzod.modda_raqami || '');
+    if (!qonunKod || !raqamKey) continue;
+    const key = `${qonunKod}::${raqamKey}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.kalit_sozlar = nomzod.kalit_sozlar || [];
+      existing.tushuncha = nomzod.tushuncha || '';
+      existing.bolim_bob = nomzod.bolim_bob || '';
+      existing.nega_kerak = nomzod.nega_kerak || '';
+    } else {
+      const dbModda = await fetchModdaFromDB(qonunKod, nomzod.modda_raqami);
+      if (dbModda) {
+        merged.set(key, {
+          modda: dbModda,
+          qonun_kodi: qonunKod,
+          manba: 'ai_sarlavha',
+          kalit_sozlar: nomzod.kalit_sozlar || [],
+          tushuncha: nomzod.tushuncha || '',
+          bolim_bob: nomzod.bolim_bob || '',
+          nega_kerak: nomzod.nega_kerak || '',
+        });
+      }
+    }
+  }
+
+  // Path C → AI free recall (fetch from DB by raqam)
+  for (const nomzod of step1cResult.nomzodlar) {
+    const qonunKod = nomzod.qonun_kodi?.toUpperCase() || '';
+    const raqamKey = normalizeModdaRaqam(nomzod.modda_raqami || '');
+    if (!qonunKod || !raqamKey) continue;
+    const key = `${qonunKod}::${raqamKey}`;
+    if (!merged.has(key)) {
+      const dbModda = await fetchModdaFromDB(qonunKod, nomzod.modda_raqami);
+      if (dbModda) {
+        merged.set(key, {
+          modda: dbModda,
+          qonun_kodi: qonunKod,
+          manba: 'ai_raqam',
+          kalit_sozlar: nomzod.kalit_sozlar || [],
+          tushuncha: nomzod.tushuncha || '',
+          bolim_bob: nomzod.bolim_bob || '',
+          nega_kerak: nomzod.nega_kerak || '',
+        });
+      }
+    }
+  }
+
+  const birlashtirilgan = Array.from(merged.values());
+
+  return {
+    birlashtirilgan,
+    step0: step0Result,
+    step1a: { moddalar: ftsResults.flatMap(r => r.moddalar), kalitSozlar: ftsResults[0]?.kalitSozlar || [] },
+    step1b: step1bResult,
+    step1c: step1cResult,
+  };
+}
+
+// ─── STAGE 2: DEEP AI VERIFICATION ────────────────────────────────────────────
+async function stage2_Tasdiqlash(
+  kazusMatn: string,
+  nomzodlar: BirlashtirilganNomzod[]
+): Promise<{ tasdiqlanganlar: TasdiqlanganModda[]; model: string; tokens: any }> {
+  if (nomzodlar.length === 0) {
+    return { tasdiqlanganlar: [], model: '', tokens: { input: 0, output: 0 } };
+  }
+
+  const limitedNomzodlar = nomzodlar.slice(0, 10);
+
+  const moddalarStr = limitedNomzodlar.map((n, i) => {
+    const matnQisqartirilgan = n.modda.matn.length > 200 ? n.modda.matn.slice(0, 200) + '...' : n.modda.matn;
+    return `### Modda ${i + 1}: ${n.qonun_kodi} ${n.modda.modda_raqami}-modda
+Sarlavha: ${n.modda.sarlavha}
+Matn: ${matnQisqartirilgan}`;
+  }).join('\n\n');
+
+  const systemPrompt = `Siz huquq ekspertisiz. Quyida kazus matni va unga oid bo'lishi mumkin bo'lgan qonun moddalari (to'liq matni bilan) berilgan.
+
+Vazifangiz — har bir modda uchun kazusga RELEVANTLIK DARAJASINI 0 dan 10 gacha ball bilan baholash.
+
+QOIDALAR:
+1. Har modda uchun:
+   - ball: 0-10 (10 = kazusga to'liq mos, 0 = umuman tegishli emas)
+   - asoslash: 1 gap — bu ball nega berilgani
+2. Ball 7 va undan yuqori moddalar tasdiqlangan hisoblanadi.
+3. Modda matnini e'tiborli o'qing. Modda sarlavhasi emas, MATNI bo'yicha baholang.
+4. Agar modda kazus bilan bog'liq emas yoki noto'g'ri topilgan bo'lsa, ball 0-3 bering.
+5. Javob QAT'IY JSON formatida bo'lsin.
+
+JSON format:
+{
+  "baholar": [
+    {
+      "modda_raqami": "105",
+      "qonun_kodi": "JK",
+      "ball": 9,
+      "asoslash": "Modda qasddan badanga shikast yetkazishni nazarda tutadi, kazusda ham shu holat bor"
+    }
+  ]
+}
+
+Kazus matni:
+${kazusMatn}
+
+Moddalar:
+${moddalarStr}`;
+
+  const { text, provider } = await callAIWithFallback({
+    systemPrompt,
+    messages: [{ role: 'user', text: 'Baholashni boshlang. Faqat JSON qaytaring.' }],
+    maxTokens: 3000,
+    temperature: 0.2,
+    jsonMode: true,
+    functionName: 'case-research-stage2',
   });
 
-  const tasdiqlanganlar = sorted
-    .filter(n => n.tasdiqlangan && (n.hukm === 'tolliq_mos' || n.hukm === 'faqat_matn_mos'))
-    .slice(0, 8);
+  const parsed = extractJsonFromAI(text);
+  console.log(`[case-research] Stage 2 raw (first 500): ${text.slice(0, 500)}`);
+  console.log(`[case-research] Stage 2 parsed:`, JSON.stringify(parsed)?.slice(0, 500));
+  const baholar: any[] = parsed?.baholar && Array.isArray(parsed.baholar) ? parsed.baholar : [];
 
-  // Agar 8 ta yetmasa, gumonlilarni qo'sh
-  if (tasdiqlanganlar.length < 8) {
-    const gumonlilar = sorted
-      .filter(n => n.hukm === 'faqat_raqam_mos' && n.tasdiqlangan)
-      .slice(0, 8 - tasdiqlanganlar.length);
-    tasdiqlanganlar.push(...gumonlilar);
+  const bahoMap = new Map<string, { ball: number; asoslash: string }>();
+  for (const b of baholar) {
+    const key = `${(b.qonun_kodi || '').toUpperCase()}::${normalizeModdaRaqam(b.modda_raqami || '')}`;
+    bahoMap.set(key, { ball: Number(b.ball) || 0, asoslash: b.asoslash || '' });
+  }
+  console.log(`[case-research] Stage 2 bahoMap keys:`, Array.from(bahoMap.keys()));
+  console.log(`[case-research] Stage 2 limitedNomzodlar keys:`, limitedNomzodlar.map(n => `${n.qonun_kodi}::${normalizeModdaRaqam(n.modda.modda_raqami)}`));
+
+  const tasdiqlanganlar: TasdiqlanganModda[] = [];
+  for (const n of limitedNomzodlar) {
+    const key = `${n.qonun_kodi}::${normalizeModdaRaqam(n.modda.modda_raqami)}`;
+    const baho = bahoMap.get(key);
+    const ball = baho?.ball ?? 0;
+    if (ball >= 7) {
+      tasdiqlanganlar.push({
+        modda: n.modda,
+        qonun_kodi: n.qonun_kodi,
+        ball,
+        asoslash: baho?.asoslash || '',
+        manba: n.manba,
+        kalit_sozlar: n.kalit_sozlar,
+        nega_kerak: n.nega_kerak,
+      });
+    }
   }
 
-  return { natijalar, tasdiqlanganlar };
+  tasdiqlanganlar.sort((a, b) => b.ball - a.ball);
+
+  return {
+    tasdiqlanganlar: tasdiqlanganlar.slice(0, 8),
+    model: provider,
+    tokens: { input: systemPrompt.length, output: text.length },
+  };
 }
 
-// ─── STEP 3: NAMUNAVIY JAVOB (2-AI chaqiruv) ──────────────────────────────────
-async function step3_NamunaviyJavob(
+// ─── STAGE 3: NAMUNAVIY JAVOB ─────────────────────────────────────────────────
+async function stage3_NamunaviyJavob(
   kazusMatn: string,
-  tasdiqlanganlar: NomzodNatija[]
+  tasdiqlanganlar: TasdiqlanganModda[]
 ): Promise<{ javob: string; model: string; tokens: any }> {
   if (tasdiqlanganlar.length === 0) {
-    // Tasdiqlangan modda yo'q — umumiy javob
     const systemPrompt = `Siz huquq ekspertisiz. Berilgan kazus uchun umumiy huquqiy bilim asosida namunaviy javob bering. Hech qachon aniq modda raqamini keltirmang — "umumiy huquqiy bilim asosida" deb yozing. Javob 3-5 paragrafdan oshmasin. O'zbek tilida, professional huquqiy uslubda yozing.`;
 
     const { text, provider } = await callAIWithFallback({
@@ -331,37 +586,32 @@ async function step3_NamunaviyJavob(
       messages: [{ role: 'user', text: `Kazus matni:\n\n${kazusMatn}` }],
       maxTokens: 1500,
       temperature: 0.4,
-      functionName: 'case-research-step3-no-articles',
+      functionName: 'case-research-stage3-no-articles',
     });
 
-    return {
-      javob: text,
-      model: provider,
-      tokens: { input: systemPrompt.length + kazusMatn.length, output: text.length },
-    };
+    return { javob: text, model: provider, tokens: { input: systemPrompt.length + kazusMatn.length, output: text.length } };
   }
 
-  // Tasdiqlangan moddalar matnini berish
-  const moddalarStr = tasdiqlanganlar
-    .map((n, i) => {
-      const m = n.tasdiqlangan!;
-      return `### Modda ${i + 1}: ${n.ai_nomzod.qonun_kodi} ${m.modda_raqami}-modda
+  const moddalarStr = tasdiqlanganlar.map((t, i) => {
+    const m = t.modda;
+    return `### Modda ${i + 1}: ${t.qonun_kodi} ${m.modda_raqami}-modda (ball: ${t.ball}/10)
 Sarlavha: ${m.sarlavha}
 Bob: ${m.bob_nomi}
-Matn: ${m.matn}`;
-    })
-    .join('\n\n');
+Matn: ${m.matn}
+Asoslash: ${t.asoslash}`;
+  }).join('\n\n');
 
   const systemPrompt = `Siz huquq ekspertisiz. Berilgan kazus uchun namunaviy javob shakllantiring.
 
 QOIDALAR:
 1. Faqat berilgan moddalarga tayaning. Boshqa modda raqamini o'ylab topmang.
 2. Javobda qaysi moddalar qo'llanilganini, nega va xulosani yozing.
-3. Agar berilgan moddalar yetarli bo'lmasa, "bu masala bo'yicha aniq modda tasdiqlanmadi" deb ochiq aytting.
-4. Javob 3-5 paragrafdan oshmasin.
-5. O'zbek tilida, professional huquqiy uslubda yozing.
+3. Har modda uchun uning kazusga qanday bog'liqligini aniq yozing.
+4. Agar berilgan moddalar yetarli bo'lmasa, "bu masala bo'yicha aniq modda tasdiqlanmadi" deb ochiq ayting.
+5. Javob 3-5 paragrafdan oshmasin.
+6. O'zbek tilida, professional huquqiy uslubda yozing.
 
-Tasdiqlangan moddalar:
+Tasdiqlangan moddalar (AI tomonidan baholangan):
 ${moddalarStr}`;
 
   const { text, provider } = await callAIWithFallback({
@@ -369,14 +619,10 @@ ${moddalarStr}`;
     messages: [{ role: 'user', text: `Kazus matni:\n\n${kazusMatn}` }],
     maxTokens: 1500,
     temperature: 0.4,
-    functionName: 'case-research-step3',
+    functionName: 'case-research-stage3',
   });
 
-  return {
-    javob: text,
-    model: provider,
-    tokens: { input: systemPrompt.length + kazusMatn.length, output: text.length },
-  };
+  return { javob: text, model: provider, tokens: { input: systemPrompt.length + kazusMatn.length, output: text.length } };
 }
 
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
@@ -394,7 +640,6 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Kazusni olish
     const { data: caseData, error: caseErr } = await supabaseAdmin
       .from('moot_court_cases')
       .select('id, sarlavha, tavsif, tadqiqot_holati, tasdiqlangan_moddalar, namunaviy_javob')
@@ -407,7 +652,6 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Status so'ralgan bo'lsa, faqat holatni qaytarish
     if (action === 'status') {
       return new Response(JSON.stringify({
         holat: caseData.tadqiqot_holati || 'kutmoqda',
@@ -418,141 +662,132 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Pipeline'ni ishga tushirish
     console.log(`[case-research] Boshlandi: caseId=${caseId} sarlavha=${caseData.sarlavha}`);
 
-    // Holatni 'jarayonda' ga o'tkazish
     await supabaseAdmin
       .from('moot_court_cases')
       .update({ tadqiqot_holati: 'jarayonda', updated_at: new Date().toISOString() })
       .eq('id', caseId);
 
-    // Jurnal yozuvi yaratish
     const { data: jurnalRow } = await supabaseAdmin
       .from('qidiruv_jurnali')
-      .insert({
-        case_id: caseId,
-        case_sarlavha: caseData.sarlavha,
-        holat: 'jarayonda',
-      })
-      .select()
-      .single();
-
+      .insert({ case_id: caseId, case_sarlavha: caseData.sarlavha, holat: 'jarayonda' })
+      .select().single();
     const jurnalId = jurnalRow?.id;
 
     try {
-      // Qonunlar ro'yxatini olish
       const { data: qonunlarData } = await supabaseAdmin
         .from('qonunlar')
         .select('kod, nom')
         .order('kod');
+      const barchaQonunlar = (qonunlarData || []).map((q: any) => ({ kod: q.kod, nom: q.nom }));
 
-      const qonunlar = (qonunlarData || []).map((q: any) => ({ kod: q.kod, nom: q.nom }));
-
-      if (qonunlar.length === 0) {
+      if (barchaQonunlar.length === 0) {
         throw new Error('Bazada qonun yo\'q. Avval Lex.uz qidiruvchisidan qonun qo\'shing.');
       }
 
-      // ── STEP 1: AI nomzodlari ──
-      console.log(`[case-research] Step 1: AI nomzodlari...`);
-      const step1Result = await step1_AINomzodlar(caseData.tavsif || '', qonunlar);
-      console.log(`[case-research] Step 1 done: ${step1Result.nomzodlar.length} ta nomzod, model=${step1Result.model}`);
+      // ── STAGE 1: Nomzodlarni birlashtirish (uch yo'l) ──
+      console.log(`[case-research] Stage 1: Nomzod birlashtirish...`);
+      const stage1 = await stage1_NomzodBirlashtirish(
+        caseData.tavsif || '',
+        barchaQonunlar
+      );
+      console.log(`[case-research] Stage 1 done: ${stage1.birlashtirilgan.length} ta nomzod (stage0 qonunlar: ${stage1.step0.qonunlar.join(', ')})`);
 
-      if (step1Result.nomzodlar.length === 0) {
-        // AI qonun topmadi
-        await supabaseAdmin
-          .from('moot_court_cases')
-          .update({
-            tadqiqot_holati: 'qisman',
-            tasdiqlangan_moddalar: [],
-            namunaviy_javob: null,
-            updated_at: new Date().toISOString(),
-          })
+      if (stage1.birlashtirilgan.length === 0) {
+        await supabaseAdmin.from('moot_court_cases')
+          .update({ tadqiqot_holati: 'qisman', tasdiqlangan_moddalar: [], namunaviy_javob: null, updated_at: new Date().toISOString() })
           .eq('id', caseId);
 
         if (jurnalId) {
-          await supabaseAdmin
-            .from('qidiruv_jurnali')
-            .update({
-              holat: 'qisman',
-              nomzodlar: [],
-              ai1_model: step1Result.model,
-              ai1_tokens: step1Result.tokens,
-              updated_at: new Date().toISOString(),
-            })
+          await supabaseAdmin.from('qidiruv_jurnali')
+            .update({ holat: 'qisman', step0_qonunlar: stage1.step0.qonunlar, step0_model: stage1.step0.model, step0_tokens: stage1.step0.tokens, updated_at: new Date().toISOString() })
             .eq('id', jurnalId);
         }
 
         return new Response(JSON.stringify({
-          success: true,
-          holat: 'qisman',
-          message: 'AI hech qanday qonun nomzod bermadi. Bazada qonunlar to\'liq emas.',
-          step1: { nomzodlar: [], model: step1Result.model },
-          step2: { natijalar: [], tasdiqlanganlar: [] },
-          step3: { javob: null, model: null },
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+          success: true, holat: 'qisman',
+          message: 'AI hech qanday qonun nomzad bermadi.',
+          stage0: { qonunlar: stage1.step0.qonunlar, model: stage1.step0.model },
+          stage1: { birlashtirilgan: [], step1b: stage1.step1b, step1c: stage1.step1c },
+          stage2: { tasdiqlanganlar: [] },
+          stage3: { javob: null, model: null },
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // ── STEP 2: Tasdiqlash ──
-      console.log(`[case-research] Step 2: Tasdiqlash...`);
-      const step2Result = await step2_Tasdiqlash(step1Result.nomzodlar, qonunlar);
-      console.log(`[case-research] Step 2 done: ${step2Result.tasdiqlanganlar.length} ta tasdiqlangan`);
+      // ── STAGE 2: Deep AI verification ──
+      console.log(`[case-research] Stage 2: AI verification...`);
+      const stage2 = await stage2_Tasdiqlash(caseData.tavsif || '', stage1.birlashtirilgan);
+      console.log(`[case-research] Stage 2 done: ${stage2.tasdiqlanganlar.length} ta tasdiqlangan`);
 
-      // ── STEP 3: Namunaviy javob ──
-      console.log(`[case-research] Step 3: Namunaviy javob...`);
-      const step3Result = await step3_NamunaviyJavob(caseData.tavsif || '', step2Result.tasdiqlanganlar);
-      console.log(`[case-research] Step 3 done: model=${step3Result.model}`);
+      // ── STAGE 3: Namunaviy javob ──
+      console.log(`[case-research] Stage 3: Namunaviy javob...`);
+      const stage3 = await stage3_NamunaviyJavob(caseData.tavsif || '', stage2.tasdiqlanganlar);
+      console.log(`[case-research] Stage 3 done: model=${stage3.model}`);
 
-      // Hukm tarqatishni hisoblash
-      const hukmTarqatish: Record<string, number> = {};
-      for (const n of step2Result.natijalar) {
-        hukmTarqatish[n.hukm] = (hukmTarqatish[n.hukm] || 0) + 1;
-      }
-
-      const jamiToken = (step1Result.tokens.input + step1Result.tokens.output) +
-        (step3Result.tokens.input + step3Result.tokens.output);
-
-      // Kazusni yangilash
-      const tasdiqlanganJson = step2Result.tasdiqlanganlar.map(n => ({
-        qonun_kodi: n.ai_nomzod.qonun_kodi,
-        modda_raqami: n.tasdiqlangan!.modda_raqami,
-        sarlavha: n.tasdiqlangan!.sarlavha,
-        bob_nomi: n.tasdiqlangan!.bob_nomi,
-        matn: n.tasdiqlangan!.matn,
-        lex_element_id: n.tasdiqlangan!.lex_element_id,
-        hukm: n.hukm,
-        kalit_sozlar: n.ai_nomzod.kalit_sozlar,
-        nega_kerak: n.ai_nomzod.nega_kerak,
+      // ── SAQLASH ──
+      const tasdiqlanganJson = stage2.tasdiqlanganlar.map(t => ({
+        qonun_kodi: t.qonun_kodi,
+        modda_raqami: t.modda.modda_raqami,
+        sarlavha: t.modda.sarlavha,
+        bob_nomi: t.modda.bob_nomi,
+        matn: t.modda.matn,
+        lex_element_id: t.modda.lex_element_id,
+        ball: t.ball,
+        asoslash: t.asoslash,
+        manba: t.manba,
+        kalit_sozlar: t.kalit_sozlar,
+        nega_kerak: t.nega_kerak,
       }));
 
-      const holat = step2Result.tasdiqlanganlar.length > 0 ? 'tayyor' : 'qisman';
+      const holat = tasdiqlanganJson.length > 0 ? 'tayyor' : 'qisman';
 
-      await supabaseAdmin
-        .from('moot_court_cases')
+      await supabaseAdmin.from('moot_court_cases')
         .update({
           tadqiqot_holati: holat,
           tasdiqlangan_moddalar: JSON.parse(JSON.stringify(tasdiqlanganJson)),
-          namunaviy_javob: step3Result.javob,
+          namunaviy_javob: stage3.javob,
           updated_at: new Date().toISOString(),
         })
         .eq('id', caseId);
 
-      // Jurnalni yangilash
+      const manbaTarqatish: Record<string, number> = {};
+      for (const t of stage2.tasdiqlanganlar) {
+        manbaTarqatish[t.manba] = (manbaTarqatish[t.manba] || 0) + 1;
+      }
+
+      const jamiToken =
+        (stage1.step0.tokens.input + stage1.step0.tokens.output) +
+        (stage1.step1b.tokens.input + stage1.step1b.tokens.output) +
+        (stage1.step1c.tokens.input + stage1.step1c.tokens.output) +
+        (stage2.tokens.input + stage2.tokens.output) +
+        (stage3.tokens.input + stage3.tokens.output);
+
       if (jurnalId) {
-        await supabaseAdmin
-          .from('qidiruv_jurnali')
+        await supabaseAdmin.from('qidiruv_jurnali')
           .update({
             holat,
-            nomzodlar: JSON.parse(JSON.stringify(step1Result.nomzodlar)),
+            nomzodlar: JSON.parse(JSON.stringify(stage1.birlashtirilgan.map(n => ({
+              qonun_kodi: n.qonun_kodi,
+              modda_raqami: n.modda.modda_raqami,
+              kalit_sozlar: n.kalit_sozlar,
+              tushuncha: n.tushuncha,
+              bolim_bob: n.bolim_bob,
+              nega_kerak: n.nega_kerak,
+              manba: n.manba,
+            })))),
             tasdiqlangan_moddalar: JSON.parse(JSON.stringify(tasdiqlanganJson)),
-            namunaviy_javob: step3Result.javob,
-            ai1_model: step1Result.model,
-            ai1_tokens: step1Result.tokens,
-            ai2_model: step3Result.model,
-            ai2_tokens: step3Result.tokens,
-            hukm_tarqatish: JSON.parse(JSON.stringify(hukmTarqatish)),
+            namunaviy_javob: stage3.javob,
+            step0_qonunlar: stage1.step0.qonunlar,
+            step0_model: stage1.step0.model,
+            step0_tokens: stage1.step0.tokens,
+            ai1_model: stage1.step1b.model,
+            ai1_tokens: stage1.step1b.tokens,
+            step2_model: stage2.model,
+            step2_tokens: stage2.tokens,
+            ai2_model: stage3.model,
+            ai2_tokens: stage3.tokens,
+            hukm_tarqatish: JSON.parse(JSON.stringify(manbaTarqatish)),
             jami_token: jamiToken,
             updated_at: new Date().toISOString(),
           })
@@ -562,56 +797,35 @@ Deno.serve(async (req: Request) => {
       console.log(`[case-research] Tugadi: holat=${holat}, tasdiqlangan=${tasdiqlanganJson.length}`);
 
       return new Response(JSON.stringify({
-        success: true,
-        holat,
-        step1: {
-          nomzodlar: step1Result.nomzodlar,
-          model: step1Result.model,
-          tokens: step1Result.tokens,
+        success: true, holat,
+        stage0: { qonunlar: stage1.step0.qonunlar, model: stage1.step0.model },
+        stage1: {
+          birlashtirilgan_soni: stage1.birlashtirilgan.length,
+          step1a: { moddalar_soni: stage1.step1a.moddalar.length, kalit_sozlar: stage1.step1a.kalitSozlar },
+          step1b: { nomzodlar: stage1.step1b.nomzodlar, model: stage1.step1b.model },
+          step1c: { nomzodlar: stage1.step1c.nomzodlar, model: stage1.step1c.model },
         },
-        step2: {
-          natijalar: step2Result.natijalar.map(n => ({
-            ai_nomzod: n.ai_nomzod,
-            raqam_topildi: n.raqam_topildi,
-            matn_top3: n.matn_top3,
-            hukm: n.hukm,
-            tasdiqlangan: n.tasdiqlangan,
-          })),
-          tasdiqlanganlar: tasdiqlanganJson,
-        },
-        step3: {
-          javob: step3Result.javob,
-          model: step3Result.model,
-          tokens: step3Result.tokens,
-        },
-        hukm_tarqatish: hukmTarqatish,
+        stage2: { tasdiqlanganlar: tasdiqlanganJson, model: stage2.model },
+        stage3: { javob: stage3.javob, model: stage3.model },
+        manba_tarqatish: manbaTarqatish,
         jami_token: jamiToken,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     } catch (innerErr) {
-      // Pipeline xatosi
       console.error('[case-research] pipeline xato:', innerErr);
       const errMsg = innerErr instanceof Error ? innerErr.message : String(innerErr);
 
-      await supabaseAdmin
-        .from('moot_court_cases')
+      await supabaseAdmin.from('moot_court_cases')
         .update({ tadqiqot_holati: 'xato', updated_at: new Date().toISOString() })
         .eq('id', caseId);
 
       if (jurnalId) {
-        await supabaseAdmin
-          .from('qidiruv_jurnali')
+        await supabaseAdmin.from('qidiruv_jurnali')
           .update({ holat: 'xato', updated_at: new Date().toISOString() })
           .eq('id', jurnalId);
       }
 
-      return new Response(JSON.stringify({
-        success: false,
-        holat: 'xato',
-        error: errMsg.slice(0, 300),
-      }), {
+      return new Response(JSON.stringify({ success: false, holat: 'xato', error: errMsg.slice(0, 300) }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
