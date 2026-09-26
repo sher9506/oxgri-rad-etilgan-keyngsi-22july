@@ -7,6 +7,7 @@
  *   });
  * 
  * Groq is used as fallback when Gemini returns 429 (quota exhausted) or 503 (service unavailable).
+ * Also handles empty response retries.
  * If GROQ_API_KEY is not configured, falls through to Gemini error.
  * Also auto-routes to Groq if today's Gemini usage is >= 90% of daily quota.
  */
