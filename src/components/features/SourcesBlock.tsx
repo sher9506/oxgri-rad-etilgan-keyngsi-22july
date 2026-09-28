@@ -43,7 +43,7 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
       >
         <span className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
           <BookOpen className="h-3.5 w-3.5 text-gray-500" />
-          Manbalar (ixtiyoriy)
+          Manbalar (AI javob uchun shart)
           <span className="text-[10px] font-normal text-gray-400">{sources.length}/{MAX_SOURCES}</span>
         </span>
         <ChevronDown
