@@ -16,7 +16,11 @@ function sanitizeAnswer(text: string): string {
   return text
     .replace(/\bNotebookLM\b/gi, "manba")
     .replace(/\bGemini Notebook\b/gi, "manba")
-    .replace(/\bNotebook\b/gi, "manba");
+    .replace(/\bNotebook\b/gi, "manba")
+    .replace(/\s*\[\d+(?:\s*[-,]\s*\d+)*\]\s*/g, " ")
+    .replace(/  +/g, " ")
+    .replace(/ +\n/g, "\n")
+    .trim();
 }
 
 async function getAnswerServiceConfig(): Promise<{ url: string; key: string }> {
@@ -180,3 +184,4 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+

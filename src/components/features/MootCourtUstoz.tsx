@@ -123,6 +123,8 @@ export default function MootCourtUstoz() {
   const [saving, setSaving] = useState(false);
   const [triggeringResearch, setTriggeringResearch] = useState(false);
   const [namunaviyJavob, setNamunaviyJavob] = useState('');
+  const [showAiConfirm, setShowAiConfirm] = useState(false);
+  const namunaviyRef = useRef<HTMLTextAreaElement>(null);
   const aiAnswer = useAiAnswerJob(user?.ustoz_id);
 
   const loadCases = useCallback(async () => {
@@ -286,18 +288,26 @@ export default function MootCourtUstoz() {
     loadCases();
   };
 
-  const handleAiAnswer = async (c: MootCase) => {
+  const handleAiAnswer = async (caseId: string, title: string, kazusText: string) => {
     if (!user?.ustoz_id) return;
-    if (c.tavsif.length > 12000) {
+    if (kazusText.trim().length < 10) {
+      toast({ title: 'Avval kazus vaziyatini yozing', variant: 'destructive' });
+      return;
+    }
+    if (kazusText.length > 12000) {
       toast({ title: 'Kazus matni juda uzun', description: 'Kazus matni 12000 belgidan oshmasligi kerak', variant: 'destructive' });
       return;
     }
-    await aiAnswer.submitJob(c.id, c.sarlavha, c.tavsif, user.ustoz_id);
+    await aiAnswer.submitJob(caseId, title, kazusText, user.ustoz_id);
   };
 
-  const handleAiAnswerRetry = async (c: MootCase) => {
+  const handleAiAnswerRetry = async (caseId: string, title: string, kazusText: string) => {
     if (!user?.ustoz_id) return;
-    await aiAnswer.retry(c.id, c.sarlavha, c.tavsif, user.ustoz_id);
+    if (kazusText.trim().length < 10) {
+      toast({ title: 'Avval kazus vaziyatini yozing', variant: 'destructive' });
+      return;
+    }
+    await aiAnswer.retry(caseId, title, kazusText, user.ustoz_id);
   };
 
   // Restore AI answer job states when cases load
@@ -312,26 +322,25 @@ export default function MootCourtUstoz() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, user?.ustoz_id, cases.length]);
 
-  // When AI answer is done, fill the namunaviy javob field if editing that case
-  // or notify the teacher if they're on the card list
   const lastNotifiedJob = useRef<string | null>(null);
   useEffect(() => {
-    if (!editingCase) {
-      // Check all job states for a newly completed job
-      for (const [caseId, state] of Object.entries(aiAnswer.jobStates)) {
-        if (state.status === 'done' && state.jobId && state.jobId !== lastNotifiedJob.current) {
-          lastNotifiedJob.current = state.jobId;
-          toast({ title: 'AI javob tayyor', description: 'Tahrirlash sahifasiga kirib, namunaviy javobni ko\'ring va saqlang.' });
-          break;
-        }
-      }
-      return;
-    }
+    if (!editingCase) return;
     const jobState = aiAnswer.jobStates[editingCase.id];
-    if (jobState?.status === 'done' && jobState.answer && jobState.jobId !== lastNotifiedJob.current) {
+    if (!jobState) return;
+    if (jobState.status === 'done' && jobState.answer && jobState.jobId !== lastNotifiedJob.current) {
       lastNotifiedJob.current = jobState.jobId;
-      setNamunaviyJavob(prev => prev ? prev + '\n\n---\n\n' + jobState.answer : jobState.answer);
-      toast({ title: 'AI javob tayyor', description: 'Namunaviy javob maydoniga qo\'shildi. O\'qib, tahrir qilib, saqlang.' });
+      setNamunaviyJavob(jobState.answer);
+      toast({ title: 'Namunaviy javob to\'ldirildi', description: 'Tekshirib, saqlang.' });
+      setTimeout(() => {
+        const ta = namunaviyRef.current;
+        if (ta) {
+          ta.focus();
+          ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    } else if ((jobState.status === 'error' || jobState.status === 'timeout') && jobState.jobId !== lastNotifiedJob.current) {
+      lastNotifiedJob.current = jobState.jobId;
+      toast({ title: 'AI hozir band. Birozdan keyin qayta urinib ko\'ring.', variant: 'destructive' });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiAnswer.jobStates, editingCase]);
@@ -777,15 +786,63 @@ export default function MootCourtUstoz() {
             </div>
 
             <div>
-              <Label className="text-xs font-bold">Namunaviy javob (ixtiyoriy)</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-bold">Namunaviy javob (ixtiyoriy)</Label>
+                <FormAiAnswerButton
+                  jobState={editingCase ? aiAnswer.jobStates[editingCase.id] : undefined}
+                  canSubmit={!!editingCase}
+                  onSubmit={() => {
+                    if (!editingCase) {
+                      toast({ title: 'Avval kazusni saqlang', description: 'AI javob faqat saqlangan kazus uchun ishlaydi', variant: 'destructive' });
+                      return;
+                    }
+                    if (namunaviyJavob.trim()) {
+                      setShowAiConfirm(true);
+                    } else {
+                      handleAiAnswer(editingCase.id, sarlavha || editingCase.sarlavha, tavsif || editingCase.tavsif);
+                    }
+                  }}
+                  onRetry={() => {
+                    if (editingCase) {
+                      handleAiAnswerRetry(editingCase.id, sarlavha || editingCase.sarlavha, tavsif || editingCase.tavsif);
+                    }
+                  }}
+                />
+              </div>
+
               <Textarea
+                ref={namunaviyRef}
                 value={namunaviyJavob}
-                onChange={e => setNamunaviyJavob(e.target.value)}
+                onChange={e => {
+                  setNamunaviyJavob(e.target.value);
+                  const ta = e.target;
+                  ta.style.height = 'auto';
+                  ta.style.height = Math.max(300, ta.scrollHeight) + 'px';
+                }}
                 placeholder="Kazus uchun namunaviy javobni shu yerda tahrir qiling yoki AI orqali tayyorlang..."
-                className="mt-1.5 min-h-[150px] rounded-xl"
+                className="mt-1.5 rounded-xl resize-none overflow-y-auto"
+                style={{ minHeight: '300px' }}
                 aria-label="Namunaviy javob maydoni"
               />
               <p className="text-[10px] text-gray-400 mt-1">Bu javob talaba sessiyasida AI ga yo'naltiruvchi sifatida ishlatiladi</p>
+
+              {showAiConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAiConfirm(false)}>
+                  <div className="bg-white rounded-2xl shadow-xl p-5 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+                    <p className="text-sm font-bold text-gray-900 mb-1">Mavjud namunaviy javob AI javob bilan almashtiriladi.</p>
+                    <p className="text-sm text-gray-600 mb-4">Davom etasizmi?</p>
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="outline" size="sm" onClick={() => setShowAiConfirm(false)} className="rounded-xl">Bekor qilish</Button>
+                      <Button size="sm" onClick={() => {
+                        setShowAiConfirm(false);
+                        if (editingCase) {
+                          handleAiAnswer(editingCase.id, sarlavha || editingCase.sarlavha, tavsif || editingCase.tavsif);
+                        }
+                      }} className="rounded-xl">Almashtirish</Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Button onClick={handleSave} disabled={saving} className="w-full rounded-xl shadow-lg shadow-blue-500/20">
@@ -962,12 +1019,6 @@ export default function MootCourtUstoz() {
                               {triggeringResearch ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                               Tadqiqot
                             </Button>
-                            <AiAnswerButton
-                              caseData={c}
-                              jobState={aiAnswer.jobStates[c.id]}
-                              onSubmit={() => handleAiAnswer(c)}
-                              onRetry={() => handleAiAnswerRetry(c)}
-                            />
                             <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)} className="text-xs h-7 text-red-500 hover:text-red-600 rounded-lg">
                               <Trash2 className="h-3 w-3 mr-1" /> O'chirish
                             </Button>
@@ -1286,22 +1337,23 @@ function AiEvaluationView({ session, onSaveTeacherScore, onReevaluate, reevaluat
   );
 }
 
-function AiAnswerButton({ caseData, jobState, onSubmit, onRetry }: {
-  caseData: MootCase;
+function FormAiAnswerButton({ jobState, canSubmit, onSubmit, onRetry }: {
   jobState?: import('@/hooks/useAiAnswerJob').AnswerJobState;
+  canSubmit: boolean;
   onSubmit: () => void;
   onRetry: () => void;
 }) {
   const status = jobState?.status || 'idle';
   const isInProgress = status === 'queued' || status === 'running';
 
-  if (status === 'idle') {
+  if (status === 'idle' || status === 'done') {
     return (
       <Button
+        type="button"
         size="sm"
         variant="ghost"
         onClick={onSubmit}
-        disabled={caseData.tavsif.length > 12000}
+        disabled={!canSubmit || isInProgress}
         className="text-xs h-7 rounded-lg text-violet-600 hover:text-violet-700 hover:bg-violet-50"
         aria-label="AI orqali namunaviy javob tayyorlash"
       >
@@ -1313,30 +1365,25 @@ function AiAnswerButton({ caseData, jobState, onSubmit, onRetry }: {
   if (isInProgress) {
     return (
       <span
-        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200"
-        aria-label="AI javob tayyorlanmoqda"
+        className="inline-flex flex-col items-end gap-0.5"
         role="status"
+        aria-live="polite"
       >
-        <Loader2 className="h-3 w-3 animate-spin" />
-        {status === 'queued' ? 'Navbatda…' : 'Javob tayyorlanmoqda…'}
-      </span>
-    );
-  }
-
-  if (status === 'done') {
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200"
-        aria-label="AI javob tayyor"
-      >
-        <CheckCircle className="h-3 w-3" /> AI javob tayyor
+        <span
+          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200"
+          aria-label="AI javob tayyorlanmoqda"
+        >
+          <Loader2 className="h-3 w-3 animate-spin" />
+          AI javob tayyorlanmoqda…
+        </span>
+        <span className="text-[9px] text-gray-400">Bu 1–2 daqiqa olishi mumkin</span>
       </span>
     );
   }
 
   // error or timeout
   return (
-    <div className="inline-flex flex-col gap-1">
+    <div className="inline-flex items-center gap-1.5">
       <span
         className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200"
         role="alert"
@@ -1344,6 +1391,7 @@ function AiAnswerButton({ caseData, jobState, onSubmit, onRetry }: {
         <AlertCircle className="h-3 w-3" /> Javob tayyorlanmadi
       </span>
       <Button
+        type="button"
         size="sm"
         variant="ghost"
         onClick={onRetry}

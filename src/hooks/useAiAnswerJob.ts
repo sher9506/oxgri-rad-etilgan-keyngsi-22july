@@ -10,8 +10,8 @@ export interface AnswerJobState {
   jobId: string | null;
 }
 
-const POLL_INTERVAL_MS = 5000;
-const MAX_POLL_MS = 360000; // 6 minutes
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_MS = 300000; // 5 minutes
 
 async function callEdgeFunction(fn: string, body: Record<string, unknown>) {
   const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
@@ -112,7 +112,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
         stopPolling(caseId);
         updateJobState(caseId, {
           status: 'timeout',
-          error: null,
+          error: 'AI hozir band. Birozdan keyin qayta urinib ko\'ring.',
         });
         return;
       }
@@ -131,7 +131,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
           updateJobState(caseId, {
             status: 'error',
             answer: null,
-            error: data.error,
+            error: 'AI hozir band. Birozdan keyin qayta urinib ko\'ring.',
           });
         } else {
           updateJobState(caseId, {
