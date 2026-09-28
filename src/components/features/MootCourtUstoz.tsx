@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Scale, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Loader2, MessageSquare, Star, Eye, ChevronLeft, Award, RotateCw, AlertCircle, ArrowRight, Search, ChevronDown, SlidersHorizontal, FolderOpen, BookMarked, RefreshCw, CheckCircle, Clock, XCircle, Sparkles } from 'lucide-react';
+import { SourcesBlock } from './SourcesBlock';
+import type { SourceItem } from '@/hooks/useAiAnswerJob';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
@@ -124,6 +126,7 @@ export default function MootCourtUstoz() {
   const [triggeringResearch, setTriggeringResearch] = useState(false);
   const [namunaviyJavob, setNamunaviyJavob] = useState('');
   const [showAiConfirm, setShowAiConfirm] = useState(false);
+  const [sources, setSources] = useState<SourceItem[]>([]);
   const namunaviyRef = useRef<HTMLTextAreaElement>(null);
   const aiAnswer = useAiAnswerJob(user?.ustoz_id);
 
@@ -167,6 +170,7 @@ export default function MootCourtUstoz() {
     setAllowRetry(true);
     setIsPublicDemo(false);
     setNamunaviyJavob('');
+    setSources([]);
     setEditingCase(null);
   };
 
@@ -266,6 +270,7 @@ export default function MootCourtUstoz() {
     setAllowRetry(c.allow_retry !== false);
     setIsPublicDemo(c.is_public_demo === true);
     setNamunaviyJavob(c.namunaviy_javob || '');
+    setSources([]);
     setShowForm(true);
   };
 
@@ -786,26 +791,32 @@ export default function MootCourtUstoz() {
             </div>
 
             <div>
+              <SourcesBlock
+                sources={sources}
+                onAdd={(src) => setSources(prev => [...prev, src])}
+                onRemove={(idx) => setSources(prev => prev.filter((_, i) => i !== idx))}
+              />
+
               <div className="flex items-center justify-between gap-2">
                 <Label className="text-xs font-bold">Namunaviy javob (ixtiyoriy)</Label>
                 <FormAiAnswerButton
                   jobState={editingCase ? aiAnswer.jobStates[editingCase.id] : undefined}
-                  canSubmit={!!editingCase}
-                  onSubmit={() => {
-                    if (!editingCase) {
-                      toast({ title: 'Avval kazusni saqlang', description: 'AI javob faqat saqlangan kazus uchun ishlaydi', variant: 'destructive' });
+                  canSubmit={true}
+                  onSubmit={async () => {
+                    if (!sarlavha.trim() || !tavsif.trim()) {
+                      toast({ title: 'Avval kazus sarlavhasi va vaziyatini yozing', variant: 'destructive' });
                       return;
                     }
                     if (namunaviyJavob.trim()) {
                       setShowAiConfirm(true);
                     } else {
-                      handleAiAnswer(editingCase.id, sarlavha || editingCase.sarlavha, tavsif || editingCase.tavsif);
+                      const id = await ensureCaseSaved();
+                      if (id) handleAiAnswer(id, sarlavha, tavsif);
                     }
                   }}
-                  onRetry={() => {
-                    if (editingCase) {
-                      handleAiAnswerRetry(editingCase.id, sarlavha || editingCase.sarlavha, tavsif || editingCase.tavsif);
-                    }
+                  onRetry={async () => {
+                    const id = editingCase?.id || await ensureCaseSaved();
+                    if (id) handleAiAnswerRetry(id, sarlavha, tavsif);
                   }}
                 />
               </div>
@@ -831,13 +842,15 @@ export default function MootCourtUstoz() {
                   <div className="bg-white rounded-2xl shadow-xl p-5 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
                     <p className="text-sm font-bold text-gray-900 mb-1">Mavjud namunaviy javob AI javob bilan almashtiriladi.</p>
                     <p className="text-sm text-gray-600 mb-4">Davom etasizmi?</p>
+                    {sources.length > 0 && (
+                      <p className="text-xs text-gray-500 mb-3">{sources.length} ta manba asosida</p>
+                    )}
                     <div className="flex gap-2 justify-end">
                       <Button variant="outline" size="sm" onClick={() => setShowAiConfirm(false)} className="rounded-xl">Bekor qilish</Button>
-                      <Button size="sm" onClick={() => {
+                      <Button size="sm" onClick={async () => {
                         setShowAiConfirm(false);
-                        if (editingCase) {
-                          handleAiAnswer(editingCase.id, sarlavha || editingCase.sarlavha, tavsif || editingCase.tavsif);
-                        }
+                        const id = await ensureCaseSaved();
+                        if (id) handleAiAnswer(id, sarlavha, tavsif);
                       }} className="rounded-xl">Almashtirish</Button>
                     </div>
                   </div>
@@ -1337,9 +1350,10 @@ function AiEvaluationView({ session, onSaveTeacherScore, onReevaluate, reevaluat
   );
 }
 
-function FormAiAnswerButton({ jobState, canSubmit, onSubmit, onRetry }: {
+function FormAiAnswerButton({ jobState, canSubmit, hasSources, onSubmit, onRetry }: {
   jobState?: import('@/hooks/useAiAnswerJob').AnswerJobState;
   canSubmit: boolean;
+  hasSources: boolean;
   onSubmit: () => void;
   onRetry: () => void;
 }) {
@@ -1374,7 +1388,7 @@ function FormAiAnswerButton({ jobState, canSubmit, onSubmit, onRetry }: {
           aria-label="AI javob tayyorlanmoqda"
         >
           <Loader2 className="h-3 w-3 animate-spin" />
-          AI javob tayyorlanmoqda…
+          {hasSources ? 'Manbalar bo\'yicha javob tayyorlanmoqda…' : 'AI javob tayyorlanmoqda…'}
         </span>
         <span className="text-[9px] text-gray-400">Bu 1–2 daqiqa olishi mumkin</span>
       </span>

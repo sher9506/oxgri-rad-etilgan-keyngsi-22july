@@ -3,6 +3,10 @@ import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 
 export type AnswerJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
 
+export type SourceItem =
+  | { type: 'text'; title: string; content: string }
+  | { type: 'url'; title: string; url: string };
+
 export interface AnswerJobState {
   status: AnswerJobStatus;
   answer: string | null;
@@ -150,7 +154,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     caseId: string,
     title: string,
     kazusText: string,
-    ustoz: string
+    ustoz: string,
+    sources?: SourceItem[]
   ): Promise<void> => {
     if (!ustoz) return;
 
@@ -168,12 +173,16 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     });
 
     try {
-      const data = await callEdgeFunction('case-answer-submit', {
+      const payload: Record<string, unknown> = {
         case_id: caseId,
         kazus_text: kazusText,
         title,
         ustoz_id: ustoz,
-      });
+      };
+      if (sources && sources.length > 0) {
+        payload.sources = sources;
+      }
+      const data = await callEdgeFunction('case-answer-submit', payload);
 
       if (data.id) {
         updateJobState(caseId, { jobId: data.id });
@@ -209,7 +218,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     caseId: string,
     title: string,
     kazusText: string,
-    ustoz: string
+    ustoz: string,
+    sources?: SourceItem[]
   ) => {
     stopPolling(caseId);
     updateJobState(caseId, {
@@ -218,7 +228,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
       error: null,
       jobId: null,
     });
-    await submitJob(caseId, title, kazusText, ustoz);
+    await submitJob(caseId, title, kazusText, ustoz, sources);
   }, [stopPolling, updateJobState, submitJob]);
 
   // Cleanup on unmount

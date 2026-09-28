@@ -12,6 +12,40 @@ const supabaseAdmin = createClient(
 );
 
 const MAX_KAZUS_LENGTH = 12000;
+const MAX_SOURCES = 10;
+const MAX_SOURCE_TEXT_LENGTH = 100000;
+const MAX_SOURCE_TITLE_LENGTH = 120;
+
+interface SourceInput {
+  type: 'text' | 'url';
+  title?: string;
+  content?: string;
+  url?: string;
+}
+
+function validateSources(sources: unknown): SourceInput[] {
+  if (!Array.isArray(sources)) return [];
+  const result: SourceInput[] = [];
+  for (let i = 0; i < sources.length && result.length < MAX_SOURCES; i++) {
+    const s = sources[i] as Record<string, unknown>;
+    if (!s || typeof s !== 'object') continue;
+    const type = s.type;
+    if (type !== 'text' && type !== 'url') continue;
+    let title = typeof s.title === 'string' ? s.title.trim().slice(0, MAX_SOURCE_TITLE_LENGTH) : '';
+    if (!title) title = `Manba ${i + 1}`;
+    if (type === 'text') {
+      const content = typeof s.content === 'string' ? s.content : '';
+      if (!content.trim()) continue;
+      if (content.length > MAX_SOURCE_TEXT_LENGTH) continue;
+      result.push({ type: 'text', title, content });
+    } else {
+      const url = typeof s.url === 'string' ? s.url.trim() : '';
+      if (!url.match(/^https?:\/\/.+/i)) continue;
+      result.push({ type: 'url', title, url });
+    }
+  }
+  return result;
+}
 
 async function getAnswerServiceConfig(): Promise<{ url: string; key: string }> {
   const { data, error } = await supabaseAdmin
@@ -33,7 +67,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { case_id, kazus_text, title, ustoz_id } = body;
+    const { case_id, kazus_text, title, ustoz_id, sources } = body;
 
     if (!case_id || !kazus_text || !title || !ustoz_id) {
       return new Response(
@@ -45,6 +79,14 @@ Deno.serve(async (req: Request) => {
     if (kazus_text.length > MAX_KAZUS_LENGTH) {
       return new Response(
         JSON.stringify({ error: "Kazus matni 12000 belgidan oshmasligi kerak" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const validSources = validateSources(sources);
+    if (Array.isArray(sources) && sources.length > MAX_SOURCES) {
+      return new Response(
+        JSON.stringify({ error: "Ko'pi bilan 10 ta manba qo'shish mumkin" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -106,21 +148,34 @@ Deno.serve(async (req: Request) => {
       "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.\n\nKAZUS MATNI:\n" +
       kazus_text;
 
+    // Build sources payload for external service
+    const serviceSources = validSources.map(s => {
+      if (s.type === 'url') {
+        // URL manba — { title, url } shaklida yuboriladi
+        return { title: s.title, url: s.url };
+      }
+      return { title: s.title, content: s.content };
+    });
+
     let serviceJobId: string | null = null;
 
     try {
+      const serviceBody: Record<string, unknown> = {
+        title,
+        kazus_text,
+        external_id: jobId,
+        instruction,
+      };
+      if (serviceSources.length > 0) {
+        serviceBody.sources = serviceSources;
+      }
       const serviceRes = await fetch(`${ANSWER_SERVICE_URL}/api/jobs`, {
         method: "POST",
         headers: {
           "X-API-Key": ANSWER_SERVICE_KEY,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          title,
-          kazus_text,
-          external_id: jobId,
-          instruction,
-        }),
+        body: JSON.stringify(serviceBody),
       });
 
       if (!serviceRes.ok) {
