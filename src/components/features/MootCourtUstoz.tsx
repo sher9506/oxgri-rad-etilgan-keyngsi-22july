@@ -802,6 +802,7 @@ export default function MootCourtUstoz() {
                 <FormAiAnswerButton
                   jobState={editingCase ? aiAnswer.jobStates[editingCase.id] : undefined}
                   canSubmit={true}
+                  hasSources={sources.length > 0}
                   onSubmit={async () => {
                     if (!sarlavha.trim() || !tavsif.trim()) {
                       toast({ title: 'Avval kazus sarlavhasi va vaziyatini yozing', variant: 'destructive' });

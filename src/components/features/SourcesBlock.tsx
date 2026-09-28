@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, FileText, X, Plus, ChevronDown, BookOpen } from 'lucide-react';
+import { Link, FileText, X, ChevronDown, BookOpen } from 'lucide-react';
 import type { SourceItem } from '@/hooks/useAiAnswerJob';
 
 const MAX_SOURCES = 10;
@@ -106,8 +106,6 @@ function SourceRow({ source, onRemove }: { source: SourceItem; onRemove: () => v
   const isModda = source.title.startsWith('Modda ');
   const isUrl = source.type === 'url';
   const preview = isUrl ? source.url : source.content.slice(0, 80) + (source.content.length > 80 ? '…' : '');
-
-  const Icon = isModda ? BookOpen : isUrl ? Link : FileText;
   const badgeText = isModda ? 'Modda' : isUrl ? 'Havola' : 'Matn';
   const badgeClass = isModda
     ? 'bg-blue-100 text-blue-700 border-blue-200'
