@@ -4,18 +4,21 @@ import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 export type AnswerJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
 
 export type SourceItem =
-  | { type: 'text'; title: string; content: string }
-  | { type: 'url'; title: string; url: string };
+  | { id: string; type: 'text'; title: string; content: string; charCount: number }
+  | { id: string; type: 'url'; title: string; url: string; charCount: number }
+  | { id: string; type: 'file'; title: string; content: string; fileKind: 'pdf' | 'docx'; charCount: number };
 
 export interface AnswerJobState {
   status: AnswerJobStatus;
   answer: string | null;
   error: string | null;
   jobId: string | null;
+  applied: boolean;
+  sourceCount: number;
 }
 
-const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_MS = 300000; // 5 minutes
+const POLL_INTERVAL_MS = 5000;
+const MAX_POLL_MS = 600000; // 10 minutes
 
 async function callEdgeFunction(fn: string, body: Record<string, unknown>) {
   const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
@@ -37,7 +40,7 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
   const { supabase } = await import('@/lib/supabase');
   const { data } = await supabase
     .from('case_answer_jobs')
-    .select('id, status, answer, error, created_at')
+    .select('id, status, answer, error, created_at, applied, source_count')
     .eq('case_id', caseId)
     .eq('teacher_id', ustozId)
     .order('created_at', { ascending: false })
@@ -54,6 +57,8 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
         answer: null,
         error: null,
         jobId: data.id,
+        applied: data.applied ?? false,
+        sourceCount: data.source_count ?? 0,
       };
     }
     return {
@@ -61,6 +66,8 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
       answer: data.answer,
       error: data.error,
       jobId: data.id,
+      applied: data.applied ?? false,
+      sourceCount: data.source_count ?? 0,
     };
   }
 
@@ -70,15 +77,19 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
       answer: data.answer,
       error: null,
       jobId: data.id,
+      applied: data.applied ?? false,
+      sourceCount: data.source_count ?? 0,
     };
   }
 
-  if (data.status === 'error') {
+  if (data.status === 'error' || data.status === 'timeout') {
     return {
-      status: 'error',
+      status: data.status as AnswerJobStatus,
       answer: null,
       error: data.error,
       jobId: data.id,
+      applied: data.applied ?? false,
+      sourceCount: data.source_count ?? 0,
     };
   }
 
@@ -86,7 +97,6 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
 }
 
 export function useAiAnswerJob(ustozId: string | undefined) {
-  // Per-case job states: caseId -> AnswerJobState
   const [jobStates, setJobStates] = useState<Record<string, AnswerJobState>>({});
   const pollTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const pollStarts = useRef<Record<string, number>>({});
@@ -116,7 +126,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
         stopPolling(caseId);
         updateJobState(caseId, {
           status: 'timeout',
-          error: 'AI hozir band. Birozdan keyin qayta urinib ko\'ring.',
+          error: 'Javob hali tayyor emas. Keyinroq shu kazusni oching, tayyor bo\'lsa avtomatik chiqadi.',
         });
         return;
       }
@@ -129,13 +139,14 @@ export function useAiAnswerJob(ustozId: string | undefined) {
             status: 'done',
             answer: data.answer,
             error: null,
+            applied: data.applied ?? false,
           });
         } else if (data.status === 'error') {
           stopPolling(caseId);
           updateJobState(caseId, {
             status: 'error',
             answer: null,
-            error: 'AI hozir band. Birozdan keyin qayta urinib ko\'ring.',
+            error: data.error || 'Javob tayyorlanmadi. Qayta urinib ko\'ring.',
           });
         } else {
           updateJobState(caseId, {
@@ -145,7 +156,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
           });
         }
       } catch {
-        // Network error during polling — keep polling, don't crash
+        // Network error during polling — keep polling
       }
     }, POLL_INTERVAL_MS);
   }, [stopPolling, updateJobState]);
@@ -159,7 +170,6 @@ export function useAiAnswerJob(ustozId: string | undefined) {
   ): Promise<void> => {
     if (!ustoz) return;
 
-    // Don't submit if already in progress
     const current = jobStates[caseId];
     if (current && (current.status === 'queued' || current.status === 'running')) {
       return;
@@ -170,6 +180,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
       answer: null,
       error: null,
       jobId: null,
+      applied: false,
+      sourceCount: sources?.length || 0,
     });
 
     try {
@@ -180,7 +192,10 @@ export function useAiAnswerJob(ustozId: string | undefined) {
         ustoz_id: ustoz,
       };
       if (sources && sources.length > 0) {
-        payload.sources = sources;
+        payload.sources = sources.map(s => {
+          if (s.type === 'url') return { type: 'url', title: s.title, url: s.url };
+          return { type: s.type, title: s.title, content: s.content };
+        });
       }
       const data = await callEdgeFunction('case-answer-submit', payload);
 
@@ -214,6 +229,17 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     }
   }, [updateJobState, startPolling]);
 
+  const markApplied = useCallback(async (caseId: string, ustoz: string) => {
+    const { supabase } = await import('@/lib/supabase');
+    const jobState = jobStates[caseId];
+    if (!jobState?.jobId) return;
+    await supabase
+      .from('case_answer_jobs')
+      .update({ applied: true })
+      .eq('id', jobState.jobId);
+    updateJobState(caseId, { applied: true });
+  }, [jobStates, updateJobState]);
+
   const retry = useCallback(async (
     caseId: string,
     title: string,
@@ -227,6 +253,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
       answer: null,
       error: null,
       jobId: null,
+      applied: false,
+      sourceCount: 0,
     });
     await submitJob(caseId, title, kazusText, ustoz, sources);
   }, [stopPolling, updateJobState, submitJob]);
@@ -245,5 +273,6 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     retry,
     restoreJob,
     stopPolling,
+    markApplied,
   };
 }

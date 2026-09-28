@@ -15,6 +15,7 @@ import ToplamYaratish from './ToplamYaratish';
 import UstozNatijalar from './UstozNatijalar';
 import UstozStatistika from './UstozStatistika';
 import OquvchilarRoyhat from './OquvchilarRoyhat';
+import AnswerJobNotifier from './AnswerJobNotifier';
 
 const KURSLAR = ['1-kurs', '2-kurs', '3-kurs', '4-kurs'];
 const GURUHLAR = ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'p-1', 'p-2', 'p-rus', 'p-3'];
@@ -60,6 +61,8 @@ export default function UstozKabineti() {
   }
 
   return (
+    <>
+    <AnswerJobNotifier ustozId={user.ustoz_id} />
     <UstozKabinetInner
       user={user}
       activeTab={activeTab}
@@ -68,6 +71,7 @@ export default function UstozKabineti() {
       handleTahrirlash={handleTahrirlash}
       handleTahrirlashTugadi={handleTahrirlashTugadi}
     />
+    </>
   );
 }
 

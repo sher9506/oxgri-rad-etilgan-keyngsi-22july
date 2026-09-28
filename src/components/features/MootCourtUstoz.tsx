@@ -31,6 +31,7 @@ interface MootCase {
   tadqiqot_holati?: string;
   tasdiqlangan_moddalar?: any[];
   namunaviy_javob?: string | null;
+  answer_sources?: any[];
 }
 
 interface ScoreCriterion {
@@ -127,8 +128,98 @@ export default function MootCourtUstoz() {
   const [namunaviyJavob, setNamunaviyJavob] = useState('');
   const [showAiConfirm, setShowAiConfirm] = useState(false);
   const [sources, setSources] = useState<SourceItem[]>([]);
+  const [sourcesSaved, setSourcesSaved] = useState(true);
+  const [showNewAnswerBanner, setShowNewAnswerBanner] = useState(false);
+  const [draftKey] = useState(() => `moot_draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   const namunaviyRef = useRef<HTMLTextAreaElement>(null);
   const aiAnswer = useAiAnswerJob(user?.ustoz_id);
+  const sourceSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const elapsedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  // ── ensureCaseSaved: saves the case if it's new (no editingCase), returns the case id ──
+  const ensureCaseSaved = async (): Promise<string | null> => {
+    if (editingCase?.id) return editingCase.id;
+    if (!user?.ustoz_id) return null;
+    if (!sarlavha.trim() || !tavsif.trim()) return null;
+    const clamped = Math.max(3, Math.min(8, maxExchanges));
+    const payload = {
+      ustoz_id: user.ustoz_id,
+      ustoz_ismi: `${user.ism} ${user.familiya}`,
+      sarlavha: sarlavha.trim(),
+      tavsif: tavsif.trim(),
+      qonun_moddalar: qonunModdalar.trim(),
+      tomonlar: tomonlar.filter(t => t.trim()),
+      ai_rol: aiRol,
+      max_exchanges: clamped,
+      difficulty,
+      allow_retry: allowRetry,
+      is_public_demo: isPublicDemo,
+      namunaviy_javob: namunaviyJavob.trim() || null,
+      answer_sources: sources as any[],
+    };
+    const { data: newCase, error } = await supabase
+      .from('moot_court_cases')
+      .insert(payload).select('id').single();
+    if (error) {
+      toast({ title: 'Kazusni saqlashda xatolik', description: error.message, variant: 'destructive' });
+      return null;
+    }
+    // Link draft jobs to the new case and clear localStorage draft
+    try {
+      await supabase
+        .from('case_answer_jobs')
+        .update({ case_id: newCase.id })
+        .eq('draft_key', draftKey);
+    } catch { /* ignore */ }
+    try { localStorage.removeItem(`mc_sources_${draftKey}`); } catch { /* ignore */ }
+    setEditingCase({ id: newCase.id } as MootCase);
+    loadCases();
+    triggerResearch(newCase.id);
+    return newCase.id;
+  };
+
+  // ── Debounced save of sources to DB (existing case) or localStorage (new case) ──
+  const debouncedSaveSources = useCallback((newSources: SourceItem[]) => {
+    setSourcesSaved(false);
+    if (sourceSaveTimer.current) clearTimeout(sourceSaveTimer.current);
+    sourceSaveTimer.current = setTimeout(async () => {
+      if (editingCase?.id && user?.ustoz_id) {
+        await supabase
+          .from('moot_court_cases')
+          .update({ answer_sources: newSources as any[] })
+          .eq('id', editingCase.id);
+      } else {
+        try { localStorage.setItem(`mc_sources_${draftKey}`, JSON.stringify(newSources)); }
+        catch { toast({ title: 'Qoralamani saqlab bo\'lmadi, kazusni saqlab qo\'ying', variant: 'destructive' }); }
+      }
+      setSourcesSaved(true);
+    }, 800);
+  }, [editingCase?.id, user?.ustoz_id, draftKey]);
+
+  const handleAddSource = (src: SourceItem) => {
+    setSources(prev => {
+      const next = [...prev, src];
+      debouncedSaveSources(next);
+      return next;
+    });
+  };
+
+  const handleRemoveSource = (idx: number) => {
+    setSources(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      debouncedSaveSources(next);
+      return next;
+    });
+  };
+
+  const handleAddModdalar = (moddalar: SourceItem[]) => {
+    setSources(prev => {
+      const next = [...prev, ...moddalar];
+      debouncedSaveSources(next);
+      return next;
+    });
+  };
 
   const loadCases = useCallback(async () => {
     if (!user?.ustoz_id) return;
@@ -171,7 +262,10 @@ export default function MootCourtUstoz() {
     setIsPublicDemo(false);
     setNamunaviyJavob('');
     setSources([]);
+    setSourcesSaved(true);
+    setShowNewAnswerBanner(false);
     setEditingCase(null);
+    try { localStorage.removeItem(`mc_sources_${draftKey}`); } catch { /* ignore */ }
   };
 
   const handleSave = async () => {
@@ -195,6 +289,7 @@ export default function MootCourtUstoz() {
       allow_retry: allowRetry,
       is_public_demo: isPublicDemo,
       namunaviy_javob: namunaviyJavob.trim() || null,
+      answer_sources: sources as any[],
     };
 
     if (editingCase) {
@@ -218,6 +313,14 @@ export default function MootCourtUstoz() {
       if (error) {
         toast({ title: 'Xatolik', description: error.message, variant: 'destructive' });
       } else {
+        // Link draft jobs to the new case and clear localStorage draft
+        try {
+          await supabase
+            .from('case_answer_jobs')
+            .update({ case_id: newCase.id })
+            .eq('draft_key', draftKey);
+        } catch { /* ignore */ }
+        try { localStorage.removeItem(`mc_sources_${draftKey}`); } catch { /* ignore */ }
         toast({ title: 'Yangi kazus yaratildi', description: 'Qonun moddalari tadqiqoti fon rejimida boshlandi' });
         setShowForm(false);
         resetForm();
@@ -270,7 +373,11 @@ export default function MootCourtUstoz() {
     setAllowRetry(c.allow_retry !== false);
     setIsPublicDemo(c.is_public_demo === true);
     setNamunaviyJavob(c.namunaviy_javob || '');
-    setSources([]);
+    // Load sources from DB
+    const dbSources = (c.answer_sources || []) as SourceItem[];
+    setSources(dbSources);
+    setSourcesSaved(true);
+    setShowNewAnswerBanner(false);
     setShowForm(true);
   };
 
@@ -303,7 +410,7 @@ export default function MootCourtUstoz() {
       toast({ title: 'Kazus matni juda uzun', description: 'Kazus matni 12000 belgidan oshmasligi kerak', variant: 'destructive' });
       return;
     }
-    await aiAnswer.submitJob(caseId, title, kazusText, user.ustoz_id);
+    await aiAnswer.submitJob(caseId, title, kazusText, user.ustoz_id, sources);
   };
 
   const handleAiAnswerRetry = async (caseId: string, title: string, kazusText: string) => {
@@ -312,7 +419,7 @@ export default function MootCourtUstoz() {
       toast({ title: 'Avval kazus vaziyatini yozing', variant: 'destructive' });
       return;
     }
-    await aiAnswer.retry(caseId, title, kazusText, user.ustoz_id);
+    await aiAnswer.retry(caseId, title, kazusText, user.ustoz_id, sources);
   };
 
   // Restore AI answer job states when cases load
@@ -332,23 +439,59 @@ export default function MootCourtUstoz() {
     if (!editingCase) return;
     const jobState = aiAnswer.jobStates[editingCase.id];
     if (!jobState) return;
+
+    // Start/stop elapsed timer for in-progress jobs
+    if (jobState.status === 'queued' || jobState.status === 'running') {
+      if (!elapsedTimer.current) {
+        elapsedTimer.current = setInterval(() => setElapsedSec(s => s + 1), 1000);
+      }
+    } else {
+      if (elapsedTimer.current) {
+        clearInterval(elapsedTimer.current);
+        elapsedTimer.current = null;
+      }
+      setElapsedSec(0);
+    }
+
     if (jobState.status === 'done' && jobState.answer && jobState.jobId !== lastNotifiedJob.current) {
       lastNotifiedJob.current = jobState.jobId;
-      setNamunaviyJavob(jobState.answer);
-      toast({ title: 'Namunaviy javob to\'ldirildi', description: 'Tekshirib, saqlang.' });
-      setTimeout(() => {
-        const ta = namunaviyRef.current;
-        if (ta) {
-          ta.focus();
-          ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 100);
+      if (!jobState.applied && !namunaviyJavob.trim()) {
+        // Auto-fill if empty
+        setNamunaviyJavob(jobState.answer);
+        toast({ title: 'Javob tayyor. Tahrir qilib, Saqlash bosing.', description: 'Namunaviy javob maydoniga to\'ldirildi.' });
+        setTimeout(() => {
+          const ta = namunaviyRef.current;
+          if (ta) {
+            ta.focus();
+            ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      } else if (!jobState.applied && namunaviyJavob.trim()) {
+        // Show banner: new answer ready
+        setShowNewAnswerBanner(true);
+      }
     } else if ((jobState.status === 'error' || jobState.status === 'timeout') && jobState.jobId !== lastNotifiedJob.current) {
       lastNotifiedJob.current = jobState.jobId;
-      toast({ title: 'AI hozir band. Birozdan keyin qayta urinib ko\'ring.', variant: 'destructive' });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiAnswer.jobStates, editingCase]);
+
+  // Restore localStorage draft sources when opening form for a new case
+  useEffect(() => {
+    if (showForm && !editingCase) {
+      try {
+        const raw = localStorage.getItem(`mc_sources_${draftKey}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as SourceItem[];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSources(parsed);
+            toast({ title: 'Saqlanmagan manbalar tiklandi', description: 'Kazusni saqlab qo\'ying yoki manbalarni tozalang.' });
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, editingCase]);
 
   const addTomon = () => {
     const t = tomonInput.trim();
@@ -793,9 +936,25 @@ export default function MootCourtUstoz() {
             <div>
               <SourcesBlock
                 sources={sources}
-                onAdd={(src) => setSources(prev => [...prev, src])}
-                onRemove={(idx) => setSources(prev => prev.filter((_, i) => i !== idx))}
+                onAdd={handleAddSource}
+                onRemove={handleRemoveSource}
+                linkedModdalar={(editingCase?.tasdiqlangan_moddalar || []).map((m: any) => ({
+                  modda: m.modda_raqami || m.modda || '',
+                  qonun: m.qonun_nomi || m.bob_nomi || m.sarlavha || '',
+                  matn: m.matn || '',
+                })).filter((m: any) => m.matn)}
+                onAddModdalar={handleAddModdalar}
               />
+              {!sourcesSaved && (
+                <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" /> Saqlanmoqda…
+                </p>
+              )}
+              {sourcesSaved && sources.length > 0 && editingCase && (
+                <p className="text-[10px] text-green-500 mt-1 flex items-center gap-1">
+                  <CheckCircle className="h-2.5 w-2.5" /> Saqlandi
+                </p>
+              )}
 
               <div className="flex items-center justify-between gap-2">
                 <Label className="text-xs font-bold">Namunaviy javob (ixtiyoriy)</Label>
@@ -822,6 +981,45 @@ export default function MootCourtUstoz() {
                 />
               </div>
 
+              {(() => {
+                const jobState = editingCase ? aiAnswer.jobStates[editingCase.id] : undefined;
+                const isInProgress = jobState?.status === 'queued' || jobState?.status === 'running';
+                if (!isInProgress) return null;
+                return <AnswerWaitOverlay elapsedSec={elapsedSec} hasSources={sources.length > 0} />;
+              })()}
+
+              {showNewAnswerBanner && (() => {
+                const jobState = editingCase ? aiAnswer.jobStates[editingCase.id] : undefined;
+                if (jobState?.status !== 'done' || !jobState.answer) return null;
+                return (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 mb-2">
+                    <span className="text-xs font-bold text-blue-700">Yangi AI javob tayyor</span>
+                    <div className="flex gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setNamunaviyJavob(jobState.answer!);
+                          setShowNewAnswerBanner(false);
+                          setTimeout(() => {
+                            const ta = namunaviyRef.current;
+                            if (ta) { ta.focus(); ta.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+                          }, 100);
+                        }}
+                        className="text-xs h-7 rounded-lg"
+                      >Almashtirish</Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowNewAnswerBanner(false)}
+                        className="text-xs h-7 rounded-lg"
+                      >Qoldirish</Button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <Textarea
                 ref={namunaviyRef}
                 value={namunaviyJavob}
@@ -844,7 +1042,16 @@ export default function MootCourtUstoz() {
                     <p className="text-sm font-bold text-gray-900 mb-1">Mavjud namunaviy javob AI javob bilan almashtiriladi.</p>
                     <p className="text-sm text-gray-600 mb-4">Davom etasizmi?</p>
                     {sources.length > 0 && (
-                      <p className="text-xs text-gray-500 mb-3">{sources.length} ta manba asosida</p>
+                      <div className="mb-3">
+                        <p className="text-xs text-gray-500 mb-1">{sources.length} ta manba:</p>
+                        <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                          {sources.map((s, i) => (
+                            <p key={i} className="text-[11px] text-gray-600">
+                              {s.type === 'url' ? 'Havola' : s.type === 'file' ? (s.fileKind === 'pdf' ? 'PDF' : 'Word') : s.title.startsWith('Modda ') ? 'Modda' : 'Matn'} — {s.title}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
                     )}
                     <div className="flex gap-2 justify-end">
                       <Button variant="outline" size="sm" onClick={() => setShowAiConfirm(false)} className="rounded-xl">Bekor qilish</Button>
@@ -1015,6 +1222,25 @@ export default function MootCourtUstoz() {
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">Demo</span>
                                 )}
                                 <ResearchBadge holat={c.tadqiqot_holati || 'kutmoqda'} moddalarSoni={c.tasdiqlangan_moddalar?.length || 0} />
+                                {(() => {
+                                  const js = aiAnswer.jobStates[c.id];
+                                  if (!js) return null;
+                                  if (js.status === 'queued' || js.status === 'running') {
+                                    return (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 inline-flex items-center gap-1">
+                                        <Loader2 className="h-2.5 w-2.5 animate-spin" /> AI javob tayyorlanmoqda…
+                                      </span>
+                                    );
+                                  }
+                                  if (js.status === 'done' && !js.applied) {
+                                    return (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                                        <CheckCircle className="h-2.5 w-2.5" /> AI javob tayyor
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -1347,6 +1573,35 @@ function AiEvaluationView({ session, onSaveTeacherScore, onReevaluate, reevaluat
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AnswerWaitOverlay({ elapsedSec, hasSources }: { elapsedSec: number; hasSources: boolean }) {
+  const mins = Math.floor(elapsedSec / 60);
+  const secs = elapsedSec % 60;
+  const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+  const isLong = elapsedSec > 240;
+
+  return (
+    <div
+      className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/80 to-violet-100/40 p-3 mb-2"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700">
+          <span className="inline-block w-3 h-3 rounded-full bg-violet-400 animate-pulse" />
+          AI javob tayyorlanmoqda…
+        </span>
+        <span className="text-[10px] text-violet-500 ml-auto font-mono">{timeStr}</span>
+      </div>
+      <p className="text-[10px] text-gray-500 leading-relaxed">
+        Odatda 1-3 daqiqa. Sahifadan chiqib ketishingiz mumkin. Javob tayyor bo'lgach shu yerda o'zi paydo bo'ladi va sizga xabar beramiz.
+      </p>
+      {isLong && (
+        <p className="text-[10px] text-amber-600 mt-1">Odatdagidan uzoqroq ketyapti, kutishda davom eting.</p>
+      )}
     </div>
   );
 }
