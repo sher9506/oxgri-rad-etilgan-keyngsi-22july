@@ -11,15 +11,25 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 );
 
-const ANSWER_SERVICE_URL = Deno.env.get("ANSWER_SERVICE_URL") ?? "";
-const ANSWER_SERVICE_KEY = Deno.env.get("ANSWER_SERVICE_KEY") ?? "";
-
 function sanitizeAnswer(text: string): string {
   if (!text) return text;
   return text
     .replace(/\bNotebookLM\b/gi, "manba")
     .replace(/\bGemini Notebook\b/gi, "manba")
     .replace(/\bNotebook\b/gi, "manba");
+}
+
+async function getAnswerServiceConfig(): Promise<{ url: string; key: string }> {
+  const { data, error } = await supabaseAdmin
+    .from("settings")
+    .select("key, text_value")
+    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY"]);
+  if (error || !data) return { url: "", key: "" };
+  const map: Record<string, string> = {};
+  for (const row of data) {
+    if (row.text_value) map[row.key] = row.text_value;
+  }
+  return { url: map["ANSWER_SERVICE_URL"] || "", key: map["ANSWER_SERVICE_KEY"] || "" };
 }
 
 Deno.serve(async (req: Request) => {
@@ -84,6 +94,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const { url: ANSWER_SERVICE_URL, key: ANSWER_SERVICE_KEY } = await getAnswerServiceConfig();
     if (!ANSWER_SERVICE_URL || !ANSWER_SERVICE_KEY) {
       console.error("[case-answer-status] Tashqi xizmat sozlanmagan");
       return new Response(
