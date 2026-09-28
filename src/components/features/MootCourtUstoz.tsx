@@ -402,6 +402,10 @@ export default function MootCourtUstoz() {
 
   const handleAiAnswer = async (caseId: string, title: string, kazusText: string) => {
     if (!user?.ustoz_id) return;
+    if (sources.length === 0) {
+      toast({ title: 'Manba qo\'shing', description: 'Namunaviy javob uchun kamida bitta NotebookLM manbasi kerak', variant: 'destructive' });
+      return;
+    }
     if (kazusText.trim().length < 10) {
       toast({ title: 'Avval kazus vaziyatini yozing', variant: 'destructive' });
       return;
@@ -415,6 +419,10 @@ export default function MootCourtUstoz() {
 
   const handleAiAnswerRetry = async (caseId: string, title: string, kazusText: string) => {
     if (!user?.ustoz_id) return;
+    if (sources.length === 0) {
+      toast({ title: 'Manba qo\'shing', description: 'Namunaviy javob uchun kamida bitta NotebookLM manbasi kerak', variant: 'destructive' });
+      return;
+    }
     if (kazusText.trim().length < 10) {
       toast({ title: 'Avval kazus vaziyatini yozing', variant: 'destructive' });
       return;
@@ -957,12 +965,16 @@ export default function MootCourtUstoz() {
               )}
 
               <div className="flex items-center justify-between gap-2">
-                <Label className="text-xs font-bold">Namunaviy javob (ixtiyoriy)</Label>
+                <Label className="text-xs font-bold">Namunaviy javob (faqat NotebookLM manbalari asosida)</Label>
                 <FormAiAnswerButton
                   jobState={editingCase ? aiAnswer.jobStates[editingCase.id] : undefined}
-                  canSubmit={true}
+                  canSubmit={sources.length > 0}
                   hasSources={sources.length > 0}
                   onSubmit={async () => {
+                    if (sources.length === 0) {
+                      toast({ title: 'Manba qo\'shing', description: 'Namunaviy javob uchun kamida bitta NotebookLM manbasi kerak', variant: 'destructive' });
+                      return;
+                    }
                     if (!sarlavha.trim() || !tavsif.trim()) {
                       toast({ title: 'Avval kazus sarlavhasi va vaziyatini yozing', variant: 'destructive' });
                       return;
@@ -975,6 +987,10 @@ export default function MootCourtUstoz() {
                     }
                   }}
                   onRetry={async () => {
+                    if (sources.length === 0) {
+                      toast({ title: 'Manba qo\'shing', description: 'Namunaviy javob uchun kamida bitta NotebookLM manbasi kerak', variant: 'destructive' });
+                      return;
+                    }
                     const id = editingCase?.id || await ensureCaseSaved();
                     if (id) handleAiAnswerRetry(id, sarlavha, tavsif);
                   }}
@@ -1029,12 +1045,12 @@ export default function MootCourtUstoz() {
                   ta.style.height = 'auto';
                   ta.style.height = Math.max(300, ta.scrollHeight) + 'px';
                 }}
-                placeholder="Kazus uchun namunaviy javobni shu yerda tahrir qiling yoki AI orqali tayyorlang..."
+                placeholder="Kazus uchun namunaviy javobni shu yerda tahrir qiling. AI javob faqat yuqoridagi manbalar (NotebookLM) asosida tayyorlanadi..."
                 className="mt-1.5 rounded-xl resize-none overflow-y-auto"
                 style={{ minHeight: '300px' }}
                 aria-label="Namunaviy javob maydoni"
               />
-              <p className="text-[10px] text-gray-400 mt-1">Bu javob talaba sessiyasida AI ga yo'naltiruvchi sifatida ishlatiladi</p>
+              <p className="text-[10px] text-gray-400 mt-1">AI javob faqat qo'shilgan NotebookLM manbalari asosida tayyorlanadi. Manba bo'lmasa, AI javob ishlamaydi.</p>
 
               {showAiConfirm && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAiConfirm(false)}>
@@ -1624,10 +1640,11 @@ function FormAiAnswerButton({ jobState, canSubmit, hasSources, onSubmit, onRetry
         variant="ghost"
         onClick={onSubmit}
         disabled={!canSubmit || isInProgress}
-        className="text-xs h-7 rounded-lg text-violet-600 hover:text-violet-700 hover:bg-violet-50"
-        aria-label="AI orqali namunaviy javob tayyorlash"
+        className="text-xs h-7 rounded-lg text-violet-600 hover:text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        aria-label={hasSources ? 'AI orqali namunaviy javob tayyorlash' : 'Manba qo\'shing'}
+        title={hasSources ? 'NotebookLM manbalari asosida javob tayyorlash' : 'Avval manba qo\'shing'}
       >
-        <Sparkles className="h-3 w-3 mr-1" /> AI javob
+        <Sparkles className="h-3 w-3 mr-1" /> {hasSources ? 'AI javob' : 'Manba kerak'}
       </Button>
     );
   }

@@ -150,7 +150,7 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
           )}
 
           <p className="text-[10px] text-gray-400 leading-relaxed">
-            Manba qo'shsangiz, AI javob faqat shu manbalarga tayanadi. Qo'shmasangiz, umumiy qonunlar bazasidan foydalaniladi.
+            Manba qo'shsangiz, AI javob faqat shu NotebookLM manbalariga tayanadi. Manba qo'shmasangiz, AI javob ishlamaydi — o'z bilimingizdan foydalanilmaydi.
           </p>
         </div>
       </div>
