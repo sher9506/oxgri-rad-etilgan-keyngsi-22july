@@ -43,7 +43,7 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
       >
         <span className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
           <BookOpen className="h-3.5 w-3.5 text-gray-500" />
-          Manbalar (AI javob uchun shart)
+          Manbalar (ixtiyoriy)
           <span className="text-[10px] font-normal text-gray-400">{sources.length}/{MAX_SOURCES}</span>
         </span>
         <ChevronDown
@@ -150,7 +150,7 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
           )}
 
           <p className="text-[10px] text-gray-400 leading-relaxed">
-            Manba qo'shsangiz, AI javob faqat shu NotebookLM manbalariga tayanadi. Manba qo'shmasangiz, AI javob ishlamaydi — o'z bilimingizdan foydalanilmaydi.
+            Manba qo'shsangiz, AI javob faqat shu manbalarga tayanadi. Qo'shmasangiz, umumiy qonunlar bazasidan foydalaniladi.
           </p>
         </div>
       </div>

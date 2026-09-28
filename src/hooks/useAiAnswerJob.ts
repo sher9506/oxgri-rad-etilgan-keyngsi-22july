@@ -191,12 +191,10 @@ export function useAiAnswerJob(ustozId: string | undefined) {
         title,
         ustoz_id: ustoz,
       };
-      if (sources && sources.length > 0) {
-        payload.sources = sources.map(s => {
-          if (s.type === 'url') return { type: 'url', title: s.title, url: s.url };
-          return { type: s.type, title: s.title, content: s.content };
-        });
-      }
+      payload.sources = (sources || []).map(s => {
+        if (s.type === 'url') return { type: 'url', title: s.title, url: s.url };
+        return { type: 'text', title: s.title, content: s.content };
+      });
       const data = await callEdgeFunction('case-answer-submit', payload);
 
       if (data.id) {

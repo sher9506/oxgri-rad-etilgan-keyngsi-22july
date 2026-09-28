@@ -18,7 +18,6 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['heic2any'],
-    include: ['@radix-ui/react-tooltip', '@radix-ui/react-toast'],
   },
   build: {
     rollupOptions: {

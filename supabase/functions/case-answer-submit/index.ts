@@ -84,12 +84,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const validSources = validateSources(sources);
-    if (validSources.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "Namunaviy javob uchun kamida bitta manba (NotebookLM) qo'shishingiz shart" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
     if (Array.isArray(sources) && sources.length > MAX_SOURCES) {
       return new Response(
         JSON.stringify({ error: "Ko'pi bilan 10 ta manba qo'shish mumkin" }),
@@ -151,7 +145,7 @@ Deno.serve(async (req: Request) => {
     const jobId = jobRow.id;
 
     const instruction =
-      "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida yeching. MUHIM: Javob faqat va faqat quyida berilgan manbalar (NotebookLM) asosida bo'lishi shart. O'z bilimingizdan yoki umumiy qonunlardan foydalanmang. Agar manbalarda javob topilmasa, 'Manbalarda yetarli ma'lumot yo'q' deb yozing. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.\n\nKAZUS MATNI:\n" +
+      "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.\n\nKAZUS MATNI:\n" +
       kazus_text;
 
     // Build sources payload for external service
@@ -172,9 +166,7 @@ Deno.serve(async (req: Request) => {
         external_id: jobId,
         instruction,
       };
-      if (serviceSources.length > 0) {
-        serviceBody.sources = serviceSources;
-      }
+      serviceBody.sources = serviceSources;
       const serviceRes = await fetch(`${ANSWER_SERVICE_URL}/api/jobs`, {
         method: "POST",
         headers: {
