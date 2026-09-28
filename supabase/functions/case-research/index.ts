@@ -1,4 +1,4 @@
-// Pipeline v3.4 — robust JSON parsing, dual matching (indeks + modda_raqami), increased token limits, multi-key array extraction
+// Pipeline v3.6 — balanced nomzodlar across qonun codes, debug output
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAIWithFallback } from '../_shared/ai-provider.ts';
@@ -736,12 +736,40 @@ async function stage2_Tasdiqlash(
     return { tasdiqlanganlar: [], model: '', tokens: { input: 0, output: 0 } };
   }
 
-  const limitedNomzodlar = nomzodlar
-    .sort((a, b) => {
-      const manbaRank: Record<string, number> = { fts: 3, ai_sarlavha: 2, ai_raqam: 1 };
-      return (manbaRank[b.manba] || 0) - (manbaRank[a.manba] || 0);
-    })
-    .slice(0, 30);
+  // Har bir qonun kodidan va manbadan nomzodlarni muvozanatli tanlash
+  const byQonun = new Map<string, BirlashtirilganNomzod[]>();
+  for (const n of nomzodlar) {
+    const list = byQonun.get(n.qonun_kodi) || [];
+    list.push(n);
+    byQonun.set(n.qonun_kodi, list);
+  }
+  // Har qonun uchun manba bo'yicha saralash (fts birinchi, keyin ai)
+  const manbaRank: Record<string, number> = { fts: 3, ai_sarlavha: 2, ai_raqam: 1 };
+  for (const list of byQonun.values()) {
+    list.sort((a, b) => (manbaRank[b.manba] || 0) - (manbaRank[a.manba] || 0));
+  }
+  // Round-robin: har qonundan teng ulushda olish
+  const limitedNomzodlar: BirlashtirilganNomzod[] = [];
+  const qonunlar = Array.from(byQonun.keys());
+  const maxPerQonun = Math.ceil(30 / qonunlar.length);
+  for (const kod of qonunlar) {
+    limitedNomzodlar.push(...byQonun.get(kod)!.slice(0, maxPerQonun));
+  }
+  // Agar 30 dan kam bo'lsa, qolganlarni qo'shish
+  if (limitedNomzodlar.length < 30) {
+    const used = new Set(limitedNomzodlar.map(n => `${n.qonun_kodi}::${n.modda.id}`));
+    for (const kod of qonunlar) {
+      const list = byQonun.get(kod)!;
+      for (const n of list.slice(maxPerQonun)) {
+        const key = `${n.qonun_kodi}::${n.modda.id}`;
+        if (!used.has(key) && limitedNomzodlar.length < 30) {
+          limitedNomzodlar.push(n);
+          used.add(key);
+        }
+      }
+    }
+  }
+  limitedNomzodlar.length = Math.min(limitedNomzodlar.length, 30);
 
   const moddalarStr = limitedNomzodlar.map((n, i) => {
     const matnTolik = n.modda.matn.length > 600 ? n.modda.matn.slice(0, 600) + '...' : n.modda.matn;
@@ -872,7 +900,14 @@ ${moddalarStr}`;
     tasdiqlanganlar: tasdiqlanganlar.slice(0, 10),
     model: provider,
     tokens: { input: systemPrompt.length, output: text.length },
-  };
+    _debug: {
+      baholarSoni: baholar.length,
+      bahoMapSize: bahoMap.size,
+      limitedNomzodlarSoni: limitedNomzodlar.length,
+      parsedNull: parsed === null,
+      textHead: text.slice(0, 1200),
+    },
+  } as any;
 }
 
 // ─── STAGE 3: NAMUNAVIY JAVOB ─────────────────────────────────────────────────
@@ -1107,7 +1142,7 @@ Deno.serve(async (req: Request) => {
           step1b: { nomzodlar: stage1.step1b.nomzodlar, model: stage1.step1b.model },
           step1c: { nomzodlar: stage1.step1c.nomzodlar, model: stage1.step1c.model },
         },
-        stage2: { tasdiqlanganlar: tasdiqlanganJson, model: stage2.model },
+        stage2: { tasdiqlanganlar: tasdiqlanganJson, model: stage2.model, _debug: (stage2 as any)._debug },
         stage3: { javob: stage3.javob, model: stage3.model },
         manba_tarqatish: manbaTarqatish,
         jami_token: jamiToken,

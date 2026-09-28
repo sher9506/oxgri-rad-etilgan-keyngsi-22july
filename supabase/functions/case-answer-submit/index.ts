@@ -1,0 +1,171 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
+
+const supabaseAdmin = createClient(
+  Deno.env.get("SUPABASE_URL") ?? "",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+);
+
+const ANSWER_SERVICE_URL = Deno.env.get("ANSWER_SERVICE_URL") ?? "";
+const ANSWER_SERVICE_KEY = Deno.env.get("ANSWER_SERVICE_KEY") ?? "";
+
+const MAX_KAZUS_LENGTH = 12000;
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  try {
+    const body = await req.json();
+    const { case_id, kazus_text, title, ustoz_id } = body;
+
+    if (!case_id || !kazus_text || !title || !ustoz_id) {
+      return new Response(
+        JSON.stringify({ error: "Majburiy maydonlar yetishmayapti" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (kazus_text.length > MAX_KAZUS_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: "Kazus matni 12000 belgidan oshmasligi kerak" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify the teacher owns this case
+    const { data: caseData, error: caseError } = await supabaseAdmin
+      .from("moot_court_cases")
+      .select("ustoz_id")
+      .eq("id", case_id)
+      .maybeSingle();
+
+    if (caseError || !caseData) {
+      console.error("[case-answer-submit] Kazus topilmadi:", case_id);
+      return new Response(
+        JSON.stringify({ error: "Kazus topilmadi" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (caseData.ustoz_id !== ustoz_id) {
+      console.error("[case-answer-submit] Ruxsat yo'q:", ustoz_id, "!= case owner", caseData.ustoz_id);
+      return new Response(
+        JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!ANSWER_SERVICE_URL || !ANSWER_SERVICE_KEY) {
+      console.error("[case-answer-submit] Tashqi xizmat sozlanmagan");
+      return new Response(
+        JSON.stringify({ error: "Javob tayyorlash xizmati hozir mavjud emas" }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create a job record first
+    const { data: jobRow, error: jobError } = await supabaseAdmin
+      .from("case_answer_jobs")
+      .insert({
+        case_id,
+        teacher_id: ustoz_id,
+        status: "queued",
+      })
+      .select("id")
+      .single();
+
+    if (jobError || !jobRow) {
+      console.error("[case-answer-submit] Job yaratilmadi:", jobError?.message);
+      return new Response(
+        JSON.stringify({ error: "Job yaratilmadi" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const jobId = jobRow.id;
+
+    const instruction =
+      "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.\n\nKAZUS MATNI:\n" +
+      kazus_text;
+
+    let serviceJobId: string | null = null;
+
+    try {
+      const serviceRes = await fetch(`${ANSWER_SERVICE_URL}/api/jobs`, {
+        method: "POST",
+        headers: {
+          "X-API-Key": ANSWER_SERVICE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title,
+          kazus_text,
+          external_id: jobId,
+          instruction,
+        }),
+      });
+
+      if (!serviceRes.ok) {
+        const errText = await serviceRes.text().catch(() => "");
+        console.error("[case-answer-submit] Tashqi xizmat xatosi:", serviceRes.status, errText);
+        await supabaseAdmin
+          .from("case_answer_jobs")
+          .update({ status: "error", error: "Tashqi xizmat javob bermadi" })
+          .eq("id", jobId);
+        return new Response(
+          JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const serviceData = await serviceRes.json();
+      serviceJobId = serviceData.job_id ?? null;
+
+      if (!serviceJobId) {
+        console.error("[case-answer-submit] Tashqi xizmat job_id qaytarmadi");
+        await supabaseAdmin
+          .from("case_answer_jobs")
+          .update({ status: "error", error: "Tashqi xizmat job_id qaytarmadi" })
+          .eq("id", jobId);
+        return new Response(
+          JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } catch (fetchErr) {
+      console.error("[case-answer-submit] Tarmoq xatosi:", fetchErr);
+      await supabaseAdmin
+        .from("case_answer_jobs")
+        .update({ status: "error", error: "Tarmoq xatosi" })
+        .eq("id", jobId);
+      return new Response(
+        JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Update job with service_job_id
+    await supabaseAdmin
+      .from("case_answer_jobs")
+      .update({ service_job_id: serviceJobId, status: "queued" })
+      .eq("id", jobId);
+
+    return new Response(
+      JSON.stringify({ id: jobId }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    console.error("[case-answer-submit] Kutilmagan xato:", err);
+    return new Response(
+      JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
