@@ -17,6 +17,20 @@ export interface AnswerJobState {
   sourceCount: number;
 }
 
+export interface ServiceSource {
+  type: 'text' | 'url';
+  title: string;
+  content?: string;
+  url?: string;
+}
+
+export function buildSourcesPayload(sources: SourceItem[]): ServiceSource[] {
+  return sources.map(s => {
+    if (s.type === 'url') return { type: 'url' as const, title: s.title, url: s.url };
+    return { type: 'text' as const, title: s.title, content: s.content };
+  });
+}
+
 const POLL_INTERVAL_MS = 5000;
 const MAX_POLL_MS = 600000; // 10 minutes
 
@@ -191,10 +205,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
         title,
         ustoz_id: ustoz,
       };
-      payload.sources = (sources || []).map(s => {
-        if (s.type === 'url') return { type: 'url', title: s.title, url: s.url };
-        return { type: 'text', title: s.title, content: s.content };
-      });
+      payload.sources = buildSourcesPayload(sources || []);
       const data = await callEdgeFunction('case-answer-submit', payload);
 
       if (data.id) {

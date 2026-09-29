@@ -130,6 +130,7 @@ Deno.serve(async (req: Request) => {
         case_id,
         teacher_id: ustoz_id,
         status: "queued",
+        source_count: validSources.length,
       })
       .select("id")
       .single();
@@ -153,6 +154,8 @@ Deno.serve(async (req: Request) => {
       if (s.type === 'url') return { title: s.title, url: s.url };
       return { title: s.title, content: s.content };
     });
+
+    console.log("[case-answer-submit] Manbalar:", serviceSources.length, "ta,", serviceSources.map(s => s.url ? 'url' : 'content'));
 
     let serviceJobId: string | null = null;
 
