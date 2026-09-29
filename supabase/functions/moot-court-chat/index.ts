@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: caseData, error: caseErr } = await supabaseAdmin
       .from('moot_court_cases')
-      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol, max_exchanges, difficulty, allow_retry, is_public_demo, tadqiqot_holati, tasdiqlangan_moddalar, namunaviy_javob')
+      .select('sarlavha, tavsif, qonun_moddalar, tomonlar, ai_rol, max_exchanges, difficulty, allow_retry, is_public_demo, namunaviy_javob')
       .eq('id', caseId)
       .maybeSingle();
 
@@ -136,33 +136,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Fetch confirmed articles from new research pipeline ──
-    const confirmedArticles = (caseData.tasdiqlangan_moddalar || []) as {
-      qonun_kodi: string;
-      modda_raqami: string;
-      sarlavha: string;
-      bob_nomi: string;
-      matn: string;
-      lex_element_id: string | null;
-      hukm: string;
-    }[];
-
     const sampleAnswer = caseData.namunaviy_javob || null;
-    const researchStatus = caseData.tadqiqot_holati || 'kutmoqda';
-
-    const articles: { kodeks_nomi: string; modda_raqami: string; modda_matni: string; sarlavha: string }[] = [];
-    if (confirmedArticles.length > 0) {
-      for (const a of confirmedArticles) {
-        if (a.matn) {
-          articles.push({
-            kodeks_nomi: a.qonun_kodi,
-            modda_raqami: a.modda_raqami,
-            modda_matni: a.matn,
-            sarlavha: a.sarlavha || '',
-          });
-        }
-      }
-    }
 
     // ── Guest mode ──
     const isGuest = !!guestToken;
@@ -233,51 +207,6 @@ Talaba ${studentSideStr || 'bir tomon'}ni himoya qilmoqda. Siz o'z tomoningiznin
 qarshi dalillarni keltiring, talabaning argumentlariga e'tiroz bildiring. Professional va mantiqiy gapiring.`;
     }
 
-    // ── Dynamic article loading: detect mentioned articles in latest student message ──
-    let dynamicArticleBlock = '';
-    if (!isIntro && messages.length > 0) {
-      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-      if (lastUserMsg) {
-        const mentioned = extractMentionedArticles(lastUserMsg.text);
-        if (mentioned.length > 0) {
-          // Check which are in confirmed articles, which need DB lookup
-          const confirmedRaqams = new Set(articles.map(a => a.modda_raqami));
-          const needLookup = mentioned.filter(m => !confirmedRaqams.has(m.raqam));
-
-          // Fetch from DB if not in confirmed set
-          const extraArticles: { kodeks_nomi: string; modda_raqami: string; modda_matni: string; sarlavha: string }[] = [];
-          for (const m of needLookup) {
-            const query = supabaseAdmin
-              .from('qonun_moddalari_v2')
-              .select('qonun_kodi, modda_raqami, sarlavha, matn')
-              .eq('modda_raqami', m.raqam);
-            if (m.kod) query.eq('qonun_kodi', m.kod);
-            const { data: dbArticle } = await query.limit(1).maybeSingle();
-            if (dbArticle) {
-              extraArticles.push({
-                kodeks_nomi: dbArticle.qonun_kodi,
-                modda_raqami: dbArticle.modda_raqami,
-                modda_matni: dbArticle.matn || '',
-                sarlavha: dbArticle.sarlavha || '',
-              });
-            }
-          }
-
-          // Also include full text of confirmed articles that were mentioned
-          const mentionedConfirmed = articles.filter(a => mentioned.some(m => m.raqam === a.modda_raqami));
-
-          const allMentioned = [...mentionedConfirmed, ...extraArticles];
-          if (allMentioned.length > 0) {
-            dynamicArticleBlock = '\n\n## TALABA TILGA OLGAN MODDALARNING TO\'LIQ MATNI:\n';
-            for (const a of allMentioned) {
-              dynamicArticleBlock += `\n### ${a.kodeks_nomi}, ${a.modda_raqami}-modda:\n${a.modda_matni}\n`;
-            }
-            dynamicArticleBlock += '\n## QOIDA: Talaba aynan shu moddalarni tilga oldi. Ularning to\'liq matnini o\'qib chiqib, javobingizni shu moddalarga tayanib bering. Namunaviy javobga emas, balki shu moddalarning haqiqiy matniga tayaning.';
-          }
-        }
-      }
-    }
-
     // ── Disagreement detection: count consecutive substantive objections ──
     let consecutiveObjections = 0;
     if (!isIntro && messages.length >= 3) {
@@ -296,28 +225,13 @@ qarshi dalillarni keltiring, talabaning argumentlariga e'tiroz bildiring. Profes
     }
     const hasDisagreement = consecutiveObjections >= 2;
 
-    // ── Build article text block ──
+    // ── Build article text block: faqat namunaviy javobga tayanish ──
     let articlesBlock = '';
-    if (articles.length > 0 && sampleAnswer) {
-      articlesBlock = '\n\n## TASDIQLANGAN QONUN MODDALARI (namunaviy javob asosida):\n';
-      articlesBlock += `\n### Namunaviy javob:\n${sampleAnswer}\n`;
-      articlesBlock += '\n### Moddalar ro\'yxati (faqat raqam va sarlavha):\n';
-      for (const a of articles) {
-        articlesBlock += `- ${a.kodeks_nomi} ${a.modda_raqami}-modda: ${a.sarlavha}\n`;
-      }
-      articlesBlock += '\n## QATIY QOIDA: Yuqoridagi namunaviy javob va moddalar ro\'yxatiga tayaning. To\'liq modda matni talaba tilga olganda alohida beriladi. Hech qachon mavjud bo\'lmagan modda raqamini o\'ylab topma.';
-    } else if (articles.length > 0) {
-      articlesBlock = '\n\n## TASDIQLANGAN QONUN MODDALARI (faqat shularga tayaning):\n';
-      for (const a of articles) {
-        articlesBlock += `\n### ${a.kodeks_nomi}, ${a.modda_raqami}-modda:\n${a.modda_matni}\n`;
-      }
-      articlesBlock += '\n## QATIY QOIDA: Sen faqat yuqorida berilgan qonun moddalariga tayanib javob berishing kerak. Agar javob boshqa modda talab qilsa-yu, u senga berilmagan bo\'lsa, "Bu masala bo\'yicha menga aniq modda berilmagan, umumiy tamoyillar asosida fikr bildiraman" deb ayt — hech qachon mavjud bo\'lmagan modda raqamini o\'ylab topib aytma.';
-    } else if (researchStatus === 'qisman' || researchStatus === 'xato') {
-      articlesBlock = '\n\n## DIQQAT: Tadqiqot holati: ' + researchStatus + '. Moddalar tasdiqlanmagan. Umumiy huquqiy bilim asosida javob bering, aniq modda raqamlari keltirmang.';
+    if (sampleAnswer) {
+      articlesBlock = '\n\n## NAMUNAVIY JAVOB (AI tahlili asosida):\n';
+      articlesBlock += `\n${sampleAnswer}\n`;
+      articlesBlock += '\n## QATIY QOIDA: Yuqoridagi namunaviy javobga tayaning. Hech qachon mavjud bo\'lmagan modda raqamini o\'ylab topma.';
     }
-
-    // Add dynamic article block after articles block
-    articlesBlock += dynamicArticleBlock;
 
     let systemPrompt = `Siz FanFaster platformasining Moot Court (sud jarayoni simulyatsiyasi) funksiyasidagi AI yordamchisiz.
 
@@ -351,7 +265,7 @@ ${roleInstruction}
    - Formatting belgilari (Markdown, HTML, qiyshiq tirnoqlar, gillemotlar «»)
    Bunday holatda, matn oxiriga qisqa izoh qo'shing: "[Diqqat: bu matn ko'chirib olingan bo'lishi mumkin — iltimos, o'z so'zingiz bilan yozing]" deb yozing.
 9. SUHBATNI HECH QACHON bir tomonlama "munozara yakunlandi", "munozara tugadi", "suhbat o'z yakuniga yetdi" kabi so'zlar bilan yopmang. Agar kelishmovchilik davom etsa, "Bu masalada turli qarashlar bo'lishi mumkin, buni ustozingiz bilan aniqlashtiring" deb yo'naltiring.
-10. Agar talaba sizning xulosangizga qarshi dalil keltirsa va tilga olingan moddaning to'liq matni yuqorida berilgan bo'lsa, namunaviy javobga emas, balki shu moddaning haqiqiy matniga tayanib javob bering.
+10. Agar talaba sizning xulosangizga qarshi dalil keltirsa, namunaviy javobga tayanib javob bering.
 
 ${difficultyInstructions[difficulty] || difficultyInstructions.orta}`;
 

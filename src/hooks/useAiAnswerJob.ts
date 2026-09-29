@@ -32,7 +32,7 @@ export function buildSourcesPayload(sources: SourceItem[]): ServiceSource[] {
 }
 
 const POLL_INTERVAL_MS = 5000;
-const MAX_POLL_MS = 600000; // 10 minutes
+const MAX_POLL_MS = 1800000; // 30 minutes — javob tayyorlanishi sekin bo'lishi mumkin
 
 async function callEdgeFunction(fn: string, body: Record<string, unknown>) {
   const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
@@ -65,16 +65,8 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
 
   const ageMs = Date.now() - new Date(data.created_at).getTime();
   if (data.status === 'queued' || data.status === 'running') {
-    if (ageMs > MAX_POLL_MS) {
-      return {
-        status: 'timeout',
-        answer: null,
-        error: null,
-        jobId: data.id,
-        applied: data.applied ?? false,
-        sourceCount: data.source_count ?? 0,
-      };
-    }
+    // Vaqt cheklovi yo'q — Render'da ish hali bajarilayotgan bo'lishi mumkin.
+    // Frontend polling'ni qayta boshlaydi va Render'dan holatni so'raydi.
     return {
       status: data.status as AnswerJobStatus,
       answer: data.answer,

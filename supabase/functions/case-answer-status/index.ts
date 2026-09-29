@@ -166,6 +166,9 @@ Deno.serve(async (req: Request) => {
       const updatePayload: Record<string, unknown> = { status: newStatus };
       if (answer !== null) updatePayload.answer = answer;
       if (errorMsg !== null) updatePayload.error = errorMsg;
+      if (newStatus === "done" || newStatus === "error") {
+        updatePayload.finished_at = new Date().toISOString();
+      }
 
       await supabaseAdmin
         .from("case_answer_jobs")
@@ -177,6 +180,7 @@ Deno.serve(async (req: Request) => {
           status: newStatus,
           answer: answer !== null ? sanitizeAnswer(answer) : null,
           error: errorMsg,
+          applied: job.applied ?? false,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

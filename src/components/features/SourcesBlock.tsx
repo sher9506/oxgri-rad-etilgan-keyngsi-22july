@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, FileText, X, ChevronDown, BookOpen, Upload, Loader2, AlertCircle, File } from 'lucide-react';
 import type { SourceItem } from '@/hooks/useAiAnswerJob';
 
-const MAX_SOURCES = 10;
+const MAX_SOURCES = 18;
 const MAX_SOURCE_TEXT = 100000;
 const MAX_TITLE = 120;
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB

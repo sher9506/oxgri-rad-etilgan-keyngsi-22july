@@ -12,7 +12,7 @@ const supabaseAdmin = createClient(
 );
 
 const MAX_KAZUS_LENGTH = 12000;
-const MAX_SOURCES = 10;
+const MAX_SOURCES = 18;
 const MAX_SOURCE_TEXT_LENGTH = 100000;
 const MAX_SOURCE_TITLE_LENGTH = 120;
 
@@ -86,7 +86,7 @@ Deno.serve(async (req: Request) => {
     const validSources = validateSources(sources);
     if (Array.isArray(sources) && sources.length > MAX_SOURCES) {
       return new Response(
-        JSON.stringify({ error: "Ko'pi bilan 10 ta manba qo'shish mumkin" }),
+        JSON.stringify({ error: "Ko'pi bilan 18 ta manba qo'shish mumkin" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -238,3 +238,4 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+// redeploy max sources 18 v3

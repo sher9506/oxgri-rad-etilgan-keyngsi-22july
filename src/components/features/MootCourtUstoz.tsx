@@ -768,23 +768,6 @@ export default function MootCourtUstoz() {
               />
             </div>
 
-            <div className="rounded-2xl border border-blue-100/80 bg-blue-50/40 p-3.5">
-              <div className="flex items-start gap-2">
-                <RefreshCw className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-bold text-blue-700">Qonun moddalari avtomatik tadqiq etiladi</p>
-                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                    Kazus yaratilgach, sun'iy intellekt tavsifga tayanib mos qonun moddalarini nomzod qilib ko'rsatadi va ular bazadagi tasdiqlangan moddalar bilan solishtiriladi. Natija kazus kartasida ko'rinadi.
-                  </p>
-                  {editingCase?.tadqiqot_holati && (
-                    <div className="mt-2">
-                      <ResearchBadge holat={editingCase.tadqiqot_holati} moddalarSoni={editingCase.tasdiqlangan_moddalar?.length || 0} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
             <div>
               <Label className="text-xs font-bold">Qo'shimcha qonun/moddalar (ixtiyoriy, erkin matn)</Label>
               <Input
@@ -793,7 +776,6 @@ export default function MootCourtUstoz() {
                 placeholder="Masalan: Fuqarolik kodeksi 123-modda, 124-modda"
                 className="mt-1.5 rounded-xl"
               />
-              <p className="text-[10px] text-gray-400 mt-1">Avtomatik tadqiqot topa olmagan moddalar uchun qo'lda yozishingiz mumkin</p>
             </div>
 
             <div>
@@ -1221,7 +1203,6 @@ export default function MootCourtUstoz() {
                                 {c.is_public_demo && (
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">Demo</span>
                                 )}
-                                <ResearchBadge holat={c.tadqiqot_holati || 'kutmoqda'} moddalarSoni={c.tasdiqlangan_moddalar?.length || 0} />
                                 {(() => {
                                   const js = aiAnswer.jobStates[c.id];
                                   if (!js) return null;
@@ -1255,11 +1236,7 @@ export default function MootCourtUstoz() {
                                 <><ToggleLeft className="h-3.5 w-3.5 mr-1 text-gray-400" /> Nofaol</>
                               )}
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => triggerResearch(c.id)} disabled={triggeringResearch} className="text-xs h-7 rounded-lg">
-                              {triggeringResearch ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                              Tadqiqot
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)} className="text-xs h-7 text-red-500 hover:text-red-600 rounded-lg">
+                                            <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)} className="text-xs h-7 text-red-500 hover:text-red-600 rounded-lg">
                               <Trash2 className="h-3 w-3 mr-1" /> O'chirish
                             </Button>
                           </div>
@@ -1430,42 +1407,6 @@ export default function MootCourtUstoz() {
         )
       )}
     </div>
-  );
-}
-
-function ResearchBadge({ holat, moddalarSoni }: { holat: string; moddalarSoni: number }) {
-  if (holat === 'tayyor') {
-    return (
-      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
-        <CheckCircle className="h-2.5 w-2.5" /> {moddalarSoni} modda
-      </span>
-    );
-  }
-  if (holat === 'jarayonda') {
-    return (
-      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 inline-flex items-center gap-1">
-        <Loader2 className="h-2.5 w-2.5 animate-spin" /> Tadqiqot
-      </span>
-    );
-  }
-  if (holat === 'qisman') {
-    return (
-      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
-        <AlertCircle className="h-2.5 w-2.5" /> Qisman
-      </span>
-    );
-  }
-  if (holat === 'xato') {
-    return (
-      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 inline-flex items-center gap-1">
-        <XCircle className="h-2.5 w-2.5" /> Xato
-      </span>
-    );
-  }
-  return (
-    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 inline-flex items-center gap-1">
-      <Clock className="h-2.5 w-2.5" /> Kutmoqda
-    </span>
   );
 }
 

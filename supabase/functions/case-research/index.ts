@@ -1133,6 +1133,115 @@ Deno.serve(async (req: Request) => {
 
       console.log(`[case-research] Tugadi: holat=${holat}, tasdiqlangan=${tasdiqlanganJson.length}`);
 
+      // ── STAGE 4: Avtomatik javob xizmatiga yuborish ──
+      // Tadqiqot tugagach, tasdiqlangan moddalarni manba sifatida yuboramiz
+      let autoJobId: string | null = null;
+      let autoError: string | null = null;
+      try {
+        const { data: caseFull } = await supabaseAdmin
+          .from('moot_court_cases')
+          .select('ustoz_id, sarlavha, tavsif, answer_sources')
+          .eq('id', caseId)
+          .maybeSingle();
+
+        if (caseFull?.ustoz_id && caseFull?.tavsif) {
+          const autoSources: { title: string; content: string }[] = [];
+          for (const t of tasdiqlanganJson) {
+            autoSources.push({
+              title: `${t.qonun_kodi} ${t.modda_raqami}-modda`,
+              content: `${t.sarlavha}\n${t.matn}`,
+            });
+          }
+          const extraSources = (caseFull.answer_sources || []) as any[];
+          for (const s of extraSources) {
+            if ((s.type === 'text' || s.type === 'file') && s.content) {
+              autoSources.push({ title: s.title || 'Manba', content: s.content.slice(0, 100000) });
+            } else if (s.type === 'url' && s.url) {
+              autoSources.push({ title: s.title || 'Manba', content: s.url });
+            }
+          }
+          const limitedSources = autoSources.slice(0, 18);
+
+          const { data: jobRow } = await supabaseAdmin
+            .from('case_answer_jobs')
+            .insert({
+              case_id: caseId,
+              teacher_id: caseFull.ustoz_id,
+              status: 'queued',
+              source_count: limitedSources.length,
+            })
+            .select('id')
+            .single();
+
+          if (jobRow?.id) {
+            autoJobId = jobRow.id;
+            const { data: settingsData } = await supabaseAdmin
+              .from('settings')
+              .select('key, text_value')
+              .in('key', ['ANSWER_SERVICE_URL', 'ANSWER_SERVICE_KEY']);
+            const sMap: Record<string, string> = {};
+            for (const r of settingsData || []) {
+              if (r.text_value) sMap[r.key] = r.text_value;
+            }
+            const serviceUrl = sMap['ANSWER_SERVICE_URL'] || '';
+            const serviceKey = sMap['ANSWER_SERVICE_KEY'] || '';
+
+            if (serviceUrl && serviceKey) {
+              const instruction = "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
+              const serviceSources = limitedSources.map(s => ({ title: s.title, content: s.content }));
+              const serviceBody = {
+                title: caseFull.sarlavha || 'Kazus',
+                kazus_text: caseFull.tavsif,
+                external_id: jobRow.id,
+                instruction,
+                sources: serviceSources,
+              };
+
+              console.log(`[case-research] Stage 4: javob xizmatiga yuborilmoqda (${limitedSources.length} ta manba)`);
+              const serviceRes = await fetch(`${serviceUrl}/api/jobs`, {
+                method: 'POST',
+                headers: { 'X-API-Key': serviceKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify(serviceBody),
+              });
+
+              if (serviceRes.ok) {
+                const serviceData = await serviceRes.json();
+                const sJobId = serviceData.job_id;
+                if (sJobId) {
+                  await supabaseAdmin
+                    .from('case_answer_jobs')
+                    .update({ service_job_id: sJobId, status: 'queued' })
+                    .eq('id', jobRow.id);
+                  console.log(`[case-research] Stage 4: job yaratildi: ${sJobId}`);
+                } else {
+                  await supabaseAdmin
+                    .from('case_answer_jobs')
+                    .update({ status: 'error', error: 'Tashqi xizmat job_id qaytarmadi' })
+                    .eq('id', jobRow.id);
+                  autoError = 'Tashqi xizmat job_id qaytarmadi';
+                }
+              } else {
+                console.error('[case-research] Stage 4: tashqi xizmat xatosi:', serviceRes.status);
+                await supabaseAdmin
+                  .from('case_answer_jobs')
+                  .update({ status: 'error', error: 'Tashqi xizmat javob bermadi' })
+                  .eq('id', jobRow.id);
+                autoError = 'Tashqi xizmat javob bermadi';
+              }
+            } else {
+              await supabaseAdmin
+                .from('case_answer_jobs')
+                .update({ status: 'error', error: 'Javob xizmati sozlanmagan' })
+                .eq('id', jobRow.id);
+              autoError = 'Javob xizmati sozlanmagan';
+            }
+          }
+        }
+      } catch (nlErr) {
+        console.error('[case-research] Stage 4 xato:', nlErr);
+        autoError = nlErr instanceof Error ? nlErr.message : String(nlErr);
+      }
+
       return new Response(JSON.stringify({
         success: true, holat,
         stage0: { qonunlar: stage1.step0.qonunlar, model: stage1.step0.model },
@@ -1144,6 +1253,7 @@ Deno.serve(async (req: Request) => {
         },
         stage2: { tasdiqlanganlar: tasdiqlanganJson, model: stage2.model, _debug: (stage2 as any)._debug },
         stage3: { javob: stage3.javob, model: stage3.model },
+        stage4: { auto_job_id: autoJobId, error: autoError },
         manba_tarqatish: manbaTarqatish,
         jami_token: jamiToken,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -1177,3 +1287,4 @@ Deno.serve(async (req: Request) => {
 });
 // force redeploy
 // redeploy token fix
+// redeploy stage4
