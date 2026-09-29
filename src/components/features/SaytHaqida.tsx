@@ -8,7 +8,7 @@ import {
   GraduationCap, Play, TrendingUp, Target, Brain,
   HelpCircle, Lock, Info, ChevronDown,
   CheckCircle2, Quote, Star, Compass, Eye, Lightbulb, Heart,
-  Send, Link2, LogOut, Lock
+  Send, Link2, LogOut
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLang } from '@/contexts/LangContext';
