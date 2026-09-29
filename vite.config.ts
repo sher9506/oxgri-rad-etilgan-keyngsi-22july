@@ -16,9 +16,6 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  optimizeDeps: {
-    exclude: ['heic2any'],
-  },
   build: {
     rollupOptions: {
       output: {

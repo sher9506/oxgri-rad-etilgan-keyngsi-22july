@@ -148,12 +148,9 @@ Deno.serve(async (req: Request) => {
       "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.\n\nKAZUS MATNI:\n" +
       kazus_text;
 
-    // Build sources payload for external service
+    // Build sources payload: text/file → {title, content}, url → {title, url}
     const serviceSources = validSources.map(s => {
-      if (s.type === 'url') {
-        // URL manba — { title, url } shaklida yuboriladi
-        return { title: s.title, url: s.url };
-      }
+      if (s.type === 'url') return { title: s.title, url: s.url };
       return { title: s.title, content: s.content };
     });
 
@@ -165,8 +162,8 @@ Deno.serve(async (req: Request) => {
         kazus_text,
         external_id: jobId,
         instruction,
+        sources: serviceSources,
       };
-      serviceBody.sources = serviceSources;
       const serviceRes = await fetch(`${ANSWER_SERVICE_URL}/api/jobs`, {
         method: "POST",
         headers: {
@@ -184,7 +181,7 @@ Deno.serve(async (req: Request) => {
           .update({ status: "error", error: "Tashqi xizmat javob bermadi" })
           .eq("id", jobId);
         return new Response(
-          JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+          JSON.stringify({ error: "Javob tayyorlanmadi. Qayta urinib ko'ring." }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -199,7 +196,7 @@ Deno.serve(async (req: Request) => {
           .update({ status: "error", error: "Tashqi xizmat job_id qaytarmadi" })
           .eq("id", jobId);
         return new Response(
-          JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+          JSON.stringify({ error: "Javob tayyorlanmadi. Qayta urinib ko'ring." }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -210,7 +207,7 @@ Deno.serve(async (req: Request) => {
         .update({ status: "error", error: "Tarmoq xatosi" })
         .eq("id", jobId);
       return new Response(
-        JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+        JSON.stringify({ error: "Javob tayyorlanmadi. Qayta urinib ko'ring." }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -228,9 +225,8 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     console.error("[case-answer-submit] Kutilmagan xato:", err);
     return new Response(
-      JSON.stringify({ error: "Javobni hozir tayyorlab bo'lmadi. Mavjud usuldan foydalaning yoki keyinroq urinib ko'ring." }),
+      JSON.stringify({ error: "Javob tayyorlanmadi. Qayta urinib ko'ring." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
-
