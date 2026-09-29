@@ -1162,6 +1162,23 @@ Deno.serve(async (req: Request) => {
           }
           const limitedSources = autoSources.slice(0, 18);
 
+          // Log source details for debugging
+          console.log(`[case-research] Stage 4: ${limitedSources.length} ta manba yuborilmoqda`);
+          for (const s of limitedSources) {
+            console.log(`[case-research]   • ${s.title}: ${s.content.length} belgi | preview: ${s.content.slice(0, 120)}`);
+          }
+
+          // Reject if all sources are empty
+          if (limitedSources.length === 0 && extraSources.length > 0) {
+            console.error('[case-research] Stage 4: barcha answer_sources manbalari bo\'sh');
+            autoError = 'Yuklangan manbalardan matn topilmadi. Fayllarning matnli ekanligini tekshiring.';
+          }
+
+          if (autoError) {
+            // Skip sending to Render if sources were invalid
+            console.log('[case-research] Stage 4: manbalar yaroqsiz, Render\'ga yuborilmaydi');
+          } else
+          {
           const { data: jobRow } = await supabaseAdmin
             .from('case_answer_jobs')
             .insert({
@@ -1236,6 +1253,7 @@ Deno.serve(async (req: Request) => {
               autoError = 'Javob xizmati sozlanmagan';
             }
           }
+          } // end else (autoError check)
         }
       } catch (nlErr) {
         console.error('[case-research] Stage 4 xato:', nlErr);

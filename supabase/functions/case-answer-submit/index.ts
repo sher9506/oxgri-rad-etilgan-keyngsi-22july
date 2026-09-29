@@ -23,6 +23,8 @@ interface SourceInput {
   url?: string;
 }
 
+const MIN_SOURCE_TEXT_LENGTH = 20;
+
 function validateSources(sources: unknown): SourceInput[] {
   if (!Array.isArray(sources)) return [];
   const result: SourceInput[] = [];
@@ -37,6 +39,7 @@ function validateSources(sources: unknown): SourceInput[] {
       const content = typeof s.content === 'string' ? s.content : '';
       if (!content.trim()) continue;
       if (content.length > MAX_SOURCE_TEXT_LENGTH) continue;
+      if (content.trim().length < MIN_SOURCE_TEXT_LENGTH) continue;
       result.push({ type: 'text', title, content });
     } else {
       const url = typeof s.url === 'string' ? s.url.trim() : '';
@@ -87,6 +90,15 @@ Deno.serve(async (req: Request) => {
     if (Array.isArray(sources) && sources.length > MAX_SOURCES) {
       return new Response(
         JSON.stringify({ error: "Ko'pi bilan 18 ta manba qo'shish mumkin" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Reject if sources were provided but all turned out empty/invalid
+    if (Array.isArray(sources) && sources.length > 0 && validSources.length === 0) {
+      console.error("[case-answer-submit] Barcha manbalar bo'sh yoki juda qisqa:", sources.length, "ta keldi, 0 ta yaroqli");
+      return new Response(
+        JSON.stringify({ error: "Yuklangan manbalardan matn topilmadi. Fayllarning matnli ekanligini tekshiring (skaner qilingan PDF bo'lmasligi kerak)." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -154,7 +166,11 @@ Deno.serve(async (req: Request) => {
       return { title: s.title, content: s.content };
     });
 
-    console.log("[case-answer-submit] Manbalar:", serviceSources.length, "ta,", serviceSources.map(s => s.url ? 'url' : 'content'));
+    console.log("[case-answer-submit] Manbalar:", serviceSources.length, "ta,", serviceSources.map(s => s.url ? 'url' : `content:${s.content?.length ?? 0}`));
+    for (const s of serviceSources) {
+      if (s.content) console.log(`[case-answer-submit]   • ${s.title}: ${s.content.length} belgi | preview: ${s.content.slice(0, 120)}`);
+      else if (s.url) console.log(`[case-answer-submit]   • ${s.title}: ${s.url}`);
+    }
 
     let serviceJobId: string | null = null;
 

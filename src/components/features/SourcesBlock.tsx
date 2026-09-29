@@ -347,7 +347,6 @@ function AddTextForm({ onAdd, onCancel }: { onAdd: (s: SourceItem) => void; onCa
 // ── File extraction ──────────────────────────────────────────────────
 async function extractPdfText(file: File): Promise<string> {
   const pdfjs = await import('pdfjs-dist');
-  // Use bundled worker (not CDN) to comply with CSP
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
 
@@ -360,13 +359,18 @@ async function extractPdfText(file: File): Promise<string> {
     const pageText = content.items.map((item: any) => item.str).join(' ');
     textParts.push(pageText);
   }
-  return textParts.join('\n\n');
+  const fullText = textParts.join('\n\n');
+  console.log(`[SourcesBlock] PDF: ${file.name}, ${pdf.numPages} sahifa, ${fullText.length} belgi`);
+  console.log(`[SourcesBlock] PDF preview:`, fullText.slice(0, 300));
+  return fullText;
 }
 
 async function extractDocxText(file: File): Promise<string> {
   const mammoth = await import('mammoth');
   const arrayBuffer = await file.arrayBuffer();
   const result = await mammoth.extractRawText({ arrayBuffer });
+  console.log(`[SourcesBlock] DOCX: ${file.name}, ${result.value.length} belgi`);
+  console.log(`[SourcesBlock] DOCX preview:`, result.value.slice(0, 300));
   return result.value;
 }
 
@@ -440,6 +444,13 @@ function AddFileSource({ currentCount, onAdd, onDone }: {
         if (!text.trim()) {
           setExtractions(prev => prev.map((e, i) =>
             i === idx ? { ...e, status: 'error', error: 'Bu faylda matn topilmadi. Skaner qilingan bo\'lishi mumkin, matnli fayl yuklang.' } : e
+          ));
+          continue;
+        }
+
+        if (text.trim().length < 50) {
+          setExtractions(prev => prev.map((e, i) =>
+            i === idx ? { ...e, status: 'error', error: `Fayldan atigi ${text.trim().length} belgi o'qildi. Skaner qilingan PDF yoki bo'sh Word fayl bo'lishi mumkin.` } : e
           ));
           continue;
         }
