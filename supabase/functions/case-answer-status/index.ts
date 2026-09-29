@@ -122,6 +122,17 @@ Deno.serve(async (req: Request) => {
       if (!serviceRes.ok) {
         const errText = await serviceRes.text().catch(() => "");
         console.error("[case-answer-status] Tashqi xizmat xatosi:", serviceRes.status, errText);
+        if (serviceRes.status === 404) {
+          const errMsg = "Javob tayyorlanmadi (xizmat qayta ishga tushgan). Qayta urinib ko'ring.";
+          await supabaseAdmin
+            .from("case_answer_jobs")
+            .update({ status: "error", error: errMsg })
+            .eq("id", id);
+          return new Response(
+            JSON.stringify({ status: "error", answer: null, error: errMsg }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
         return new Response(
           JSON.stringify({ status: job.status, answer: null, error: null }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

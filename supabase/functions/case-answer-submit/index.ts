@@ -146,8 +146,7 @@ Deno.serve(async (req: Request) => {
     const jobId = jobRow.id;
 
     const instruction =
-      "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.\n\nKAZUS MATNI:\n" +
-      kazus_text;
+      "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
 
     // Build sources payload: text/file → {title, content}, url → {title, url}
     const serviceSources = validSources.map(s => {
@@ -179,12 +178,18 @@ Deno.serve(async (req: Request) => {
       if (!serviceRes.ok) {
         const errText = await serviceRes.text().catch(() => "");
         console.error("[case-answer-submit] Tashqi xizmat xatosi:", serviceRes.status, errText);
+        let errMsg = "Tashqi xizmat javob bermadi";
+        try {
+          const errJson = JSON.parse(errText);
+          if (errJson?.error) errMsg = String(errJson.error).slice(0, 300);
+          else if (errJson?.detail) errMsg = String(errJson.detail).slice(0, 300);
+        } catch { if (errText) errMsg = errText.slice(0, 300); }
         await supabaseAdmin
           .from("case_answer_jobs")
-          .update({ status: "error", error: "Tashqi xizmat javob bermadi" })
+          .update({ status: "error", error: errMsg })
           .eq("id", jobId);
         return new Response(
-          JSON.stringify({ error: "Javob tayyorlanmadi. Qayta urinib ko'ring." }),
+          JSON.stringify({ error: errMsg }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
