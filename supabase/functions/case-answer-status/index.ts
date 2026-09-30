@@ -155,7 +155,21 @@ Deno.serve(async (req: Request) => {
         }
       } else if (remoteStatus === "error" || remoteStatus === "failed") {
         newStatus = "error";
-        errorMsg = typeof serviceData.error === "string" ? serviceData.error : "Tashqi xizmat xatosi";
+        const rawErr = typeof serviceData.error === "string" ? serviceData.error : "Tashqi xizmat xatosi";
+        // Fayl manbasi bilan bog'liq xato bo'lsa, aniq xabar ko'rsatish
+        const { data: jobFiles } = await supabaseAdmin
+          .from("case_answer_jobs")
+          .select("source_file_paths")
+          .eq("id", id)
+          .maybeSingle();
+        const hasFilePaths = Array.isArray(jobFiles?.source_file_paths)
+          ? jobFiles.source_file_paths.length > 0
+          : (typeof jobFiles?.source_file_paths === 'string' && JSON.parse(jobFiles.source_file_paths).length > 0);
+        if (hasFilePaths && /manba|havola|url|source|open|read|fetch/i.test(rawErr)) {
+          errorMsg = "Faylni o'qib bo'lmadi. Boshqa fayl yuklab ko'ring yoki matnini \u00ab+ Matn\u00bb orqali qo'shing.";
+        } else {
+          errorMsg = "AI javob tayyorlanmadi. Keyinroq urinib ko'ring.";
+        }
       } else if (remoteStatus === "running" || remoteStatus === "processing") {
         newStatus = "running";
       } else if (remoteStatus === "queued" || remoteStatus === "pending") {
@@ -168,6 +182,28 @@ Deno.serve(async (req: Request) => {
       if (errorMsg !== null) updatePayload.error = errorMsg;
       if (newStatus === "done" || newStatus === "error") {
         updatePayload.finished_at = new Date().toISOString();
+
+        // Clean up uploaded files from Storage after job completion
+        try {
+          const { data: jobFiles } = await supabaseAdmin
+            .from("case_answer_jobs")
+            .select("source_file_paths")
+            .eq("id", id)
+            .maybeSingle();
+          const paths = Array.isArray(jobFiles?.source_file_paths) ? jobFiles.source_file_paths : [];
+          if (jobFiles?.source_file_paths && typeof jobFiles.source_file_paths === 'string') {
+            try { const parsed = JSON.parse(jobFiles.source_file_paths); if (Array.isArray(parsed)) { for (const p of parsed) { paths.push(String(p)); } } } catch { /* ignore */ }
+          }
+          if (paths.length > 0) {
+            const { error: delErr } = await supabaseAdmin.storage.from("case-sources").remove(paths);
+            if (delErr) console.error("[case-answer-status] Storage tozalash xatosi:", delErr.message);
+            else console.log(`[case-answer-status] ${paths.length} ta fayl Storage'dan o'chirildi`);
+            // Clear paths after cleanup
+            updatePayload.source_file_paths = '[]';
+          }
+        } catch (cleanupErr) {
+          console.error("[case-answer-status] Tozalash xatosi:", cleanupErr);
+        }
       }
 
       await supabaseAdmin

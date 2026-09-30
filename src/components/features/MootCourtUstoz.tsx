@@ -175,7 +175,6 @@ export default function MootCourtUstoz() {
     try { localStorage.removeItem(`mc_sources_${draftKey}`); } catch { /* ignore */ }
     setEditingCase({ id: newCase.id } as MootCase);
     loadCases();
-    triggerResearch(newCase.id);
     return newCase.id;
   };
 
@@ -920,6 +919,7 @@ export default function MootCourtUstoz() {
                 sources={sources}
                 onAdd={handleAddSource}
                 onRemove={handleRemoveSource}
+                teacherId={user?.ustoz_id}
                 linkedModdalar={(editingCase?.tasdiqlangan_moddalar || []).map((m: any) => ({
                   modda: m.modda_raqami || m.modda || '',
                   qonun: m.qonun_nomi || m.bob_nomi || m.sarlavha || '',

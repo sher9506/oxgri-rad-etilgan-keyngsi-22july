@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, FileText, X, ChevronDown, BookOpen, Upload, Loader2, AlertCircle, File } from 'lucide-react';
 import type { SourceItem } from '@/hooks/useAiAnswerJob';
+import { supabase } from '@/lib/supabase';
 
 const MAX_SOURCES = 18;
 const MAX_SOURCE_TEXT = 100000;
 const MAX_TITLE = 120;
-const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+const MAX_FILE_SIZE = 40 * 1024 * 1024; // 40 MB
 
 export interface ConfirmedSource {
   type: string;
@@ -18,13 +19,30 @@ interface SourcesBlockProps {
   onRemove: (index: number) => void;
   linkedModdalar?: { modda: string; qonun: string; matn: string }[];
   onAddModdalar?: (moddalar: SourceItem[]) => void;
+  teacherId?: string;
 }
 
 function genId() {
   return `src_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddModdalar }: SourcesBlockProps) {
+let _fileSourcesFlag: boolean | null = null;
+async function fetchFileSourcesFlag(): Promise<boolean> {
+  if (_fileSourcesFlag !== null) return _fileSourcesFlag;
+  try {
+    const { data } = await supabase
+      .from('settings')
+      .select('text_value')
+      .eq('key', 'answer_file_sources_enabled')
+      .maybeSingle();
+    _fileSourcesFlag = data?.text_value === 'true';
+  } catch {
+    _fileSourcesFlag = false;
+  }
+  return _fileSourcesFlag;
+}
+
+export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddModdalar, teacherId }: SourcesBlockProps) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState<'url' | 'text' | 'file' | null>(null);
 
@@ -140,6 +158,7 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
               currentCount={sources.length}
               onAdd={(src) => onAdd(src)}
               onDone={() => setAdding(null)}
+              teacherId={teacherId}
             />
           )}
 
@@ -158,15 +177,22 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
   );
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function SourceRow({ source, onRemove }: { source: SourceItem; onRemove: () => void }) {
   const isModda = source.title.startsWith('Modda ');
   const isUrl = source.type === 'url';
   const isFile = source.type === 'file';
-  const charCount = source.charCount || (source.type !== 'url' ? source.content.length : 0);
+  const isStorageFile = isFile && !source.content && !!source.storagePath;
+  const charCount = source.charCount || (source.type !== 'url' && source.content ? source.content.length : 0);
 
   const preview = isUrl
     ? source.url
-    : source.type !== 'url'
+    : source.type !== 'url' && source.content
     ? source.content.slice(0, 80) + (source.content.length > 80 ? '…' : '')
     : '';
 
@@ -197,7 +223,7 @@ function SourceRow({ source, onRemove }: { source: SourceItem; onRemove: () => v
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold text-gray-700 truncate">{source.title}</p>
         <p className="text-[10px] text-gray-400 truncate">
-          {isUrl ? preview : `${charCount.toLocaleString('uz-UZ')} belgi`}
+          {isUrl ? preview : isStorageFile ? formatFileSize(source.fileSize || 0) : `${charCount.toLocaleString('uz-UZ')} belgi`}
         </p>
       </div>
       <button
@@ -333,7 +359,7 @@ function AddTextForm({ onAdd, onCancel }: { onAdd: (s: SourceItem) => void; onCa
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 text-[11px] font-bold py-2 px-3 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+            className="flex-1 text-[11px] font-bold py-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
             style={{ minHeight: '44px' }}
           >
             Bekor
@@ -344,7 +370,7 @@ function AddTextForm({ onAdd, onCancel }: { onAdd: (s: SourceItem) => void; onCa
   );
 }
 
-// ── File extraction ──────────────────────────────────────────────────
+// ── File extraction (used when answer_file_sources_enabled = FALSE) ──
 async function extractPdfText(file: File): Promise<string> {
   const pdfjs = await import('pdfjs-dist');
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
@@ -361,7 +387,6 @@ async function extractPdfText(file: File): Promise<string> {
   }
   const fullText = textParts.join('\n\n');
   console.log(`[SourcesBlock] PDF: ${file.name}, ${pdf.numPages} sahifa, ${fullText.length} belgi`);
-  console.log(`[SourcesBlock] PDF preview:`, fullText.slice(0, 300));
   return fullText;
 }
 
@@ -370,7 +395,6 @@ async function extractDocxText(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const result = await mammoth.extractRawText({ arrayBuffer });
   console.log(`[SourcesBlock] DOCX: ${file.name}, ${result.value.length} belgi`);
-  console.log(`[SourcesBlock] DOCX preview:`, result.value.slice(0, 300));
   return result.value;
 }
 
@@ -381,7 +405,6 @@ function chunkText(text: string, maxLen: number): string[] {
   while (start < text.length) {
     let end = start + maxLen;
     if (end < text.length) {
-      // Try to break at paragraph boundary
       const nextPara = text.indexOf('\n\n', end);
       const prevPara = text.lastIndexOf('\n\n', end);
       if (prevPara > start + maxLen * 0.5) {
@@ -403,102 +426,204 @@ function baseName(name: string): string {
 
 interface FileExtractionState {
   fileName: string;
-  status: 'extracting' | 'done' | 'error';
+  status: 'uploading' | 'extracting' | 'done' | 'error';
   error?: string;
   chunks?: { title: string; content: string; charCount: number }[];
+  fileSize?: number;
 }
 
-function AddFileSource({ currentCount, onAdd, onDone }: {
+// Sanitize filename: remove non-ASCII, spaces, special chars; keep extension
+function safeFileName(originalName: string): string {
+  const ext = originalName.match(/\.(\w+)$/)?.[1]?.toLowerCase() || '';
+  const base = ext ? originalName.slice(0, -(ext.length + 1)) : originalName;
+  const safeBase = base.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || 'file';
+  return ext ? `${safeBase}.${ext}` : safeBase;
+}
+
+// Upload file to Supabase Storage (case-sources bucket)
+async function uploadToStorage(
+  file: File,
+  teacherId: string
+): Promise<{ path: string; size: number } | null> {
+  const fileId = crypto.randomUUID();
+  const safeName = safeFileName(file.name);
+  const ext = safeName.split('.').pop() || '';
+  const path = `${teacherId}/${fileId}/${safeName}`;
+
+  const { error } = await supabase.storage
+    .from('case-sources')
+    .upload(path, file, {
+      contentType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+      upsert: false,
+    });
+
+  if (error) {
+    console.error('[SourcesBlock] Storage upload error:', error.message);
+    return null;
+  }
+  return { path, size: file.size };
+}
+
+function AddFileSource({ currentCount, onAdd, onDone, teacherId }: {
   currentCount: number;
   onAdd: (s: SourceItem) => void;
   onDone: () => void;
+  teacherId?: string;
 }) {
   const [extractions, setExtractions] = useState<FileExtractionState[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [fileMode, setFileMode] = useState<'storage' | 'extract' | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const remainingSlots = MAX_SOURCES - currentCount;
 
+  // Determine mode once on mount
+  useEffect(() => {
+    fetchFileSourcesFlag().then(flag => {
+      setFileMode(flag ? 'storage' : 'extract');
+    });
+  }, []);
+
   const processFiles = useCallback(async (files: FileList | File[]) => {
+    if (!fileMode) return;
     const fileArr = Array.from(files);
-    const validFiles = fileArr.filter(f => /\.(pdf|docx)$/i.test(f.name) && f.size <= MAX_FILE_SIZE);
 
-    if (validFiles.length === 0) {
-      setExtractions(prev => [...prev, {
-        fileName: fileArr[0]?.name || 'Fayl',
-        status: 'error',
-        error: 'Faqat .pdf va .docx fayllar qabul qilinadi (15 MB gacha)',
-      }]);
-      return;
-    }
+    for (const file of fileArr) {
+      // Validate extension
+      if (!/\.(pdf|docx)$/i.test(file.name)) {
+        setExtractions(prev => [...prev, {
+          fileName: file.name,
+          status: 'error',
+          error: 'Faqat PDF yoki Word (.docx) qabul qilinadi',
+        }]);
+        continue;
+      }
 
-    for (const file of validFiles) {
-      const state: FileExtractionState = { fileName: file.name, status: 'extracting' };
-      setExtractions(prev => [...prev, state]);
+      // Validate size
+      if (file.size > MAX_FILE_SIZE) {
+        setExtractions(prev => [...prev, {
+          fileName: file.name,
+          status: 'error',
+          error: `Fayl juda katta (maksimum 40MB)`,
+        }]);
+        continue;
+      }
+
       const idx = extractions.length;
+      const isPdf = /\.pdf$/i.test(file.name);
 
-      try {
-        const isPdf = /\.pdf$/i.test(file.name);
-        const text = isPdf ? await extractPdfText(file) : await extractDocxText(file);
+      if (fileMode === 'storage') {
+        // ── Storage mode: upload file, no text extraction ──
+        setExtractions(prev => [...prev, {
+          fileName: file.name,
+          status: 'uploading',
+          fileSize: file.size,
+        }]);
 
-        if (!text.trim()) {
-          setExtractions(prev => prev.map((e, i) =>
-            i === idx ? { ...e, status: 'error', error: 'Bu faylda matn topilmadi. Skaner qilingan bo\'lishi mumkin, matnli fayl yuklang.' } : e
-          ));
-          continue;
-        }
-
-        if (text.trim().length < 50) {
-          setExtractions(prev => prev.map((e, i) =>
-            i === idx ? { ...e, status: 'error', error: `Fayldan atigi ${text.trim().length} belgi o'qildi. Skaner qilingan PDF yoki bo'sh Word fayl bo'lishi mumkin.` } : e
-          ));
-          continue;
-        }
-
-        const chunks = chunkText(text, MAX_SOURCE_TEXT);
-        const base = baseName(file.name);
-
-        if (chunks.length === 1) {
-          const source: SourceItem = {
-            id: genId(),
-            type: 'file',
-            title: base.slice(0, MAX_TITLE),
-            content: chunks[0],
-            fileKind: isPdf ? 'pdf' : 'docx',
-            charCount: chunks[0].length,
-          };
-          onAdd(source);
-          setExtractions(prev => prev.map((e, i) =>
-            i === idx ? { ...e, status: 'done', chunks: [{ title: base, content: chunks[0], charCount: chunks[0].length }] } : e
-          ));
-        } else {
-          // Multiple chunks — check if they fit
-          if (currentCount + chunks.length > MAX_SOURCES) {
+        try {
+          if (!teacherId) {
             setExtractions(prev => prev.map((e, i) =>
-              i === idx ? { ...e, status: 'error', error: `${chunks.length} ta qismga bo'linadi, lekin limit yetarli emas (${remainingSlots} ta joy qoldi). Fayl qo'shilmadi.` } : e
+              i === idx ? { ...e, status: 'error', error: 'Fayl yuklash uchun tizimga kirish kerak' } : e
             ));
             continue;
           }
-          const chunkSources: SourceItem[] = chunks.map((c, ci) => ({
+
+          const result = await uploadToStorage(file, teacherId);
+          if (!result) {
+            setExtractions(prev => prev.map((e, i) =>
+              i === idx ? { ...e, status: 'error', error: 'Fayl yuklanmadi. Keyinroq urinib ko\'ring.' } : e
+            ));
+            continue;
+          }
+
+          const source: SourceItem = {
             id: genId(),
-            type: 'file' as const,
-            title: `${base} (${ci + 1}/${chunks.length})`.slice(0, MAX_TITLE),
-            content: c,
-            fileKind: (isPdf ? 'pdf' : 'docx') as 'pdf' | 'docx',
-            charCount: c.length,
-          }));
-          chunkSources.forEach(s => onAdd(s));
+            type: 'file',
+            title: baseName(file.name).slice(0, MAX_TITLE),
+            content: '',
+            fileKind: isPdf ? 'pdf' : 'docx',
+            charCount: 0,
+            storagePath: result.path,
+            fileSize: result.size,
+          };
+          onAdd(source);
           setExtractions(prev => prev.map((e, i) =>
-            i === idx ? { ...e, status: 'done', chunks: chunks.map((c, ci) => ({ title: `${base} (${ci + 1}/${chunks.length})`, content: c, charCount: c.length })) } : e
+            i === idx ? { ...e, status: 'done', fileSize: result.size } : e
+          ));
+        } catch {
+          setExtractions(prev => prev.map((e, i) =>
+            i === idx ? { ...e, status: 'error', error: 'Fayl yuklanmadi. Keyinroq urinib ko\'ring.' } : e
           ));
         }
-      } catch {
-        setExtractions(prev => prev.map((e, i) =>
-          i === idx ? { ...e, status: 'error', error: 'Faylni o\'qib bo\'lmadi. Fayl buzilgan yoki parolli bo\'lishi mumkin.' } : e
-        ));
+      } else {
+        // ── Extract mode: text extraction in browser (original behavior) ──
+        setExtractions(prev => [...prev, {
+          fileName: file.name,
+          status: 'extracting',
+          fileSize: file.size,
+        }]);
+
+        try {
+          const text = isPdf ? await extractPdfText(file) : await extractDocxText(file);
+
+          if (!text.trim()) {
+            setExtractions(prev => prev.map((e, i) =>
+              i === idx ? { ...e, status: 'error', error: 'Bu faylda matn topilmadi. Skaner qilingan bo\'lishi mumkin, matnli fayl yuklang.' } : e
+            ));
+            continue;
+          }
+
+          if (text.trim().length < 50) {
+            setExtractions(prev => prev.map((e, i) =>
+              i === idx ? { ...e, status: 'error', error: `Fayldan atigi ${text.trim().length} belgi o'qildi. Skaner qilingan PDF yoki bo'sh Word fayl bo'lishi mumkin.` } : e
+            ));
+            continue;
+          }
+
+          const chunks = chunkText(text, MAX_SOURCE_TEXT);
+          const base = baseName(file.name);
+
+          if (chunks.length === 1) {
+            const source: SourceItem = {
+              id: genId(),
+              type: 'file',
+              title: base.slice(0, MAX_TITLE),
+              content: chunks[0],
+              fileKind: isPdf ? 'pdf' : 'docx',
+              charCount: chunks[0].length,
+            };
+            onAdd(source);
+            setExtractions(prev => prev.map((e, i) =>
+              i === idx ? { ...e, status: 'done', chunks: [{ title: base, content: chunks[0], charCount: chunks[0].length }] } : e
+            ));
+          } else {
+            if (currentCount + chunks.length > MAX_SOURCES) {
+              setExtractions(prev => prev.map((e, i) =>
+                i === idx ? { ...e, status: 'error', error: `${chunks.length} ta qismga bo'linadi, lekin limit yetarli emas (${remainingSlots} ta joy qoldi). Fayl qo'shilmadi.` } : e
+              ));
+              continue;
+            }
+            const chunkSources: SourceItem[] = chunks.map((c, ci) => ({
+              id: genId(),
+              type: 'file' as const,
+              title: `${base} (${ci + 1}/${chunks.length})`.slice(0, MAX_TITLE),
+              content: c,
+              fileKind: (isPdf ? 'pdf' : 'docx') as 'pdf' | 'docx',
+              charCount: c.length,
+            }));
+            chunkSources.forEach(s => onAdd(s));
+            setExtractions(prev => prev.map((e, i) =>
+              i === idx ? { ...e, status: 'done', chunks: chunks.map((c, ci) => ({ title: `${base} (${ci + 1}/${chunks.length})`, content: c, charCount: c.length })) } : e
+            ));
+          }
+        } catch {
+          setExtractions(prev => prev.map((e, i) =>
+            i === idx ? { ...e, status: 'error', error: 'Faylni o\'qib bo\'lmadi. Fayl buzilgan yoki parolli bo\'lishi mumkin.' } : e
+          ));
+        }
       }
     }
-  }, [extractions.length, currentCount, remainingSlots, onAdd]);
+  }, [extractions.length, currentCount, remainingSlots, onAdd, fileMode]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -512,6 +637,8 @@ function AddFileSource({ currentCount, onAdd, onDone }: {
     setExtractions([]);
     onDone();
   };
+
+  const sizeLabel = fileMode === 'storage' ? '40 MB gacha' : '15 MB gacha';
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-2.5 space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
@@ -528,7 +655,7 @@ function AddFileSource({ currentCount, onAdd, onDone }: {
       >
         <Upload className="h-5 w-5 text-gray-400 mx-auto mb-1" />
         <p className="text-[11px] font-bold text-gray-600">Fayl tanlang yoki shu yerga tashlang</p>
-        <p className="text-[10px] text-gray-400 mt-0.5">PDF, Word (.docx) — 15 MB gacha</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">PDF, Word (.docx) — {sizeLabel}</p>
         <input
           ref={inputRef}
           type="file"
@@ -544,11 +671,12 @@ function AddFileSource({ currentCount, onAdd, onDone }: {
           ext.status === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'
         }`}>
           <div className="flex items-center gap-2">
-            {ext.status === 'extracting' && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500 shrink-0" />}
+            {(ext.status === 'extracting' || ext.status === 'uploading') && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500 shrink-0" />}
             {ext.status === 'done' && <File className="h-3.5 w-3.5 text-green-500 shrink-0" />}
             {ext.status === 'error' && <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold text-gray-700 truncate">{ext.fileName}</p>
+              {ext.status === 'uploading' && <p className="text-[10px] text-gray-400">Yuklanmoqda…</p>}
               {ext.status === 'extracting' && <p className="text-[10px] text-gray-400">Matn ajratilmoqda…</p>}
               {ext.status === 'done' && ext.chunks && (
                 <p className="text-[10px] text-gray-400">
@@ -556,6 +684,9 @@ function AddFileSource({ currentCount, onAdd, onDone }: {
                     ? `${ext.chunks[0].charCount.toLocaleString('uz-UZ')} belgi`
                     : `${ext.chunks.length} ta qism, ${ext.chunks.reduce((a, c) => a + c.charCount, 0).toLocaleString('uz-UZ')} belgi`}
                 </p>
+              )}
+              {ext.status === 'done' && !ext.chunks && ext.fileSize && (
+                <p className="text-[10px] text-gray-400">{formatFileSize(ext.fileSize)}</p>
               )}
               {ext.status === 'error' && <p className="text-[10px] text-red-500" role="alert">{ext.error}</p>}
             </div>

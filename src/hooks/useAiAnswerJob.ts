@@ -6,7 +6,7 @@ export type AnswerJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' |
 export type SourceItem =
   | { id: string; type: 'text'; title: string; content: string; charCount: number }
   | { id: string; type: 'url'; title: string; url: string; charCount: number }
-  | { id: string; type: 'file'; title: string; content: string; fileKind: 'pdf' | 'docx'; charCount: number };
+  | { id: string; type: 'file'; title: string; content: string; fileKind: 'pdf' | 'docx'; charCount: number; storagePath?: string; fileSize?: number };
 
 export interface AnswerJobState {
   status: AnswerJobStatus;
@@ -18,21 +18,25 @@ export interface AnswerJobState {
 }
 
 export interface ServiceSource {
-  type: 'text' | 'url';
+  type: 'text' | 'url' | 'file';
   title: string;
   content?: string;
   url?: string;
+  storagePath?: string;
+  fileKind?: string;
+  fileSize?: number;
 }
 
 export function buildSourcesPayload(sources: SourceItem[]): ServiceSource[] {
   return sources.map(s => {
     if (s.type === 'url') return { type: 'url' as const, title: s.title, url: s.url };
+    if (s.type === 'file') return { type: 'file' as const, title: s.title, content: s.content, fileKind: s.fileKind, storagePath: s.storagePath, fileSize: s.fileSize };
     return { type: 'text' as const, title: s.title, content: s.content };
   });
 }
 
 const POLL_INTERVAL_MS = 5000;
-const MAX_POLL_MS = 1800000; // 30 minutes — javob tayyorlanishi sekin bo'lishi mumkin
+const MAX_POLL_MS = 1800000; // 30 daqiqa — javob tayyorlanishi sekin bo'lishi mumkin
 
 async function callEdgeFunction(fn: string, body: Record<string, unknown>) {
   const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
@@ -65,8 +69,7 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
 
   const ageMs = Date.now() - new Date(data.created_at).getTime();
   if (data.status === 'queued' || data.status === 'running') {
-    // Vaqt cheklovi yo'q — Render'da ish hali bajarilayotgan bo'lishi mumkin.
-    // Frontend polling'ni qayta boshlaydi va Render'dan holatni so'raydi.
+    // Frontend polling'ni qayta boshlaydi va tashqi xizmatdan holatni so'raydi.
     return {
       status: data.status as AnswerJobStatus,
       answer: data.answer,

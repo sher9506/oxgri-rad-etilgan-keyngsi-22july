@@ -15,12 +15,17 @@ const MAX_KAZUS_LENGTH = 12000;
 const MAX_SOURCES = 18;
 const MAX_SOURCE_TEXT_LENGTH = 100000;
 const MAX_SOURCE_TITLE_LENGTH = 120;
+const SIGNED_URL_EXPIRY = 3600; // 60 daqiqa — imzolangan havola muddati
+const STORAGE_BUCKET = "case-sources";
 
 interface SourceInput {
-  type: 'text' | 'url';
+  type: 'text' | 'url' | 'file';
   title?: string;
   content?: string;
   url?: string;
+  storagePath?: string;
+  fileKind?: string;
+  fileSize?: number;
 }
 
 const MIN_SOURCE_TEXT_LENGTH = 20;
@@ -32,19 +37,31 @@ function validateSources(sources: unknown): SourceInput[] {
     const s = sources[i] as Record<string, unknown>;
     if (!s || typeof s !== 'object') continue;
     const type = s.type;
-    if (type !== 'text' && type !== 'url') continue;
+    if (type !== 'text' && type !== 'url' && type !== 'file') continue;
     let title = typeof s.title === 'string' ? s.title.trim().slice(0, MAX_SOURCE_TITLE_LENGTH) : '';
     if (!title) title = `Manba ${i + 1}`;
+
     if (type === 'text') {
       const content = typeof s.content === 'string' ? s.content : '';
       if (!content.trim()) continue;
       if (content.length > MAX_SOURCE_TEXT_LENGTH) continue;
       if (content.trim().length < MIN_SOURCE_TEXT_LENGTH) continue;
       result.push({ type: 'text', title, content });
-    } else {
+    } else if (type === 'url') {
       const url = typeof s.url === 'string' ? s.url.trim() : '';
       if (!url.match(/^https?:\/\/.+/i)) continue;
       result.push({ type: 'url', title, url });
+    } else if (type === 'file') {
+      const storagePath = typeof s.storagePath === 'string' ? s.storagePath : '';
+      const content = typeof s.content === 'string' ? s.content : '';
+      // File with storagePath (new mode) — no text needed
+      if (storagePath) {
+        result.push({ type: 'file', title, storagePath, fileKind: typeof s.fileKind === 'string' ? s.fileKind : '', fileSize: typeof s.fileSize === 'number' ? s.fileSize : 0 });
+      }
+      // File with content (old mode — text extracted in browser)
+      else if (content.trim() && content.length >= MIN_SOURCE_TEXT_LENGTH) {
+        result.push({ type: 'file', title, content });
+      }
     }
   }
   return result;
@@ -61,6 +78,18 @@ async function getAnswerServiceConfig(): Promise<{ url: string; key: string }> {
     if (row.text_value) map[row.key] = row.text_value;
   }
   return { url: map["ANSWER_SERVICE_URL"] || "", key: map["ANSWER_SERVICE_KEY"] || "" };
+}
+
+async function createSignedUrl(path: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrl(path, SIGNED_URL_EXPIRY);
+  if (error || !data?.signedUrl) {
+    console.error("[case-answer-submit] Signed URL yaratilmadi:", path, error?.message);
+    return null;
+  }
+  return data.signedUrl;
 }
 
 Deno.serve(async (req: Request) => {
@@ -135,6 +164,37 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Collect storage paths for cleanup after job completion
+    const storagePaths: string[] = [];
+
+    // Build service sources: create signed URLs for file sources with storagePath
+    const serviceSources: { title: string; content?: string; url?: string }[] = [];
+    for (const s of validSources) {
+      if (s.type === 'url') {
+        serviceSources.push({ title: s.title, url: s.url });
+      } else if (s.type === 'file' && s.storagePath) {
+        // Fayl storage'da borligini tekshirish (24 soatdan keyin o'chirilgan bo'lishi mumkin)
+        const { data: fileExists } = await supabaseAdmin.storage.from(STORAGE_BUCKET).list(s.storagePath.split('/').slice(0, -1).join('/'), { limit: 1, search: s.storagePath.split('/').pop() || '' });
+        if (!fileExists || fileExists.length === 0) {
+          console.error("[case-answer-submit] Fayl topilmadi (muddati tugagan):", s.storagePath);
+          return new Response(
+            JSON.stringify({ error: "Fayl muddati tugagan. Uni qayta yuklang." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        const signedUrl = await createSignedUrl(s.storagePath);
+        if (!signedUrl) {
+          console.error("[case-answer-submit] Signed URL yaratilmadi, manba o'tkazib yuborildi:", s.title);
+          continue;
+        }
+        storagePaths.push(s.storagePath);
+        serviceSources.push({ title: s.title, url: signedUrl });
+      } else {
+        // text or file-with-content (old mode)
+        serviceSources.push({ title: s.title, content: s.content });
+      }
+    }
+
     // Create a job record first
     const { data: jobRow, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
@@ -143,6 +203,7 @@ Deno.serve(async (req: Request) => {
         teacher_id: ustoz_id,
         status: "queued",
         source_count: validSources.length,
+        source_file_paths: storagePaths.length > 0 ? JSON.stringify(storagePaths) : '[]',
       })
       .select("id")
       .single();
@@ -160,16 +221,10 @@ Deno.serve(async (req: Request) => {
     const instruction =
       "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
 
-    // Build sources payload: text/file → {title, content}, url → {title, url}
-    const serviceSources = validSources.map(s => {
-      if (s.type === 'url') return { title: s.title, url: s.url };
-      return { title: s.title, content: s.content };
-    });
-
-    console.log("[case-answer-submit] Manbalar:", serviceSources.length, "ta,", serviceSources.map(s => s.url ? 'url' : `content:${s.content?.length ?? 0}`));
+    console.log(`[case-answer-submit] external_id=${jobId} | ${validSources.length} ta manba (${storagePaths.length} fayl storage'dan)`);
     for (const s of serviceSources) {
-      if (s.content) console.log(`[case-answer-submit]   • ${s.title}: ${s.content.length} belgi | preview: ${s.content.slice(0, 120)}`);
-      else if (s.url) console.log(`[case-answer-submit]   • ${s.title}: ${s.url}`);
+      if (s.content) console.log(`[case-answer-submit]   • ${s.title}: ${s.content.length} belgi`);
+      else console.log(`[case-answer-submit]   • ${s.title}: url manba`);
     }
 
     let serviceJobId: string | null = null;
@@ -182,6 +237,7 @@ Deno.serve(async (req: Request) => {
         instruction,
         sources: serviceSources,
       };
+      console.log(`[case-answer-submit] Tashqi xizmatga yuborilmoqda: external_id=${jobId}, sources=${serviceSources.length}`);
       const serviceRes = await fetch(`${ANSWER_SERVICE_URL}/api/jobs`, {
         method: "POST",
         headers: {
@@ -193,19 +249,29 @@ Deno.serve(async (req: Request) => {
 
       if (!serviceRes.ok) {
         const errText = await serviceRes.text().catch(() => "");
-        console.error("[case-answer-submit] Tashqi xizmat xatosi:", serviceRes.status, errText);
+        console.error("[case-answer-submit] Tashqi xizmat xatosi:", serviceRes.status);
         let errMsg = "Tashqi xizmat javob bermadi";
+        let isFileSourceError = false;
         try {
           const errJson = JSON.parse(errText);
           if (errJson?.error) errMsg = String(errJson.error).slice(0, 300);
           else if (errJson?.detail) errMsg = String(errJson.detail).slice(0, 300);
         } catch { if (errText) errMsg = errText.slice(0, 300); }
+
+        if (storagePaths.length > 0 && /manba|havola|url|source|open|read|fetch/i.test(errMsg)) {
+          isFileSourceError = true;
+        }
+
+        const userMsg = isFileSourceError
+          ? "Faylni o'qib bo'lmadi. Boshqa fayl yuklab ko'ring yoki matnini \u00ab+ Matn\u00bb orqali qo'shing."
+          : "AI javob tayyorlanmadi. Keyinroq urinib ko'ring.";
+
         await supabaseAdmin
           .from("case_answer_jobs")
-          .update({ status: "error", error: errMsg })
+          .update({ status: "error", error: userMsg })
           .eq("id", jobId);
         return new Response(
-          JSON.stringify({ error: errMsg }),
+          JSON.stringify({ error: userMsg }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -254,4 +320,4 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
-// redeploy max sources 18 v3
+
