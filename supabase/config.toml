@@ -72,3 +72,9 @@ verify_jwt = false
 
 [functions.case-answer-status]
 verify_jwt = false
+
+[functions.case-library-list]
+verify_jwt = false
+
+[functions.case-library-delete]
+verify_jwt = false

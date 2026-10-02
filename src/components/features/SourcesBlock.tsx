@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Link, FileText, X, ChevronDown, BookOpen, Upload, Loader2, AlertCircle, File } from 'lucide-react';
-import type { SourceItem } from '@/hooks/useAiAnswerJob';
+import { Link, FileText, X, ChevronDown, BookOpen, Upload, Loader2, AlertCircle, File, Library, Trash2, Check } from 'lucide-react';
+import type { SourceItem, LibraryItem } from '@/hooks/useAiAnswerJob';
 import { supabase } from '@/lib/supabase';
 
 const MAX_SOURCES = 18;
@@ -20,6 +20,13 @@ interface SourcesBlockProps {
   linkedModdalar?: { modda: string; qonun: string; matn: string }[];
   onAddModdalar?: (moddalar: SourceItem[]) => void;
   teacherId?: string;
+  libraries?: LibraryItem[];
+  selectedLibraryId?: string | null;
+  onSelectLibrary?: (id: string | null) => void;
+  saveLibrary?: boolean;
+  onSaveLibraryChange?: (val: boolean) => void;
+  onDeleteLibrary?: (id: string) => void;
+  libraryError?: string | null;
 }
 
 function genId() {
@@ -42,13 +49,39 @@ async function fetchFileSourcesFlag(): Promise<boolean> {
   return _fileSourcesFlag;
 }
 
-export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddModdalar, teacherId }: SourcesBlockProps) {
+let _libraryFlag: boolean | null = null;
+async function fetchLibraryFlag(): Promise<boolean> {
+  if (_libraryFlag !== null) return _libraryFlag;
+  try {
+    const { data } = await supabase
+      .from('settings')
+      .select('text_value')
+      .eq('key', 'answer_library_enabled')
+      .maybeSingle();
+    _libraryFlag = data?.text_value === 'true';
+  } catch {
+    _libraryFlag = false;
+  }
+  return _libraryFlag;
+}
+
+export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddModdalar, teacherId, libraries, selectedLibraryId, onSelectLibrary, saveLibrary, onSaveLibraryChange, onDeleteLibrary, libraryError }: SourcesBlockProps) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState<'url' | 'text' | 'file' | null>(null);
+  const [libraryEnabled, setLibraryEnabled] = useState(false);
+  const [showLibraryList, setShowLibraryList] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchLibraryFlag().then(setLibraryEnabled);
+  }, []);
 
   const atLimit = sources.length >= MAX_SOURCES;
   const hasLinkedModdalar = linkedModdalar && linkedModdalar.length > 0 && onAddModdalar;
   const roomForModdalar = MAX_SOURCES - sources.length >= (linkedModdalar?.length || 0);
+
+  const usingLibrary = !!selectedLibraryId;
+  const hasLibraries = libraries && libraries.length > 0;
 
   return (
     <div className="rounded-xl border border-gray-200/80 bg-gray-50/50 overflow-hidden">
@@ -74,6 +107,88 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
         style={{ maxHeight: open ? '3000px' : '0px', opacity: open ? 1 : 0 }}
       >
         <div className="px-3 pb-3 space-y-2">
+          {/* ── Saqlangan manbalar (library) ── */}
+          {libraryEnabled && (hasLibraries || usingLibrary) && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-2 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <Library className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                <span className="text-[11px] font-bold text-blue-700">Saqlangan manbalar</span>
+              </div>
+              {usingLibrary && (() => {
+                const lib = libraries?.find(l => l.id === selectedLibraryId);
+                return (
+                  <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-blue-200">
+                    <Check className="h-3 w-3 text-blue-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-700 truncate">{lib?.title || 'Tanlangan to\'plam'}</p>
+                      <p className="text-[10px] text-gray-400">{lib?.source_count || 0} ta manba</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onSelectLibrary?.(null)}
+                      className="shrink-0 p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      aria-label="To'plamni olib tashlash"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })()}
+              {!usingLibrary && hasLibraries && (
+                <button
+                  type="button"
+                  onClick={() => setShowLibraryList(!showLibraryList)}
+                  className="w-full text-[11px] font-bold py-1.5 px-2 rounded-lg border border-blue-200 bg-white text-blue-600 hover:bg-blue-50 transition-colors"
+                  style={{ minHeight: '36px' }}
+                >
+                  {showLibraryList ? 'Yopish' : `To'plam tanlash (${libraries!.length})`}
+                </button>
+              )}
+              {!usingLibrary && showLibraryList && hasLibraries && (
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {libraries!.map((lib) => (
+                    <div key={lib.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-gray-200/80">
+                      <button
+                        type="button"
+                        onClick={() => { onSelectLibrary?.(lib.id); setShowLibraryList(false); }}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <p className="text-xs font-bold text-gray-700 truncate">{lib.title}</p>
+                        <p className="text-[10px] text-gray-400">{lib.source_count} ta manba</p>
+                      </button>
+                      {confirmDeleteId === lib.id ? (
+                        <div className="flex gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => { onDeleteLibrary?.(lib.id); setConfirmDeleteId(null); }}
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500 text-white hover:bg-red-600"
+                          >Ha</button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-gray-200 text-gray-500"
+                          >Yo'q</button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(lib.id)}
+                          className="shrink-0 p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          aria-label={`'${lib.title}' to'plamini o'chirish`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {libraryError && (
+                <p className="text-[10px] text-red-500">{libraryError}</p>
+              )}
+            </div>
+          )}
+
           {sources.length > 0 && (
             <div className="space-y-1.5">
               {sources.map((s, i) => (
@@ -82,7 +197,7 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
             </div>
           )}
 
-          {adding === null && !atLimit && (
+          {adding === null && !atLimit && !usingLibrary && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                 <button
@@ -171,6 +286,19 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
           <p className="text-[10px] text-gray-400 leading-relaxed">
             Manba qo'shsangiz, AI javob faqat shu manbalarga tayanadi. Qo'shmasangiz, umumiy qonunlar bazasidan foydalaniladi.
           </p>
+
+          {/* ── Yangi to'plam sifatida saqlash checkbox ── */}
+          {libraryEnabled && !usingLibrary && sources.length > 0 && onSaveLibraryChange && (
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={saveLibrary || false}
+                onChange={e => onSaveLibraryChange(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-blue-500 focus:ring-blue-400"
+              />
+              <span className="text-[10px] text-gray-500">Bu manbalarni keyingi kazuslar uchun saqlash</span>
+            </label>
+          )}
         </div>
       </div>
     </div>
@@ -230,7 +358,7 @@ function SourceRow({ source, onRemove }: { source: SourceItem; onRemove: () => v
         type="button"
         onClick={onRemove}
         className="shrink-0 p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-        aria-label={`"${source.title}" manbasini o'chirish`}
+        aria-label={`'${source.title}' manbasini o'chirish`}
       >
         <X className="h-3.5 w-3.5" />
       </button>

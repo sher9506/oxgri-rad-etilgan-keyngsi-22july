@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse")
       .eq("id", id)
       .maybeSingle();
 
@@ -156,24 +156,83 @@ Deno.serve(async (req: Request) => {
       } else if (remoteStatus === "error" || remoteStatus === "failed") {
         newStatus = "error";
         const rawErr = typeof serviceData.error === "string" ? serviceData.error : "Tashqi xizmat xatosi";
-        // Fayl manbasi bilan bog'liq xato bo'lsa, aniq xabar ko'rsatish
-        const { data: jobFiles } = await supabaseAdmin
-          .from("case_answer_jobs")
-          .select("source_file_paths")
-          .eq("id", id)
-          .maybeSingle();
-        const hasFilePaths = Array.isArray(jobFiles?.source_file_paths)
-          ? jobFiles.source_file_paths.length > 0
-          : (typeof jobFiles?.source_file_paths === 'string' && JSON.parse(jobFiles.source_file_paths).length > 0);
-        if (hasFilePaths && /manba|havola|url|source|open|read|fetch/i.test(rawErr)) {
-          errorMsg = "Faylni o'qib bo'lmadi. Boshqa fayl yuklab ko'ring yoki matnini \u00ab+ Matn\u00bb orqali qo'shing.";
+        const errorCode = typeof serviceData.error_code === "string" ? serviceData.error_code : "";
+
+        // library_missing — saqlangan to'plam o'chirilgan yoki topilmagan
+        if (errorCode === "library_missing") {
+          errorMsg = "Saqlangan manbalar topilmadi. Manbalarni qayta qo'shing.";
+          // library_id'ni o'chirib qo'yamiz ki UI library seçimni tozlasin
+          if (job.library_id) {
+            try {
+              await supabaseAdmin
+                .from("answer_source_libraries")
+                .delete()
+                .eq("id", job.library_id);
+            } catch { /* ignore */ }
+          }
         } else {
-          errorMsg = "AI javob tayyorlanmadi. Keyinroq urinib ko'ring.";
+          // Fayl manbasi bilan bog'liq xato bo'lsa, aniq xabar ko'rsatish
+          const { data: jobFiles } = await supabaseAdmin
+            .from("case_answer_jobs")
+            .select("source_file_paths")
+            .eq("id", id)
+            .maybeSingle();
+          const hasFilePaths = Array.isArray(jobFiles?.source_file_paths)
+            ? jobFiles.source_file_paths.length > 0
+            : (typeof jobFiles?.source_file_paths === 'string' && JSON.parse(jobFiles.source_file_paths).length > 0);
+          if (hasFilePaths && /manba|havola|url|source|open|read|fetch/i.test(rawErr)) {
+            errorMsg = "Faylni o'qib bo'lmadi. Boshqa fayl yuklab ko'ring yoki matnini \u00ab+ Matn\u00bb orqali qo'shing.";
+          } else {
+            errorMsg = "AI javob tayyorlanmadi. Keyinroq urinib ko'ring.";
+          }
         }
       } else if (remoteStatus === "running" || remoteStatus === "processing") {
         newStatus = "running";
       } else if (remoteStatus === "queued" || remoteStatus === "pending") {
         newStatus = "queued";
+      }
+
+      // ── Saqlangan to'plamni yangilash (save_library) ──
+      // Agar ish muvaffaqiyatli bo'lsa va library_id bog'langan bo'lsa:
+      // - creating status'dagi qatorni ready ga o'tkazamiz
+      // - notebook_id va profile ni saqlaymiz (main.py keep=True qaytargan)
+      if (newStatus === "done" && job.library_id && !job.is_library_reuse) {
+        const keptNotebookId = typeof serviceData.notebook_id === "string" ? serviceData.notebook_id : "";
+        const keptProfile = typeof serviceData.profile === "string" ? serviceData.profile : "";
+        if (keptNotebookId && keptProfile) {
+          try {
+            await supabaseAdmin
+              .from("answer_source_libraries")
+              .update({
+                status: "ready",
+                notebook_id: keptNotebookId,
+                profile: keptProfile,
+                last_used_at: new Date().toISOString(),
+              })
+              .eq("id", job.library_id);
+          } catch (libErr) {
+            console.error("[case-answer-status] Library yangilash xatosi:", libErr);
+          }
+        } else {
+          // notebook_id/profile kelmadi — creating qatorni o'chiramiz
+          try {
+            await supabaseAdmin
+              .from("answer_source_libraries")
+              .delete()
+              .eq("id", job.library_id)
+              .eq("status", "creating");
+          } catch { /* ignore */ }
+        }
+      }
+
+      // ── Reuse holatida last_used_at yangilash ──
+      if (newStatus === "done" && job.library_id && job.is_library_reuse) {
+        try {
+          await supabaseAdmin
+            .from("answer_source_libraries")
+            .update({ last_used_at: new Date().toISOString() })
+            .eq("id", job.library_id);
+        } catch { /* ignore */ }
       }
 
       // Persist the updated state
@@ -217,6 +276,8 @@ Deno.serve(async (req: Request) => {
           answer: answer !== null ? sanitizeAnswer(answer) : null,
           error: errorMsg,
           applied: job.applied ?? false,
+          library_id: job.library_id || null,
+          is_library_reuse: job.is_library_reuse || false,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

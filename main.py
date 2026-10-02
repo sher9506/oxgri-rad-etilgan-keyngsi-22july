@@ -8,6 +8,7 @@ Ishga tushirish (lokal):
 Ish tartibi:
     POST /api/jobs        -> darhol job_id qaytaradi (navbatga qo'yadi)
     GET  /api/jobs/{id}   -> holat: queued | running | done | error
+    DELETE /api/notebooks/{profile}/{notebook_id} -> saqlangan daftarni o'chiradi
 """
 import asyncio
 import base64
@@ -61,6 +62,7 @@ AUTH_REFRESH_HOURS = float(os.environ.get("NLM_AUTH_REFRESH_HOURS", "6"))  # 0 =
 NLM = shutil.which("notebooklm") or "notebooklm"
 UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 UMUMIY_IDS = {a["umumiy"] for a in ACCOUNTS}
+ACCOUNT_PROFILES = {a["profile"] for a in ACCOUNTS}
 
 DEFAULT_PROMPT = (
     "Siz professional O'zbekiston huquqshunosisiz. "
@@ -107,6 +109,9 @@ SOURCE_FAIL_TEXT_MSG = "Manbalardan ba'zilarini qo'shib bo'lmadi. Qayta urinib k
 TRANSIENT_WORDS = ("429", "rate", "quota", "limit", "timeout", "timed out", "temporar", "503", "500", "unavailable")
 AUTH_WORDS = ("auth", "login", "expired", "401", "403", "unauthorized", "sign in", "cookie")
 
+# Yangi suhbat boshlash uchun prefix (qayta ishlatiladigan daftarda oldingi kazus aralashmasin)
+NEW_CASE_PREFIX = "Bu yangi kazus. Oldingi savol-javoblarni hisobga olma.\n\n"
+
 
 class NlmError(Exception):
     pass
@@ -134,6 +139,8 @@ JOBS_LOCK = threading.Lock()
 QUEUE: "queue.Queue[str]" = queue.Queue()
 
 UMUMIY_LOCKS = {a["profile"]: threading.Lock() for a in ACCOUNTS}   # umumiy chatda javoblar aralashmasin
+NOTEBOOK_LOCKS: dict[str, threading.Lock] = {}   # daftar ID bo'yicha qulf (qayta ishlatiladigan daftar uchun)
+NOTEBOOK_LOCKS_GUARD = threading.Lock()
 GAP_LOCKS = {a["profile"]: threading.Lock() for a in ACCOUNTS}
 REFRESH_LOCKS = {a["profile"]: threading.Lock() for a in ACCOUNTS}
 LAST_CALL = {a["profile"]: 0.0 for a in ACCOUNTS}
@@ -141,6 +148,13 @@ STATS = {
     a["profile"]: {"email": a["email"], "ok": 0, "fail": 0, "auth_ok": True, "last_error": None, "last_refresh": None}
     for a in ACCOUNTS
 }
+
+
+def get_notebook_lock(nid: str) -> threading.Lock:
+    with NOTEBOOK_LOCKS_GUARD:
+        if nid not in NOTEBOOK_LOCKS:
+            NOTEBOOK_LOCKS[nid] = threading.Lock()
+        return NOTEBOOK_LOCKS[nid]
 
 
 # ───────────────────────── CLI YORDAMCHILARI ─────────────────────────
@@ -320,7 +334,7 @@ def delete_notebook(profile: str, nid: str) -> bool:
             nlm(profile, *args, timeout=60, stdin="y\n")
             return True
         except NlmError as e:
-            print(f"[delete] {profile} {nid}: {e}")
+            print(f"[delete] {profile} ...{nid[-6:]}: {e}")
     return False
 
 
@@ -423,14 +437,56 @@ def wait_sources_ready(p: str, nid: str, max_wait: int = 180) -> None:
         time.sleep(5)
 
 
+def ask_in_notebook(p: str, nid: str, prompt: str, reuse: bool, custom: bool) -> str:
+    """Daftarga savol beradi. reuse=True bo'lsa, yangi suhbat boshlashga harakat qiladi."""
+    if reuse:
+        # Birinchi urinish: CLI'ning --new bayrog'i bilan (destruktiv: oldingi suhbatni o'chiradi)
+        try:
+            return with_retry(lambda: nlm(p, "ask", "--notebook", nid, "--new", "--yes", prompt, timeout=420))
+        except NlmError as e:
+            low = str(e).lower()
+            if "unrecognized" in low or "unknown" in low or "invalid" in low or "no such" in low or "usage" in low:
+                # CLI --new bayrog'ini qabul qilmadi — bayroqsiz yuboramiz, savol boshiga prefix qo'shamiz
+                print(f"[ask] {p} ...{nid[-6:]}: --new rad etildi, prefix bilan yuboriladi")
+                prefixed = NEW_CASE_PREFIX + prompt
+                return with_retry(lambda: nlm(p, "ask", "--notebook", nid, prefixed, timeout=420))
+            raise
+    elif custom:
+        return with_retry(lambda: nlm(p, "ask", "--notebook", nid, prompt, timeout=420))
+    else:
+        with UMUMIY_LOCKS[p]:
+            return with_retry(lambda: nlm(p, "ask", "--notebook", nid, prompt, timeout=420))
+
+
 def run_job(job: dict, acc: dict) -> dict:
     p = acc["profile"]
     req: KazusRequest = job["req"]
     nid = acc["umumiy"]
     custom = False
+    reuse = False
+    keep = req.keep
     try:
+        if req.notebook_id:
+            # ── Qayta ishlatish yo'li: mavjud daftarni ishlatamiz ──
+            if not UUID_RE.fullmatch(req.notebook_id):
+                raise NlmError(f"daftar ID shakli noto'g'ri: {req.notebook_id[:20]}")
+            if req.notebook_id in UMUMIY_IDS:
+                raise NlmError("umumiy daftar qayta ishlatib bo'lmaydi")
+            nid = req.notebook_id
+            custom = True
+            reuse = True
+            # Daftar qulfi: bir vaqtda bitta savol
+            nlock = get_notebook_lock(nid)
+            with nlock:
+                prompt = build_prompt(req)
+                raw = ask_in_notebook(p, nid, prompt, reuse=True, custom=True)
+            result = {"answer": clean_answer(raw, custom), "notebook_type": "reuse", "notebook_id": nid}
+            if keep:
+                result["kept"] = True
+            return result
+
         if req.sources:
-            out = with_retry(lambda: nlm(p, "create", f"Kazus: {req.title}"[:80], timeout=120))
+            out = with_retry(lambda: nlm(p, "create", f"Manba: {req.library_title or req.title}"[:80], timeout=120))
             m = UUID_RE.search(out)
             if not m:
                 raise NlmError(f"daftar ID topilmadi: {out[:200]}")
@@ -440,15 +496,21 @@ def run_job(job: dict, acc: dict) -> dict:
             wait_sources_ready(p, nid)
 
         prompt = build_prompt(req)
-        ask = lambda: nlm(p, "ask", "--notebook", nid, prompt, timeout=420)
-        if custom:
-            raw = with_retry(ask)
-        else:
-            with UMUMIY_LOCKS[p]:   # umumiy chat: bir vaqtda bitta savol
-                raw = with_retry(ask)
-        return {"answer": clean_answer(raw, custom), "notebook_type": "custom_new" if custom else "umumiy", "notebook_id": nid}
+        raw = ask_in_notebook(p, nid, prompt, reuse=False, custom=custom)
+        result = {"answer": clean_answer(raw, custom), "notebook_type": "custom_new" if custom else "umumiy", "notebook_id": nid}
+        if keep:
+            result["kept"] = True
+            result["profile"] = p
+        return result
+    except NlmError as e:
+        low = str(e).lower()
+        # Daftar topilmasa (o'chirilgan, ID xato)
+        if reuse and any(k in low for k in ("not found", "no such", "does not exist", "404", "not exist")):
+            raise NlmError("library_missing")
+        raise
     finally:
-        if custom:
+        # keep=True bo'lsa daftarni o'chirmaymiz (reuse yo'lida ham)
+        if custom and not keep:
             delete_notebook(p, nid)
 
 
@@ -464,25 +526,46 @@ def worker(acc: dict):
             QUEUE.put(job_id)
             time.sleep(1)
             continue
+        # profile-locked ish: faqat shu akkaunt bajaradi, boshqasi qaytaradi
+        req: KazusRequest = job["req"]
+        if req.profile and req.profile != p:
+            QUEUE.put(job_id)
+            time.sleep(1)
+            continue
         job.update(status="running", account=acc["email"], started=time.time())
         try:
             res = run_job(job, acc)
             job.update(status="done", finished=time.time(), **res)
             STATS[p]["ok"] += 1
             STATS[p]["auth_ok"] = True
+            short_nid = res.get("notebook_id", "")[-6:]
+            kept_flag = res.get("kept", False)
+            reuse_flag = res.get("notebook_type") == "reuse"
+            print(f"[job {job_id}] {p}: done kept={kept_flag} reuse={reuse_flag} nid=...{short_nid}")
         except AuthError as e:
             STATS[p].update(auth_ok=False, last_error=str(e)[:200])
             STATS[p]["fail"] += 1
             job["tried"].add(p)
-            if len(job["tried"]) < len(ACCOUNTS):
+            # profile-locked ishda auth xatosi: boshqa akkauntga O'TKAZMA qilmaymiz
+            if req.profile:
+                job.update(status="error", finished=time.time(),
+                           error="AI xizmatiga ulanib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
+            elif len(job["tried"]) < len(ACCOUNTS):
                 job["status"] = "queued"
                 QUEUE.put(job_id)
             else:
-                job.update(status="error", finished=time.time(), error="AI xizmatiga ulanib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
+                job.update(status="error", finished=time.time(),
+                           error="AI xizmatiga ulanib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
         except Exception as e:  # noqa: BLE001
             STATS[p]["fail"] += 1
             STATS[p]["last_error"] = str(e)[:200]
             print(f"[job {job_id}] {p}: {e}")   # xom xato faqat serverda (ustozga ko'rsatilmaydi)
+            # library_missing — maxsus xato kodi
+            if str(e) == "library_missing":
+                job.update(status="error", finished=time.time(),
+                           error="Saqlangan manbalar topilmadi. Manbalarni qayta qo'shing.",
+                           error_code="library_missing")
+                return
             user_msg = getattr(e, "user_msg", None) or "Javob tayyorlanmadi. Qayta urinib ko'ring."
             job.update(status="error", finished=time.time(), error=user_msg)
 
@@ -548,6 +631,26 @@ class KazusRequest(BaseModel):
     sources: List[Source] = []
     instruction: Optional[str] = Field(default=None, max_length=4000)  # {kazus} joy belgisi bilan
     external_id: Optional[str] = Field(default=None, max_length=100)   # FanFaster jadvalidagi ID
+    # ── Saqlangan manbalar (library) uchun yangi maydonlar ──
+    notebook_id: Optional[str] = Field(default=None)   # qayta ishlatiladigan daftar UUID'si
+    profile: Optional[str] = Field(default=None)        # qaysi akkaunt daftari
+    keep: bool = Field(default=False)                   # daftarni saqlab qolish (o'chirmaslik)
+    library_title: Optional[str] = Field(default=None, max_length=80)  # saqlanadigan to'plam nomi
+
+    @model_validator(mode="after")
+    def _check_library(self):
+        if self.notebook_id:
+            if not UUID_RE.fullmatch(self.notebook_id):
+                raise ValueError("notebook_id UUID shaklida bo'lishi kerak")
+            if self.notebook_id in UMUMIY_IDS:
+                raise ValueError("notebook_id umumiy daftar bo'la olmaydi")
+            if self.sources:
+                raise ValueError("notebook_id berilganda sources bo'sh bo'lishi kerak")
+            if not self.profile:
+                raise ValueError("notebook_id berilganda profile majburiy")
+            if self.profile not in ACCOUNT_PROFILES:
+                raise ValueError("profile noto'g'ri")
+        return self
 
 
 def require_key(x_api_key: str = Header(default="")):
@@ -575,7 +678,7 @@ app = FastAPI(title="FanFaster NotebookLM API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["X-API-Key", "Content-Type"],
 )
 
@@ -591,9 +694,10 @@ def create_job(req: KazusRequest):
             "external_id": req.external_id,
         }
     QUEUE.put(job_id)
-    # diagnostika: Bolt manbalarni yuboryaptimi? (Render Logs'da ko'rinadi, matn chiqarilmaydi)
+    # diagnostika: daftar ID'ning oxirgi 6 belgisi va kept/reuse belgisi
+    short_nid = req.notebook_id[-6:] if req.notebook_id else "-"
     kinds = [("url" if (x.url or URL_ONLY_RE.match((x.content or "").strip())) else f"text:{len(x.content or '')}") for x in req.sources]
-    print(f"[create] job={job_id} sources={len(req.sources)} {kinds}")
+    print(f"[create] job={job_id} sources={len(req.sources)} kept={req.keep} reuse={'yes' if req.notebook_id else 'no'} nid=...{short_nid} {kinds}")
     return {"job_id": job_id, "status": "queued", "queue_size": QUEUE.qsize()}
 
 
@@ -608,10 +712,31 @@ def get_job(job_id: str):
         "external_id": job.get("external_id"),
         "answer": job.get("answer"),
         "error": job.get("error"),
+        "error_code": job.get("error_code"),
         "notebook_type": job.get("notebook_type"),
         "used_account": job.get("account"),
+        "kept": job.get("kept", False),
+        "notebook_id": job.get("notebook_id"),
+        "profile": job.get("profile"),
         "elapsed_sec": round((job.get("finished") or time.time()) - job["created"], 1),
     }
+
+
+@app.delete("/api/notebooks/{profile}/{notebook_id}", dependencies=[Depends(require_key)])
+def delete_saved_notebook(profile: str, notebook_id: str):
+    """Saqlangan daftarni o'chiradi. Umumiy daftarlar o'chirilmaydi."""
+    if profile not in ACCOUNT_PROFILES:
+        raise HTTPException(400, "Profil noto'g'ri")
+    if not UUID_RE.fullmatch(notebook_id):
+        raise HTTPException(400, "ID shakli noto'g'ri")
+    if notebook_id in UMUMIY_IDS:
+        raise HTTPException(403, "Bu daftarni o'chirish mumkin emas")
+    # Daftar allaqachon yo'q bo'lsa ham muvaffaqiyat deb hisoblaymiz
+    try:
+        delete_notebook(profile, notebook_id)
+    except Exception as e:
+        print(f"[delete_endpoint] {profile} ...{notebook_id[-6:]}: {e}")
+    return {"status": "ok"}
 
 
 @app.get("/api/stats", dependencies=[Depends(require_key)])

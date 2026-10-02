@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Scale, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Loader2, MessageSquare, Star, Eye, ChevronLeft, Award, RotateCw, AlertCircle, ArrowRight, Search, ChevronDown, SlidersHorizontal, FolderOpen, BookMarked, RefreshCw, CheckCircle, Clock, XCircle, Sparkles } from 'lucide-react';
 import { SourcesBlock } from './SourcesBlock';
-import type { SourceItem } from '@/hooks/useAiAnswerJob';
+import type { SourceItem, LibraryItem } from '@/hooks/useAiAnswerJob';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
@@ -129,6 +129,10 @@ export default function MootCourtUstoz() {
   const [showAiConfirm, setShowAiConfirm] = useState(false);
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [sourcesSaved, setSourcesSaved] = useState(true);
+  const [libraries, setLibraries] = useState<LibraryItem[]>([]);
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
+  const [saveLibrary, setSaveLibrary] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [showNewAnswerBanner, setShowNewAnswerBanner] = useState(false);
   const [draftKey] = useState(() => `moot_draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   const namunaviyRef = useRef<HTMLTextAreaElement>(null);
@@ -262,6 +266,9 @@ export default function MootCourtUstoz() {
     setNamunaviyJavob('');
     setSources([]);
     setSourcesSaved(true);
+    setSelectedLibraryId(null);
+    setSaveLibrary(false);
+    setLibraryError(null);
     setShowNewAnswerBanner(false);
     setEditingCase(null);
     try { localStorage.removeItem(`mc_sources_${draftKey}`); } catch { /* ignore */ }
@@ -409,7 +416,13 @@ export default function MootCourtUstoz() {
       toast({ title: 'Kazus matni juda uzun', description: 'Kazus matni 12000 belgidan oshmasligi kerak', variant: 'destructive' });
       return;
     }
-    await aiAnswer.submitJob(caseId, title, kazusText, user.ustoz_id, sources);
+    setLibraryError(null);
+    const options = selectedLibraryId
+      ? { libraryId: selectedLibraryId }
+      : saveLibrary
+      ? { saveLibrary: true, libraryTitle: sources[0]?.title || title }
+      : undefined;
+    await aiAnswer.submitJob(caseId, title, kazusText, user.ustoz_id, sources, options);
   };
 
   const handleAiAnswerRetry = async (caseId: string, title: string, kazusText: string) => {
@@ -418,7 +431,13 @@ export default function MootCourtUstoz() {
       toast({ title: 'Avval kazus vaziyatini yozing', variant: 'destructive' });
       return;
     }
-    await aiAnswer.retry(caseId, title, kazusText, user.ustoz_id, sources);
+    setLibraryError(null);
+    const options = selectedLibraryId
+      ? { libraryId: selectedLibraryId }
+      : saveLibrary
+      ? { saveLibrary: true, libraryTitle: sources[0]?.title || title }
+      : undefined;
+    await aiAnswer.retry(caseId, title, kazusText, user.ustoz_id, sources, options);
   };
 
   // Restore AI answer job states when cases load
@@ -491,6 +510,26 @@ export default function MootCourtUstoz() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showForm, editingCase]);
+
+  // Fetch saved source libraries when form opens
+  useEffect(() => {
+    if (showForm && user?.ustoz_id) {
+      aiAnswer.fetchLibraries(user.ustoz_id).then(setLibraries);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, user?.ustoz_id]);
+
+  // Handle library_full error from job state
+  useEffect(() => {
+    if (!editingCase) return;
+    const js = aiAnswer.jobStates[editingCase.id];
+    if (js?.libraryFull && js.libraries) {
+      setLibraries(js.libraries);
+      setLibraryError(js.error || 'Saqlangan manbalar soni 20 ga yetdi.');
+      setSaveLibrary(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiAnswer.jobStates, editingCase]);
 
   const addTomon = () => {
     const t = tomonInput.trim();
@@ -920,6 +959,23 @@ export default function MootCourtUstoz() {
                 onAdd={handleAddSource}
                 onRemove={handleRemoveSource}
                 teacherId={user?.ustoz_id}
+                libraries={libraries}
+                selectedLibraryId={selectedLibraryId}
+                onSelectLibrary={(id) => { setSelectedLibraryId(id); setLibraryError(null); }}
+                saveLibrary={saveLibrary}
+                onSaveLibraryChange={setSaveLibrary}
+                onDeleteLibrary={async (id) => {
+                  if (!user?.ustoz_id) return;
+                  const ok = await aiAnswer.deleteLibrary(id, user.ustoz_id);
+                  if (ok) {
+                    setLibraries(prev => prev.filter(l => l.id !== id));
+                    if (selectedLibraryId === id) setSelectedLibraryId(null);
+                    toast({ title: 'To\'plam o\'chirildi' });
+                  } else {
+                    toast({ title: 'O\'chirib bo\'lmadi', variant: 'destructive' });
+                  }
+                }}
+                libraryError={libraryError}
                 linkedModdalar={(editingCase?.tasdiqlangan_moddalar || []).map((m: any) => ({
                   modda: m.modda_raqami || m.modda || '',
                   qonun: m.qonun_nomi || m.bob_nomi || m.sarlavha || '',

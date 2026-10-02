@@ -15,6 +15,19 @@ export interface AnswerJobState {
   jobId: string | null;
   applied: boolean;
   sourceCount: number;
+  libraryId?: string | null;
+  isLibraryReuse?: boolean;
+  libraryFull?: boolean;
+  libraries?: LibraryItem[];
+}
+
+export interface LibraryItem {
+  id: string;
+  title: string;
+  source_count: number;
+  sources: { name: string; size: number }[];
+  last_used_at: string | null;
+  created_at: string;
 }
 
 export interface ServiceSource {
@@ -149,6 +162,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
             answer: data.answer,
             error: null,
             applied: data.applied ?? false,
+            libraryId: data.library_id || null,
+            isLibraryReuse: data.is_library_reuse || false,
           });
         } else if (data.status === 'error') {
           stopPolling(caseId);
@@ -175,7 +190,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     title: string,
     kazusText: string,
     ustoz: string,
-    sources?: SourceItem[]
+    sources?: SourceItem[],
+    options?: { libraryId?: string; saveLibrary?: boolean; libraryTitle?: string }
   ): Promise<void> => {
     if (!ustoz) return;
 
@@ -191,6 +207,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
       jobId: null,
       applied: false,
       sourceCount: sources?.length || 0,
+      libraryFull: false,
+      libraries: undefined,
     });
 
     try {
@@ -200,12 +218,27 @@ export function useAiAnswerJob(ustozId: string | undefined) {
         title,
         ustoz_id: ustoz,
       };
-      payload.sources = buildSourcesPayload(sources || []);
+      if (options?.libraryId) {
+        payload.library_id = options.libraryId;
+      } else {
+        payload.sources = buildSourcesPayload(sources || []);
+        if (options?.saveLibrary) {
+          payload.save_library = true;
+          payload.library_title = options.libraryTitle;
+        }
+      }
       const data = await callEdgeFunction('case-answer-submit', payload);
 
       if (data.id) {
         updateJobState(caseId, { jobId: data.id });
         startPolling(caseId, data.id, ustoz);
+      } else if (data.error_code === 'library_full') {
+        updateJobState(caseId, {
+          status: 'error',
+          error: data.error || 'Saqlangan manbalar soni 20 ga yetdi.',
+          libraryFull: true,
+          libraries: data.libraries,
+        });
       }
     } catch (err) {
       updateJobState(caseId, {
@@ -249,7 +282,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     title: string,
     kazusText: string,
     ustoz: string,
-    sources?: SourceItem[]
+    sources?: SourceItem[],
+    options?: { libraryId?: string; saveLibrary?: boolean; libraryTitle?: string }
   ) => {
     stopPolling(caseId);
     updateJobState(caseId, {
@@ -259,8 +293,10 @@ export function useAiAnswerJob(ustozId: string | undefined) {
       jobId: null,
       applied: false,
       sourceCount: 0,
+      libraryFull: false,
+      libraries: undefined,
     });
-    await submitJob(caseId, title, kazusText, ustoz, sources);
+    await submitJob(caseId, title, kazusText, ustoz, sources, options);
   }, [stopPolling, updateJobState, submitJob]);
 
   // Cleanup on unmount
@@ -271,6 +307,24 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     };
   }, []);
 
+  const fetchLibraries = useCallback(async (ustoz: string): Promise<LibraryItem[]> => {
+    try {
+      const data = await callEdgeFunction('case-library-list', { ustoz_id: ustoz });
+      return data.libraries || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const deleteLibrary = useCallback(async (libraryId: string, ustoz: string): Promise<boolean> => {
+    try {
+      await callEdgeFunction('case-library-delete', { library_id: libraryId, ustoz_id: ustoz });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   return {
     jobStates,
     submitJob,
@@ -278,5 +332,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     restoreJob,
     stopPolling,
     markApplied,
+    fetchLibraries,
+    deleteLibrary,
   };
 }

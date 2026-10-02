@@ -67,6 +67,16 @@ function validateSources(sources: unknown): SourceInput[] {
   return result;
 }
 
+async function getSetting(key: string): Promise<string> {
+  const { data, error } = await supabaseAdmin
+    .from("settings")
+    .select("text_value")
+    .eq("key", key)
+    .maybeSingle();
+  if (error || !data) return "";
+  return data.text_value || "";
+}
+
 async function getAnswerServiceConfig(): Promise<{ url: string; key: string }> {
   const { data, error } = await supabaseAdmin
     .from("settings")
@@ -100,6 +110,9 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const { case_id, kazus_text, title, ustoz_id, sources } = body;
+    const library_id: string | undefined = body.library_id;
+    const save_library: boolean = !!body.save_library;
+    const library_title: string | undefined = body.library_title;
 
     if (!case_id || !kazus_text || !title || !ustoz_id) {
       return new Response(
@@ -111,6 +124,18 @@ Deno.serve(async (req: Request) => {
     if (kazus_text.length > MAX_KAZUS_LENGTH) {
       return new Response(
         JSON.stringify({ error: "Kazus matni 12000 belgidan oshmasligi kerak" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── Library feature flag tekshirish ──
+    const libraryEnabled = await getSetting("answer_library_enabled") === "true";
+    const useLibrary = libraryEnabled && (library_id || save_library);
+
+    // library_id va sources birga kelsa — xato
+    if (useLibrary && library_id && Array.isArray(sources) && sources.length > 0) {
+      return new Response(
+        JSON.stringify({ error: "Yangi manba qo'shish uchun avval tanlangan to'plamni olib tashlang." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -153,6 +178,106 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ── Saqlangan to'plam bilan ish (library_id) ──
+    let libraryNotebookId = "";
+    let libraryProfile = "";
+    let libraryRowId: string | null = null;
+    let creatingLibraryId: string | null = null;
+
+    if (useLibrary && library_id) {
+      const { data: lib, error: libError } = await supabaseAdmin
+        .from("answer_source_libraries")
+        .select("id, teacher_id, notebook_id, profile, status")
+        .eq("id", library_id)
+        .maybeSingle();
+
+      if (libError || !lib) {
+        return new Response(
+          JSON.stringify({ error: "Saqlangan to'plam topilmadi." }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (lib.teacher_id !== ustoz_id) {
+        return new Response(
+          JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      libraryNotebookId = lib.notebook_id;
+      libraryProfile = lib.profile;
+      libraryRowId = lib.id;
+    }
+
+    // ── Yangi to'plam saqlash (save_library) ──
+    if (useLibrary && save_library && !library_id && validSources.length > 0) {
+      // Ustozning mavjud to'plamlari sonini tekshirish (limit 20)
+      const { count, error: countError } = await supabaseAdmin
+        .from("answer_source_libraries")
+        .select("id", { count: "exact", head: true })
+        .eq("teacher_id", ustoz_id)
+        .in("status", ["creating", "ready"]);
+
+      if (countError) {
+        console.error("[case-answer-submit] To'plam sonini olish xatosi:", countError.message);
+      } else if ((count ?? 0) >= 20) {
+        // 20 ga yetgan — ish yuborilmaydi, library_full qaytadi
+        const { data: libs } = await supabaseAdmin
+          .from("answer_source_libraries")
+          .select("id, title, sources, created_at, last_used_at")
+          .eq("teacher_id", ustoz_id)
+          .in("status", ["creating", "ready"])
+          .order("last_used_at", { ascending: true, nullsFirst: true });
+
+        const libList = (libs || []).map((row) => {
+          const srcs = Array.isArray(row.sources) ? row.sources : [];
+          return {
+            id: row.id,
+            title: row.title,
+            source_count: srcs.length,
+            sources: srcs.map((s: Record<string, unknown>) => ({ name: s.name ?? s.title ?? "", size: s.size ?? 0 })),
+            last_used_at: row.last_used_at,
+            created_at: row.created_at,
+          };
+        });
+
+        return new Response(
+          JSON.stringify({
+            error: "Saqlangan manbalar soni 20 ga yetdi. Yangisini saqlash uchun birini o'chiring.",
+            error_code: "library_full",
+            libraries: libList,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // status='creating' qator yaratish
+      const libTitle = (library_title || validSources[0]?.title || "Manba").slice(0, 80);
+      const sourcesPreview = validSources.map((s) => ({
+        name: s.title || "Manba",
+        type: s.type,
+        size: s.fileSize || (s.content ? s.content.length : 0),
+      }));
+
+      const { data: newLib, error: newLibError } = await supabaseAdmin
+        .from("answer_source_libraries")
+        .insert({
+          teacher_id: ustoz_id,
+          title: libTitle,
+          sources: JSON.stringify(sourcesPreview),
+          status: "creating",
+        })
+        .select("id")
+        .single();
+
+      if (newLibError || !newLib) {
+        console.error("[case-answer-submit] To'plam yaratilmadi:", newLibError?.message);
+      } else {
+        creatingLibraryId = newLib.id;
+      }
     }
 
     const { url: ANSWER_SERVICE_URL, key: ANSWER_SERVICE_KEY } = await getAnswerServiceConfig();
@@ -237,6 +362,15 @@ Deno.serve(async (req: Request) => {
         instruction,
         sources: serviceSources,
       };
+
+      // Library fieldlarini qo'shish
+      if (useLibrary && library_id && libraryNotebookId) {
+        serviceBody.notebook_id = libraryNotebookId;
+        serviceBody.profile = libraryProfile;
+      } else if (useLibrary && save_library && creatingLibraryId) {
+        serviceBody.keep = true;
+        serviceBody.library_title = (library_title || validSources[0]?.title || "Manba").slice(0, 80);
+      }
       console.log(`[case-answer-submit] Tashqi xizmatga yuborilmoqda: external_id=${jobId}, sources=${serviceSources.length}`);
       const serviceRes = await fetch(`${ANSWER_SERVICE_URL}/api/jobs`, {
         method: "POST",
@@ -308,6 +442,17 @@ Deno.serve(async (req: Request) => {
       .update({ service_job_id: serviceJobId, status: "queued" })
       .eq("id", jobId);
 
+    // Library ma'lumotlarini job qatoriga saqlash (status polling uchun)
+    if (creatingLibraryId || libraryRowId) {
+      await supabaseAdmin
+        .from("case_answer_jobs")
+        .update({
+          library_id: creatingLibraryId || libraryRowId,
+          is_library_reuse: !!library_id,
+        })
+        .eq("id", jobId);
+    }
+
     return new Response(
       JSON.stringify({ id: jobId }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -320,4 +465,5 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
 
