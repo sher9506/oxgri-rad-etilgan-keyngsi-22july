@@ -102,13 +102,22 @@ function getBackendUrl(cfg: BackendConfig, backend: number): string {
   return cfg.url;
 }
 
+// Faol statuslar: queued (navbatda) va running (bajarilmoqda).
+// done/error — yakunlangan, hisobga kirmaydi.
+const ACTIVE_STATUSES = ["queued", "running"];
+// 10 daqiqadan eski, hali yakunlanmagan ishlar qotib qolgan deb hisoblanadi — sanalmaydi.
+const STALE_MS = 10 * 60 * 1000;
+
 async function pickBackend(cfg: BackendConfig): Promise<number> {
   if (!cfg.url2) return 1;
 
+  const cutoff = new Date(Date.now() - STALE_MS).toISOString();
+
   const { data, error } = await supabaseAdmin
     .from("case_answer_jobs")
-    .select("backend")
-    .in("status", ["queued", "running"]);
+    .select("backend, created_at")
+    .in("status", ACTIVE_STATUSES)
+    .gte("created_at", cutoff);
 
   if (error || !data) return 1;
 
