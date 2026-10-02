@@ -15,7 +15,7 @@ const MAX_KAZUS_LENGTH = 12000;
 const MAX_SOURCES = 18;
 const MAX_SOURCE_TEXT_LENGTH = 100000;
 const MAX_SOURCE_TITLE_LENGTH = 120;
-const SIGNED_URL_EXPIRY = 3600; // 60 daqiqa — imzolangan havola muddati
+const SIGNED_URL_EXPIRY = 3600;
 const STORAGE_BUCKET = "case-sources";
 
 interface SourceInput {
@@ -54,12 +54,9 @@ function validateSources(sources: unknown): SourceInput[] {
     } else if (type === 'file') {
       const storagePath = typeof s.storagePath === 'string' ? s.storagePath : '';
       const content = typeof s.content === 'string' ? s.content : '';
-      // File with storagePath (new mode) — no text needed
       if (storagePath) {
         result.push({ type: 'file', title, storagePath, fileKind: typeof s.fileKind === 'string' ? s.fileKind : '', fileSize: typeof s.fileSize === 'number' ? s.fileSize : 0 });
-      }
-      // File with content (old mode — text extracted in browser)
-      else if (content.trim() && content.length >= MIN_SOURCE_TEXT_LENGTH) {
+      } else if (content.trim() && content.length >= MIN_SOURCE_TEXT_LENGTH) {
         result.push({ type: 'file', title, content });
       }
     }
@@ -77,17 +74,59 @@ async function getSetting(key: string): Promise<string> {
   return data.text_value || "";
 }
 
-async function getAnswerServiceConfig(): Promise<{ url: string; key: string }> {
+interface BackendConfig {
+  url: string;
+  key: string;
+  url2: string;
+}
+
+async function getAnswerServiceConfig(): Promise<BackendConfig> {
   const { data, error } = await supabaseAdmin
     .from("settings")
     .select("key, text_value")
-    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY"]);
-  if (error || !data) return { url: "", key: "" };
+    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY", "ANSWER_SERVICE_URL_2"]);
+  if (error || !data) return { url: "", key: "", url2: "" };
   const map: Record<string, string> = {};
   for (const row of data) {
     if (row.text_value) map[row.key] = row.text_value;
   }
-  return { url: map["ANSWER_SERVICE_URL"] || "", key: map["ANSWER_SERVICE_KEY"] || "" };
+  return {
+    url: map["ANSWER_SERVICE_URL"] || "",
+    key: map["ANSWER_SERVICE_KEY"] || "",
+    url2: (map["ANSWER_SERVICE_URL_2"] || "").trim(),
+  };
+}
+
+function getBackendUrl(cfg: BackendConfig, backend: number): string {
+  if (backend === 2 && cfg.url2) return cfg.url2;
+  return cfg.url;
+}
+
+async function pickBackend(cfg: BackendConfig): Promise<number> {
+  if (!cfg.url2) return 1;
+
+  const { data, error } = await supabaseAdmin
+    .from("case_answer_jobs")
+    .select("backend")
+    .in("status", ["queued", "running"]);
+
+  if (error || !data) return 1;
+
+  let count1 = 0;
+  let count2 = 0;
+  let lastBackend = 1;
+
+  for (const row of data) {
+    const b = row.backend ?? 1;
+    if (b === 2) count2++;
+    else count1++;
+    lastBackend = b;
+  }
+
+  if (count1 < count2) return 1;
+  if (count2 < count1) return 2;
+  // Teng — almashtirib tur
+  return lastBackend === 1 ? 2 : 1;
 }
 
 async function createSignedUrl(path: string): Promise<string | null> {
@@ -100,6 +139,55 @@ async function createSignedUrl(path: string): Promise<string | null> {
     return null;
   }
   return data.signedUrl;
+}
+
+interface ServiceResult {
+  serviceJobId: string | null;
+  errorStatus?: number;
+  errorMsg?: string;
+}
+
+async function sendToBackend(
+  backend: number,
+  cfg: BackendConfig,
+  serviceBody: Record<string, unknown>
+): Promise<ServiceResult> {
+  const baseUrl = getBackendUrl(cfg, backend);
+  try {
+    const serviceRes = await fetch(`${baseUrl}/api/jobs`, {
+      method: "POST",
+      headers: {
+        "X-API-Key": cfg.key,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(serviceBody),
+    });
+
+    if (!serviceRes.ok) {
+      const errText = await serviceRes.text().catch(() => "");
+      let errMsg = "Tashqi xizmat javob bermadi";
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson?.error) errMsg = String(errJson.error).slice(0, 300);
+        else if (errJson?.detail) errMsg = String(errJson.detail).slice(0, 300);
+      } catch { if (errText) errMsg = errText.slice(0, 300); }
+      return { serviceJobId: null, errorStatus: serviceRes.status, errorMsg: errMsg };
+    }
+
+    const serviceData = await serviceRes.json();
+    return { serviceJobId: serviceData.job_id ?? null };
+  } catch (fetchErr) {
+    console.error("[case-answer-submit] Tarmoq xatosi (backend " + backend + "):", fetchErr);
+    return { serviceJobId: null, errorStatus: 0, errorMsg: "Tarmoq xatosi" };
+  }
+}
+
+function is4xx(status: number): boolean {
+  return status >= 400 && status < 500;
+}
+
+function isServerError(status: number): boolean {
+  return status === 0 || (status >= 500);
 }
 
 Deno.serve(async (req: Request) => {
@@ -128,11 +216,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Library feature flag tekshirish ──
     const libraryEnabled = await getSetting("answer_library_enabled") === "true";
     const useLibrary = libraryEnabled && (library_id || save_library);
 
-    // library_id va sources birga kelsa — xato
     if (useLibrary && library_id && Array.isArray(sources) && sources.length > 0) {
       return new Response(
         JSON.stringify({ error: "Yangi manba qo'shish uchun avval tanlangan to'plamni olib tashlang." }),
@@ -148,7 +234,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Reject if sources were provided but all turned out empty/invalid
     if (Array.isArray(sources) && sources.length > 0 && validSources.length === 0) {
       console.error("[case-answer-submit] Barcha manbalar bo'sh yoki juda qisqa:", sources.length, "ta keldi, 0 ta yaroqli");
       return new Response(
@@ -157,7 +242,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Verify the teacher owns this case
     const { data: caseData, error: caseError } = await supabaseAdmin
       .from("moot_court_cases")
       .select("ustoz_id")
@@ -214,7 +298,6 @@ Deno.serve(async (req: Request) => {
 
     // ── Yangi to'plam saqlash (save_library) ──
     if (useLibrary && save_library && !library_id && validSources.length > 0) {
-      // Ustozning mavjud to'plamlari sonini tekshirish (limit 20)
       const { count, error: countError } = await supabaseAdmin
         .from("answer_source_libraries")
         .select("id", { count: "exact", head: true })
@@ -224,7 +307,6 @@ Deno.serve(async (req: Request) => {
       if (countError) {
         console.error("[case-answer-submit] To'plam sonini olish xatosi:", countError.message);
       } else if ((count ?? 0) >= 20) {
-        // 20 ga yetgan — ish yuborilmaydi, library_full qaytadi
         const { data: libs } = await supabaseAdmin
           .from("answer_source_libraries")
           .select("id, title, sources, created_at, last_used_at")
@@ -254,7 +336,6 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // status='creating' qator yaratish
       const libTitle = (library_title || validSources[0]?.title || "Manba").slice(0, 80);
       const sourcesPreview = validSources.map((s) => ({
         name: s.title || "Manba",
@@ -280,8 +361,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { url: ANSWER_SERVICE_URL, key: ANSWER_SERVICE_KEY } = await getAnswerServiceConfig();
-    if (!ANSWER_SERVICE_URL || !ANSWER_SERVICE_KEY) {
+    const cfg = await getAnswerServiceConfig();
+    if (!cfg.url || !cfg.key) {
       console.error("[case-answer-submit] Tashqi xizmat sozlanmagan");
       return new Response(
         JSON.stringify({ error: "Javob tayyorlash xizmati hozir mavjud emas" }),
@@ -289,16 +370,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Collect storage paths for cleanup after job completion
     const storagePaths: string[] = [];
-
-    // Build service sources: create signed URLs for file sources with storagePath
     const serviceSources: { title: string; content?: string; url?: string }[] = [];
     for (const s of validSources) {
       if (s.type === 'url') {
         serviceSources.push({ title: s.title, url: s.url });
       } else if (s.type === 'file' && s.storagePath) {
-        // Fayl storage'da borligini tekshirish (24 soatdan keyin o'chirilgan bo'lishi mumkin)
         const { data: fileExists } = await supabaseAdmin.storage.from(STORAGE_BUCKET).list(s.storagePath.split('/').slice(0, -1).join('/'), { limit: 1, search: s.storagePath.split('/').pop() || '' });
         if (!fileExists || fileExists.length === 0) {
           console.error("[case-answer-submit] Fayl topilmadi (muddati tugagan):", s.storagePath);
@@ -315,7 +392,6 @@ Deno.serve(async (req: Request) => {
         storagePaths.push(s.storagePath);
         serviceSources.push({ title: s.title, url: signedUrl });
       } else {
-        // text or file-with-content (old mode)
         serviceSources.push({ title: s.title, content: s.content });
       }
     }
@@ -352,95 +428,74 @@ Deno.serve(async (req: Request) => {
       else console.log(`[case-answer-submit]   • ${s.title}: url manba`);
     }
 
-    let serviceJobId: string | null = null;
+    // ── Backend tanlash ──
+    const backend = await pickBackend(cfg);
+    console.log(`[case-answer-submit] backend=${backend} tanlandi, external_id=${jobId}`);
 
-    try {
-      const serviceBody: Record<string, unknown> = {
-        title,
-        kazus_text,
-        external_id: jobId,
-        instruction,
-        sources: serviceSources,
-      };
+    const serviceBody: Record<string, unknown> = {
+      title,
+      kazus_text,
+      external_id: jobId,
+      instruction,
+      sources: serviceSources,
+    };
 
-      // Library fieldlarini qo'shish
-      if (useLibrary && library_id && libraryNotebookId) {
-        serviceBody.notebook_id = libraryNotebookId;
-        serviceBody.profile = libraryProfile;
-      } else if (useLibrary && save_library && creatingLibraryId) {
-        serviceBody.keep = true;
-        serviceBody.library_title = (library_title || validSources[0]?.title || "Manba").slice(0, 80);
-      }
-      console.log(`[case-answer-submit] Tashqi xizmatga yuborilmoqda: external_id=${jobId}, sources=${serviceSources.length}`);
-      const serviceRes = await fetch(`${ANSWER_SERVICE_URL}/api/jobs`, {
-        method: "POST",
-        headers: {
-          "X-API-Key": ANSWER_SERVICE_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(serviceBody),
-      });
+    if (useLibrary && library_id && libraryNotebookId) {
+      serviceBody.notebook_id = libraryNotebookId;
+      serviceBody.profile = libraryProfile;
+    } else if (useLibrary && save_library && creatingLibraryId) {
+      serviceBody.keep = true;
+      serviceBody.library_title = (library_title || validSources[0]?.title || "Manba").slice(0, 80);
+    }
 
-      if (!serviceRes.ok) {
-        const errText = await serviceRes.text().catch(() => "");
-        console.error("[case-answer-submit] Tashqi xizmat xatosi:", serviceRes.status);
-        let errMsg = "Tashqi xizmat javob bermadi";
-        let isFileSourceError = false;
-        try {
-          const errJson = JSON.parse(errText);
-          if (errJson?.error) errMsg = String(errJson.error).slice(0, 300);
-          else if (errJson?.detail) errMsg = String(errJson.detail).slice(0, 300);
-        } catch { if (errText) errMsg = errText.slice(0, 300); }
+    // ── Birinchi urinish ──
+    let result = await sendToBackend(backend, cfg, serviceBody);
 
-        if (storagePaths.length > 0 && /manba|havola|url|source|open|read|fetch/i.test(errMsg)) {
-          isFileSourceError = true;
-        }
-
-        const userMsg = isFileSourceError
-          ? "Faylni o'qib bo'lmadi. Boshqa fayl yuklab ko'ring yoki matnini \u00ab+ Matn\u00bb orqali qo'shing."
-          : "AI javob tayyorlanmadi. Keyinroq urinib ko'ring.";
-
+    // ── Failover: faqat 5xx / tarmoq xatosi bo'lsa, ikkinchi backend'ga ──
+    if (!result.serviceJobId && isServerError(result.errorStatus ?? 0) && cfg.url2) {
+      const fallbackBackend = backend === 1 ? 2 : 1;
+      console.log(`[case-answer-submit] backend=${backend} yiqildi, failover -> backend=${fallbackBackend}, external_id=${jobId}`);
+      result = await sendToBackend(fallbackBackend, cfg, serviceBody);
+      if (result.serviceJobId) {
+        // Muvaffaqiyatli failover — job'ga fallback backend'ni yozamiz
         await supabaseAdmin
           .from("case_answer_jobs")
-          .update({ status: "error", error: userMsg })
+          .update({ backend: fallbackBackend, service_job_id: result.serviceJobId, status: "queued" })
           .eq("id", jobId);
-        return new Response(
-          JSON.stringify({ error: userMsg }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
       }
-
-      const serviceData = await serviceRes.json();
-      serviceJobId = serviceData.job_id ?? null;
-
-      if (!serviceJobId) {
-        console.error("[case-answer-submit] Tashqi xizmat job_id qaytarmadi");
-        await supabaseAdmin
-          .from("case_answer_jobs")
-          .update({ status: "error", error: "Tashqi xizmat job_id qaytarmadi" })
-          .eq("id", jobId);
-        return new Response(
-          JSON.stringify({ error: "Javob tayyorlanmadi. Qayta urinib ko'ring." }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    } catch (fetchErr) {
-      console.error("[case-answer-submit] Tarmoq xatosi:", fetchErr);
+    } else if (result.serviceJobId) {
+      // Muvaffaqiyatli — backend va service_job_id ni saqlaymiz
       await supabaseAdmin
         .from("case_answer_jobs")
-        .update({ status: "error", error: "Tarmoq xatosi" })
+        .update({ backend, service_job_id: result.serviceJobId, status: "queued" })
+        .eq("id", jobId);
+    }
+
+    // ── Xato ishlovi ──
+    if (!result.serviceJobId) {
+      const errMsg = result.errorMsg || "Tashqi xizmat javob bermadi";
+      let isFileSourceError = false;
+      if (storagePaths.length > 0 && /manba|havola|url|source|open|read|fetch/i.test(errMsg)) {
+        isFileSourceError = true;
+      }
+
+      // 4xx — foydalanuvchiga aniq xabar; 5xx/tarmoq — umumiy xabar
+      const isClientError = is4xx(result.errorStatus ?? 0);
+      const userMsg = isFileSourceError
+        ? "Faylni o'qib bo'lmadi. Boshqa fayl yuklab ko'ring yoki matnini \u00ab+ Matn\u00bb orqali qo'shing."
+        : isClientError
+          ? errMsg.slice(0, 200)
+          : "AI javob tayyorlanmadi. Keyinroq urinib ko'ring.";
+
+      await supabaseAdmin
+        .from("case_answer_jobs")
+        .update({ status: "error", error: userMsg })
         .eq("id", jobId);
       return new Response(
-        JSON.stringify({ error: "Javob tayyorlanmadi. Qayta urinib ko'ring." }),
+        JSON.stringify({ error: userMsg }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Update job with service_job_id
-    await supabaseAdmin
-      .from("case_answer_jobs")
-      .update({ service_job_id: serviceJobId, status: "queued" })
-      .eq("id", jobId);
 
     // Library ma'lumotlarini job qatoriga saqlash (status polling uchun)
     if (creatingLibraryId || libraryRowId) {
@@ -465,5 +520,3 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
-
-

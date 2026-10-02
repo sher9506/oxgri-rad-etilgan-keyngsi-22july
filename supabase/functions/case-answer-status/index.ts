@@ -23,17 +23,32 @@ function sanitizeAnswer(text: string): string {
     .trim();
 }
 
-async function getAnswerServiceConfig(): Promise<{ url: string; key: string }> {
+interface BackendConfig {
+  url: string;
+  key: string;
+  url2: string;
+}
+
+async function getAnswerServiceConfig(): Promise<BackendConfig> {
   const { data, error } = await supabaseAdmin
     .from("settings")
     .select("key, text_value")
-    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY"]);
-  if (error || !data) return { url: "", key: "" };
+    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY", "ANSWER_SERVICE_URL_2"]);
+  if (error || !data) return { url: "", key: "", url2: "" };
   const map: Record<string, string> = {};
   for (const row of data) {
     if (row.text_value) map[row.key] = row.text_value;
   }
-  return { url: map["ANSWER_SERVICE_URL"] || "", key: map["ANSWER_SERVICE_KEY"] || "" };
+  return {
+    url: map["ANSWER_SERVICE_URL"] || "",
+    key: map["ANSWER_SERVICE_KEY"] || "",
+    url2: (map["ANSWER_SERVICE_URL_2"] || "").trim(),
+  };
+}
+
+function getBackendUrl(cfg: BackendConfig, backend: number): string {
+  if (backend === 2 && cfg.url2) return cfg.url2;
+  return cfg.url;
 }
 
 Deno.serve(async (req: Request) => {
@@ -52,10 +67,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Fetch the job and verify ownership
+    // Fetch the job and verify ownership — backend maydonini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend")
       .eq("id", id)
       .maybeSingle();
 
@@ -98,9 +113,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { url: ANSWER_SERVICE_URL, key: ANSWER_SERVICE_KEY } = await getAnswerServiceConfig();
-    if (!ANSWER_SERVICE_URL || !ANSWER_SERVICE_KEY) {
-      console.error("[case-answer-status] Tashqi xizmat sozlanmagan");
+    const cfg = await getAnswerServiceConfig();
+    // Job qaysi backend'ga yuborilgan bo'lsa, o'shandan so'raymiz
+    const jobBackend: number = job.backend ?? 1;
+    const backendUrl = getBackendUrl(cfg, jobBackend);
+
+    if (!backendUrl || !cfg.key) {
+      console.error("[case-answer-status] Tashqi xizmat sozlanmagan (backend=" + jobBackend + ")");
       return new Response(
         JSON.stringify({ status: "error", answer: null, error: "Javob tayyorlash xizmati hozir mavjud emas" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -109,11 +128,11 @@ Deno.serve(async (req: Request) => {
 
     try {
       const serviceRes = await fetch(
-        `${ANSWER_SERVICE_URL}/api/jobs/${job.service_job_id}`,
+        `${backendUrl}/api/jobs/${job.service_job_id}`,
         {
           method: "GET",
           headers: {
-            "X-API-Key": ANSWER_SERVICE_KEY,
+            "X-API-Key": cfg.key,
             "Content-Type": "application/json",
           },
         }
@@ -121,7 +140,7 @@ Deno.serve(async (req: Request) => {
 
       if (!serviceRes.ok) {
         const errText = await serviceRes.text().catch(() => "");
-        console.error("[case-answer-status] Tashqi xizmat xatosi:", serviceRes.status, errText);
+        console.error("[case-answer-status] Tashqi xizmat xatosi:", serviceRes.status);
         if (serviceRes.status === 404) {
           const errMsg = "Javob tayyorlanmadi (xizmat qayta ishga tushgan). Qayta urinib ko'ring.";
           await supabaseAdmin
@@ -158,10 +177,8 @@ Deno.serve(async (req: Request) => {
         const rawErr = typeof serviceData.error === "string" ? serviceData.error : "Tashqi xizmat xatosi";
         const errorCode = typeof serviceData.error_code === "string" ? serviceData.error_code : "";
 
-        // library_missing — saqlangan to'plam o'chirilgan yoki topilmagan
         if (errorCode === "library_missing") {
           errorMsg = "Saqlangan manbalar topilmadi. Manbalarni qayta qo'shing.";
-          // library_id'ni o'chirib qo'yamiz ki UI library seçimni tozlasin
           if (job.library_id) {
             try {
               await supabaseAdmin
@@ -171,7 +188,6 @@ Deno.serve(async (req: Request) => {
             } catch { /* ignore */ }
           }
         } else {
-          // Fayl manbasi bilan bog'liq xato bo'lsa, aniq xabar ko'rsatish
           const { data: jobFiles } = await supabaseAdmin
             .from("case_answer_jobs")
             .select("source_file_paths")
@@ -193,9 +209,6 @@ Deno.serve(async (req: Request) => {
       }
 
       // ── Saqlangan to'plamni yangilash (save_library) ──
-      // Agar ish muvaffaqiyatli bo'lsa va library_id bog'langan bo'lsa:
-      // - creating status'dagi qatorni ready ga o'tkazamiz
-      // - notebook_id va profile ni saqlaymiz (main.py keep=True qaytargan)
       if (newStatus === "done" && job.library_id && !job.is_library_reuse) {
         const keptNotebookId = typeof serviceData.notebook_id === "string" ? serviceData.notebook_id : "";
         const keptProfile = typeof serviceData.profile === "string" ? serviceData.profile : "";
@@ -214,7 +227,6 @@ Deno.serve(async (req: Request) => {
             console.error("[case-answer-status] Library yangilash xatosi:", libErr);
           }
         } else {
-          // notebook_id/profile kelmadi — creating qatorni o'chiramiz
           try {
             await supabaseAdmin
               .from("answer_source_libraries")
@@ -242,7 +254,6 @@ Deno.serve(async (req: Request) => {
       if (newStatus === "done" || newStatus === "error") {
         updatePayload.finished_at = new Date().toISOString();
 
-        // Clean up uploaded files from Storage after job completion
         try {
           const { data: jobFiles } = await supabaseAdmin
             .from("case_answer_jobs")
@@ -257,7 +268,6 @@ Deno.serve(async (req: Request) => {
             const { error: delErr } = await supabaseAdmin.storage.from("case-sources").remove(paths);
             if (delErr) console.error("[case-answer-status] Storage tozalash xatosi:", delErr.message);
             else console.log(`[case-answer-status] ${paths.length} ta fayl Storage'dan o'chirildi`);
-            // Clear paths after cleanup
             updatePayload.source_file_paths = '[]';
           }
         } catch (cleanupErr) {
@@ -296,4 +306,3 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
-
