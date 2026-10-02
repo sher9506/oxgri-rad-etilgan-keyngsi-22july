@@ -25,6 +25,7 @@ import AiKvotaWidget from './AiKvotaWidget';
 import QonunlarBazasi from './QonunlarBazasi';
 import LexUzQidiruvchi from './LexUzQidiruvchi';
 import QidiruvJurnali from './QidiruvJurnali';
+import LmStudioPanel from './LmStudioPanel';
 
 const ADMIN_CODE = 'adminchit';
 
@@ -1536,6 +1537,9 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
       {view === 'qonun_bazasi' && <QonunlarBazasi />}
       {view === 'lex_uz_qidiruvchi' && <LexUzQidiruvchi />}
       {view === 'qidiruv_jurnali' && <QidiruvJurnali />}
+
+      {/* ─────────── LM STUDIO (RENDER MONITORING) ─────────── */}
+      {view === 'lm_studio' && <LmStudioPanel />}
 
       {/* ─────────── SHIKOYATLAR ─────────── */}
       {view === 'shikoyatlar' && (
