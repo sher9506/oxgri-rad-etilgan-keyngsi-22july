@@ -38,8 +38,6 @@ import {
   getCurrentCleanPath,
   TAB_PATHS,
 } from '@/lib/deepLink';
-import { useMootCourtMaintenance } from '@/hooks/useMootCourtMaintenance';
-const MootCourtMaintenanceOverlay = lazy(() => import('@/components/features/MootCourtMaintenanceOverlay'));
 const NotificationBell = lazy(() => import('@/components/features/NotificationBell'));
 const ReytingSahifa = lazy(() => import('@/components/features/ReytingSahifa'));
 const YordamSahifa = lazy(() => import('@/components/features/YordamSahifa'));
@@ -197,7 +195,6 @@ function AppContent() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
   const { t } = useLang();
-  const { maintenance: mootMaintenance, loading: mootMaintenanceLoading } = useMootCourtMaintenance();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminView, setAdminView] = useState('ustoz');
@@ -384,12 +381,7 @@ function AppContent() {
       case 'smart_talim': return <Suspense fallback={<LazyFallback />}><SmartTalim onNavigateToMaterial={(bolimId, bobId, materialId) => { handleTabChange('oqmatlar'); setTimeout(() => { window.dispatchEvent(new CustomEvent('deeplink-oqmat', { detail: { subPath: `${bolimId}/${bobId || ''}/${materialId || ''}` } })); }, 600); }} /></Suspense>;
       case 'blog': return <Suspense fallback={<LazyFallback />}><BlogList /></Suspense>;
       case 'blog_yozish': return <Suspense fallback={<LazyFallback />}><BlogYozish /></Suspense>;
-      case 'moot_court': return (
-        <>
-          {mootMaintenanceLoading ? <LazyFallback /> : user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}
-          <Suspense fallback={null}><MootCourtMaintenanceOverlay visible={mootMaintenance} /></Suspense>
-        </>
-      );
+      case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
       case 'lex_uz_qidiruvchi': return <Suspense fallback={<LazyFallback />}><LexUzQidiruvchi /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
