@@ -281,7 +281,7 @@ function HeroCopy({ onNavigate }: { onNavigate: (tab: string) => void }) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="mb-6"
+        className="ff-hero-eyebrow"
       >
         <span className="ff-eyebrow">
           <span className="ff-eyebrow-dot" style={{ animation: reduceMotion ? 'none' : 'ff-pulse 2s ease-in-out infinite' }} />
@@ -290,7 +290,7 @@ function HeroCopy({ onNavigate }: { onNavigate: (tab: string) => void }) {
       </motion.div>
 
       {/* Title — serif H1 */}
-      <h1 className="ff-h1 ff-serif mb-5" style={{ color: 'var(--ink)' }}>
+      <h1 className="ff-h1 ff-serif ff-hero-title" style={{ color: 'var(--ink)' }}>
         {titleParts.map((word, i) => (
           <span key={i}>
             <span className="inline-block overflow-hidden align-bottom" style={{ paddingBottom: '0.08em' }}>
@@ -336,7 +336,7 @@ function HeroCopy({ onNavigate }: { onNavigate: (tab: string) => void }) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="ff-hero-lead"
+        className="ff-hero-lead ff-hero-description"
       >
         Qonunlarni shunchaki yodlamang — ularning <span style={{ color: 'var(--cobalt-2)', fontWeight: 600 }}>mantiqiy kuchini his qiling</span>. <span style={{ color: 'var(--ink)', fontWeight: 600 }}>FanFaster</span> bilan real keyslarni tahlil qiling va har qanday vaziyatda professional yechim topishni o'rganing.
       </motion.p>
@@ -346,11 +346,11 @@ function HeroCopy({ onNavigate }: { onNavigate: (tab: string) => void }) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="flex flex-wrap gap-3 mb-7"
+        className="flex flex-wrap gap-3 ff-hero-actions"
       >
         <button
           onClick={() => onNavigate('sinov')}
-          className="ff-magnet-btn group flex items-center gap-2 px-6 py-3 font-semibold text-sm transition-all hover:-translate-y-0.5 active:scale-95 ff-focus"
+          className="ff-magnet-btn group flex items-center gap-2 px-6 h-11 font-semibold text-[15px] transition-all hover:-translate-y-0.5 active:scale-95 ff-focus"
           style={{
             background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))',
             color: '#fff',
@@ -363,7 +363,7 @@ function HeroCopy({ onNavigate }: { onNavigate: (tab: string) => void }) {
         </button>
         <button
           onClick={() => onNavigate('oqmatlar')}
-          className="flex items-center gap-2 px-5 py-3 font-semibold text-sm transition-all active:scale-95 ff-focus"
+          className="flex items-center gap-2 px-5 h-11 font-semibold text-[15px] transition-all active:scale-95 ff-focus"
           style={{
             background: 'var(--ff-card)',
             border: '1px solid var(--cobalt-line)',
@@ -385,13 +385,13 @@ function HeroCopy({ onNavigate }: { onNavigate: (tab: string) => void }) {
         className="ff-seg"
       >
         {[
-          { label: 'AI bilan 24/7 amaliy simulyatsiya', tile: 'var(--cobalt-tint)', color: 'var(--cobalt-2)' },
-          { label: 'Tajribali ustozlar ko\'magi', tile: 'var(--gold-tint)', color: 'var(--gold-ink)' },
-          { label: 'Platformani hoziroq sinab ko\'ring', tile: 'var(--success-tint)', color: 'var(--success)' },
+          { label: "24/7 AI simulyatsiya", tile: 'var(--cobalt-tint)', color: 'var(--cobalt-2)' },
+          { label: "Tajribali ustozlar", tile: 'var(--gold-tint)', color: 'var(--gold-ink)' },
+          { label: "Hoziroq sinab ko'ring", tile: 'var(--success-tint)', color: 'var(--success)' },
         ].map((badge) => (
           <div key={badge.label} className="ff-seg-cell">
             <div className="ff-seg-icon-tile" style={{ background: badge.tile }}>
-              <Rocket className="h-4 w-4" style={{ color: badge.color }} />
+              <Rocket className="h-[15px] w-[15px]" style={{ color: badge.color }} />
             </div>
             <span>{badge.label}</span>
           </div>

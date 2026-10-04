@@ -1,4 +1,5 @@
-
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/source-serif-4';
 
 @tailwind base;
 @tailwind components;
@@ -235,21 +236,19 @@ iframe[src*="bolt"] {
 
 /* ── FanFaster hero panel ── */
 .ff-hero-panel {
-  padding: 48px;
+  padding-block: clamp(32px, 6.5vh, 48px);
+  padding-inline: 48px;
   max-width: 580px;
   border-radius: 36px;
   overflow: hidden;
   container-type: inline-size;
 }
 .ff-h1 {
-  font-size: clamp(1.75rem, 3.3vw, 2.625rem);
+  font-size: clamp(1.75rem, 9.6cqw, 2.875rem);
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1.06;
   text-wrap: balance;
-}
-@supports (width: 1cqw) {
-  .ff-h1 { font-size: clamp(1.75rem, 9.2cqw, 2.75rem); }
 }
 @media (max-width: 640px) {
   .ff-hero-panel { padding: 24px; border-radius: 28px; }
@@ -260,13 +259,15 @@ iframe[src*="bolt"] {
   font-family: 'Source Serif 4 Variable', 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
   font-optical-sizing: auto;
   font-weight: 400;
-  font-size: 18px;
-  line-height: 1.65;
+  font-size: clamp(16px, 2.5vh, 17px);
+  line-height: 1.6;
   color: var(--ink-body);
-  max-width: 52ch;
   text-wrap: pretty;
-  margin-bottom: 28px;
 }
+.ff-hero-eyebrow { margin-bottom: clamp(16px, 3.5vh, 24px); }
+.ff-hero-title { margin: 0 0 clamp(14px, 3vh, 20px); }
+.ff-hero-description { margin: 0 0 clamp(18px, 4.1vh, 28px); }
+.ff-hero-actions { margin: 0 0 clamp(18px, 4.1vh, 28px); }
 
 /* ── FanFaster segmented chips ── */
 .ff-seg {
@@ -279,11 +280,11 @@ iframe[src*="bolt"] {
 }
 .ff-seg-cell {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
   gap: 10px;
-  padding: 14px;
-  font: 600 13.5px/1.35 'Inter Variable', Inter, sans-serif;
+  padding: 14px 16px;
+  font: 600 13.5px/1.3 'Inter Variable', Inter, sans-serif;
   color: var(--ink);
   text-wrap: balance;
 }
@@ -299,7 +300,6 @@ iframe[src*="bolt"] {
 .ff-seg-cell + .ff-seg-cell { border-left: 1px solid var(--line); }
 @media (max-width: 640px) {
   .ff-seg { grid-template-columns: 1fr; }
-  .ff-seg-cell { flex-direction: row; align-items: center; }
   .ff-seg-cell + .ff-seg-cell { border-left: 0; border-top: 1px solid var(--line); }
 }
 
@@ -312,7 +312,7 @@ iframe[src*="bolt"] {
   padding: 24px 0 8px;
 }
 @media (min-width: 1024px) {
-  .ff-hero-sec { height: min(720px, calc(100svh - 64px)); min-height: 700px; padding: 0; }
+  .ff-hero-sec { height: clamp(560px, calc(100svh - 64px), 760px); padding: 0; }
 }
 
 /* ── FanFaster focus ring ── */
