@@ -8,11 +8,12 @@ import {
   GraduationCap, Play, TrendingUp, Target, Brain,
   HelpCircle, Lock, Info, ChevronDown,
   CheckCircle2, Quote, Star, Compass, Eye, Lightbulb, Heart,
-  Send, Link2, LogOut
+  Send, Link2, LogOut, Newspaper
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLang } from '@/contexts/LangContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ANIMATION VARIANTS & HELPERS
@@ -847,83 +848,637 @@ function ShootingStars() {
   return <canvas ref={ref} aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 h-full w-full" />;
 }
 
-function MootCourtScoreRing() {
-  const ringRef = useRef<SVGCircleElement>(null);
-  const [score, setScore] = useState(0);
-  const inView = useInView(ringRef, { once: true });
+/* ═══════════════════════════════════════════════════════════════════════════
+   "TIRIK ISH STOLI" — Living Work Desk hero sub-components
+   HeroText, LiveScene, TestCard, CasusCard, MootCard, BlogCard, XpBadge
+   ═══════════════════════════════════════════════════════════════════════════ */
 
+const EASE_OUT = [0.22, 1, 0.36, 1] as [number, number, number, number];
+
+function useReducedMotion() {
+  const [reduce, setReduce] = useState(false);
   useEffect(() => {
-    if (!inView) return;
-    const target = 92;
-    const duration = 1400;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setScore(Math.round(eased * target));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [inView]);
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduce(mq.matches);
+    const h = (e: MediaQueryListEvent) => setReduce(e.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  return reduce;
+}
 
-  const R = 34;
-  const CIRC = 2 * Math.PI * R;
-  const offset = CIRC - (score / 100) * CIRC;
+/* ── GlassyCard: single shishasimon card wrapper with 3D translateZ + hover ── */
+interface GlassyCardProps {
+  children: React.ReactNode;
+  depth: number; // translateZ in px
+  delay: number;
+  onClick: () => void;
+  ariaLabel: string;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+function GlassyCard({ children, depth, delay, onClick, ariaLabel, className = '', style }: GlassyCardProps) {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-40px' });
 
   return (
-    <div className="relative w-[88px] h-[88px] flex items-center justify-center">
-      <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
-        <circle cx="40" cy="40" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" />
-        <circle
-          ref={ringRef}
-          cx="40"
-          cy="40"
-          r={R}
-          fill="none"
-          stroke="url(#ring-grad)"
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeDasharray={CIRC}
-          strokeDashoffset={offset}
-        />
-        <defs>
-          <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#38bdf8" />
-            <stop offset="100%" stopColor="#a78bfa" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-base font-black text-white leading-none">{score}</span>
-        <span className="text-[8px] text-slate-400 font-bold">/100</span>
+    <motion.div
+      ref={ref}
+      initial={reduce ? false : { opacity: 0, y: 50, z: -80, filter: 'blur(10px)' }}
+      animate={inView ? { opacity: 1, y: 0, z: depth, filter: 'blur(0px)' } : {}}
+      transition={{ duration: 0.7, ease: EASE_OUT, delay }}
+      style={{
+        transformStyle: 'preserve-3d',
+        ...style,
+      }}
+      className={className}
+    >
+      <button
+        onClick={onClick}
+        aria-label={ariaLabel}
+        className="group relative w-full text-left rounded-2xl bg-white/[0.07] border border-white/[0.12] backdrop-blur-2xl overflow-hidden transition-all duration-500 hover:bg-white/[0.10] hover:border-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+        style={{
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 12px 40px rgba(8,16,40,0.45)',
+        }}
+      >
+        {/* Soft inner glow */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-60" style={{ background: 'radial-gradient(circle at 30% 0%, rgba(56,189,248,0.10), transparent 60%)' }} />
+        <div className="relative z-10">{children}</div>
+      </button>
+    </motion.div>
+  );
+}
+
+/* ── HeroText: left column (badge, title, tagline, description, buttons) ── */
+function HeroText({ onNav }: { onNav: (tab: string) => void }) {
+  const reduce = useReducedMotion();
+  const items = [
+    { el: 'badge', delay: 0 },
+    { el: 'title', delay: 0.08 },
+    { el: 'tagline', delay: 0.16 },
+    { el: 'desc', delay: 0.24 },
+    { el: 'buttons', delay: 0.32 },
+  ];
+
+  const renderEl = (key: string) => {
+    switch (key) {
+      case 'badge':
+        return (
+          <div className="inline-flex mb-5">
+            <div className="p-px rounded-full" style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.5), rgba(167,139,250,0.4))' }}>
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.06] backdrop-blur-md text-[10px] font-bold uppercase tracking-[0.2em] text-sky-200">
+                <Zap className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                <span>SIZ KUTGAN FORMATDAGI TA'LIM</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+              </div>
+            </div>
+          </div>
+        );
+      case 'title':
+        return (
+          <h1 className="font-black tracking-tighter leading-[1.05] mb-3" style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)' }}>
+            <span className="text-white">Fan</span>
+            <span className="ff-title-gradient inline-block pr-[0.06em]">Faster</span>
+          </h1>
+        );
+      case 'tagline':
+        return (
+          <p className="mb-4">
+            <span
+              className="inline-block rounded-xl px-4 py-2.5 font-extrabold text-white relative"
+              style={{ fontSize: 'clamp(1.1rem, 1.8vw, 1.7rem)', background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            >
+              <span
+                className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+                style={{ background: 'linear-gradient(180deg, #38bdf8, #8b5cf6)', boxShadow: '0 0 12px rgba(56,189,248,0.5)' }}
+              />
+              Orzuyingizdagi &apos;men&apos; bugun nimani bilishi kerak?
+            </span>
+          </p>
+        );
+      case 'desc':
+        return (
+          <p className="text-sm md:text-base text-slate-300 leading-relaxed max-w-lg mb-6">
+            <span className="text-sky-300 font-bold">AI+Human metodi</span> yordamida bilimni yodlamang
+            — uni chuqur tushunib, amalda qo&apos;llang.{' '}
+            <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
+          </p>
+        );
+      case 'buttons':
+        return (
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => onNav('sinov')}
+              className="ff-shimmer group relative flex items-center gap-2 px-6 py-3 font-black text-sm rounded-2xl text-white overflow-hidden bg-gradient-to-r from-blue-500 to-indigo-600 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300"
+              style={{ boxShadow: '0 8px 30px rgba(99,102,241,0.45)' }}
+            >
+              <Play className="h-4 w-4 fill-white relative z-10" />
+              <span className="relative z-10">O'qishni boshlash</span>
+            </button>
+            <button
+              onClick={() => onNav('oqmatlar')}
+              className="flex items-center gap-2 px-6 py-3 bg-white/10 border border-white/25 text-white font-bold text-sm rounded-2xl hover:bg-white/20 hover:border-sky-400/50 active:scale-[0.98] transition-all backdrop-blur-md"
+            >
+              <BookOpen className="h-4 w-4" />
+              Materiallar
+            </button>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div>
+      {items.map((item) => (
+        <motion.div
+          key={item.el}
+          initial={reduce ? false : { opacity: 0, y: 28, filter: 'blur(6px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ duration: 0.6, ease: EASE_OUT, delay: item.delay }}
+        >
+          {renderEl(item.el)}
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+/* ── TestCard: auto-cycling quiz with green highlight on correct answer ── */
+function TestCard({ reduce }: { reduce: boolean }) {
+  const [selected, setSelected] = useState(-1);
+  const [correctIdx] = useState(() => Math.floor(Math.random() * 4));
+  const cycleRef = useRef(0);
+
+  useEffect(() => {
+    if (reduce) return;
+    const interval = setInterval(() => {
+      cycleRef.current = (cycleRef.current + 1) % 4;
+      const idx = cycleRef.current;
+      setSelected(idx);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [reduce]);
+
+  const options = ['A variant', 'B variant', 'C variant', 'D variant'];
+
+  return (
+    <div className="p-5">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
+          <HelpCircle className="h-4.5 w-4.5 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-black text-white">Mavjud testlar</p>
+          <p className="text-[10px] text-slate-400">Bilim sinovi</p>
+        </div>
+      </div>
+      <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5 mb-3">
+        <p className="text-[11px] text-slate-300 leading-relaxed">
+          Quyidagi savollardan to'g'ri javobni belgilang:
+        </p>
+      </div>
+      <div className="space-y-2">
+        {options.map((opt, i) => {
+          const isCorrect = i === correctIdx;
+          const isSelected = i === selected;
+          const showCorrect = isCorrect && selected === correctIdx;
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 border transition-all duration-500"
+              style={{
+                background: showCorrect ? 'rgba(16,185,129,0.15)' : isSelected ? 'rgba(56,189,248,0.10)' : 'rgba(255,255,255,0.03)',
+                borderColor: showCorrect ? 'rgba(16,185,129,0.4)' : isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.06)',
+              }}
+            >
+              <div
+                className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all"
+                style={{
+                  borderColor: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'rgba(255,255,255,0.2)',
+                  background: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'transparent',
+                }}
+              >
+                {showCorrect && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+              </div>
+              <span
+                className="text-[11px] font-semibold transition-colors"
+                style={{ color: showCorrect ? '#6ee7b7' : isSelected ? '#bae6fd' : '#94a3b8' }}
+              >
+                {opt}
+              </span>
+              {showCorrect && (
+                <motion.span
+                  initial={reduce ? false : { opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="ml-auto text-[9px] font-black uppercase text-emerald-400"
+                >
+                  To'g'ri
+                </motion.span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function HeroGlassCard({
-  children, rotate, delay, duration, className = '',
-}: {
-  children: React.ReactNode; rotate: number; delay: number; duration: number; className?: string;
-}) {
+/* ── CasusCard: 92/100 ring + 5 animated criteria bars ── */
+function CasusCard({ reduce }: { reduce: boolean }) {
+  const [score, setScore] = useState(0);
+  const [bars, setBars] = useState<number[]>([0, 0, 0, 0, 0]);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-30px' });
+
+  useEffect(() => {
+    if (!inView) return;
+    const targets = [78, 85, 72, 90, 88];
+    const totalDuration = 2000;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / totalDuration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setScore(Math.round(eased * 92));
+      setBars(targets.map(t => Math.round(eased * t)));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [inView, reduce]);
+
+  // Idle breathing animation for bars after initial fill
+  useEffect(() => {
+    if (reduce || !inView) return;
+    const targets = [78, 85, 72, 90, 88];
+    const interval = setInterval(() => {
+      setBars(targets.map(t => t + Math.floor(Math.random() * 6 - 3)));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [inView, reduce]);
+
+  const R = 28;
+  const CIRC = 2 * Math.PI * R;
+  const offset = CIRC - (score / 100) * CIRC;
+
+  return (
+    <div ref={ref} className="p-5">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
+          <BrainCircuit className="h-4.5 w-4.5 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-black text-white">Mavjud kazuslar</p>
+          <p className="text-[10px] text-slate-400">AI xolis bahosi</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-4 mb-3">
+        <div className="relative w-[72px] h-[72px] flex items-center justify-center shrink-0">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 70 70">
+            <circle cx="35" cy="35" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+            <circle
+              cx="35" cy="35" r={R} fill="none"
+              stroke="url(#casus-grad)" strokeWidth="4" strokeLinecap="round"
+              strokeDasharray={CIRC} strokeDashoffset={offset}
+              style={{ transition: 'stroke-dashoffset 0.1s linear' }}
+            />
+            <defs>
+              <linearGradient id="casus-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#38bdf8" />
+                <stop offset="100%" stopColor="#a78bfa" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-base font-black text-white leading-none">{score}</span>
+            <span className="text-[7px] text-slate-400 font-bold">/100</span>
+          </div>
+        </div>
+        <div className="flex-1 space-y-1.5">
+          {['Mantiq', 'Dalil', 'Tahlil', 'Xulosa', 'Uslub'].map((label, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[8px] text-slate-400 w-10 shrink-0">{label}</span>
+              <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-violet-400"
+                  style={{ width: `${bars[i]}%`, transition: 'width 1.5s cubic-bezier(0.22,1,0.36,1)' }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── MootCard: two-bubble dialog with typing animation ── */
+function MootCard({ reduce }: { reduce: boolean }) {
+  const [typedText, setTypedText] = useState('');
+  const [showUserReply, setShowUserReply] = useState(false);
+  const fullText = "Ishda huquqbuzarlik sodir bo'lganda, sudga taqdim etiladigan asosiy dalillar qanday tartibda baholanadi?";
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-30px' });
+
+  useEffect(() => {
+    if (!inView || reduce) {
+      if (inView) setTypedText(fullText);
+      return;
+    }
+    let charIdx = 0;
+    let replyTimer: ReturnType<typeof setTimeout>;
+    const typeInterval = setInterval(() => {
+      charIdx++;
+      setTypedText(fullText.slice(0, charIdx));
+      if (charIdx >= fullText.length) {
+        clearInterval(typeInterval);
+        replyTimer = setTimeout(() => setShowUserReply(true), 800);
+      }
+    }, 35);
+    return () => { clearInterval(typeInterval); clearTimeout(replyTimer); };
+  }, [inView, reduce]);
+
+  // Loop the animation
+  useEffect(() => {
+    if (reduce || !inView) return;
+    const loop = setInterval(() => {
+      setTypedText('');
+      setShowUserReply(false);
+      let charIdx = 0;
+      const typeInterval = setInterval(() => {
+        charIdx++;
+        setTypedText(fullText.slice(0, charIdx));
+        if (charIdx >= fullText.length) {
+          clearInterval(typeInterval);
+          setTimeout(() => setShowUserReply(true), 800);
+        }
+      }, 35);
+    }, 12000);
+    return () => clearInterval(loop);
+  }, [inView, reduce]);
+
+  return (
+    <div ref={ref} className="p-5">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
+          <Scale className="h-4.5 w-4.5 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-black text-white">Moot Court</p>
+          <p className="text-[10px] text-slate-400">AI sudya bilan jonli bahs</p>
+        </div>
+      </div>
+      <div className="space-y-2.5">
+        {/* AI judge bubble */}
+        <div className="flex gap-2 items-start">
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+            <Scale className="h-3 w-3 text-white" />
+          </div>
+          <div className="flex-1 rounded-xl rounded-tl-sm bg-white/[0.06] border border-white/[0.08] px-3 py-2 min-h-[44px]">
+            <p className="text-[10px] text-slate-200 leading-relaxed">
+              {typedText}
+              {typedText.length < fullText.length && !reduce && (
+                <span className="inline-block w-[2px] h-3 bg-sky-400 ml-0.5 animate-pulse" />
+              )}
+            </p>
+          </div>
+        </div>
+        {/* User reply bubble */}
+        <AnimatePresence>
+          {showUserReply && (
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex gap-2 items-start justify-end"
+            >
+              <div className="max-w-[80%] rounded-xl rounded-tr-sm bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-400/20 px-3 py-2">
+                <p className="text-[10px] text-sky-100 leading-relaxed">
+                  Dalillar aniqlik, ishonchlilik va qonun bilan bog'liqligi bo'yicha...
+                </p>
+              </div>
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-400 to-sky-500 flex items-center justify-center shrink-0 mt-0.5">
+                <User className="h-3 w-3 text-white" />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+/* ── BlogCard: latest blog post from Supabase or elegant empty state ── */
+function BlogCard({ reduce }: { reduce: boolean }) {
+  interface BlogPostLite { sarlavha: string; ustoz_ismi: string; slug: string; }
+  const [post, setPost] = useState<BlogPostLite | null>(null);
+  const [loading, setLoading] = useState(true);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-30px' });
+
+  useEffect(() => {
+    if (!inView) return;
+    supabase
+      .from('blog_posts')
+      .select('sarlavha, ustoz_ismi, slug')
+      .eq('status', 'published')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        setPost(data && data.length > 0 ? data[0] : null);
+        setLoading(false);
+      })
+      .catch(() => { setLoading(false); });
+  }, [inView]);
+
+  return (
+    <div ref={ref} className="p-5">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
+          <Newspaper className="h-4.5 w-4.5 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-black text-white">Blog</p>
+          <p className="text-[10px] text-slate-400">So'nggi maqolalar</p>
+        </div>
+      </div>
+      {loading ? (
+        <div className="space-y-2">
+          <div className="h-3 w-full rounded-full bg-white/10 animate-pulse" />
+          <div className="h-3 w-3/4 rounded-full bg-white/8 animate-pulse" />
+          <div className="flex items-center gap-2 mt-3">
+            <div className="w-6 h-6 rounded-full bg-white/10 animate-pulse" />
+            <div className="h-2 w-20 rounded-full bg-white/8 animate-pulse" />
+          </div>
+        </div>
+      ) : post ? (
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE_OUT }}
+        >
+          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5 mb-2">
+            <p className="text-[12px] font-bold text-white leading-snug line-clamp-2">{post.sarlavha}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
+              <User className="h-3 w-3 text-white" />
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">{post.ustoz_ismi}</span>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5 text-center">
+          <Newspaper className="h-6 w-6 text-slate-500 mx-auto mb-2" />
+          <p className="text-[10px] text-slate-400">Tez orada yangi maqolalar</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── XpBadge: small "+120 XP" living element at scene edge ── */
+function XpBadge({ reduce }: { reduce: boolean }) {
   return (
     <motion.div
-      initial={{ opacity: 0, x: 40, filter: 'blur(8px)' }}
-      animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-      transition={{ type: 'spring', stiffness: 80, damping: 18, delay }}
-      className={className}
-      style={{ transform: `rotate(${rotate}deg)` }}
+      initial={reduce ? false : { opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.6, ease: EASE_OUT, delay: 1.0 }}
+      className="absolute z-40"
+      style={{ bottom: '6%', right: '3%' }}
     >
       <motion.div
-        animate={{ y: [0, -10, 0] }}
-        transition={{ duration, repeat: Infinity, ease: 'easeInOut', delay }}
-        className="bg-white/[0.06] border border-white/15 backdrop-blur-xl rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_32px_rgba(56,189,248,0.12)]"
+        animate={reduce ? {} : { y: [0, -6, 0] }}
+        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-400/30 backdrop-blur-xl"
+        style={{ boxShadow: '0 4px 20px rgba(245,158,11,0.15)' }}
       >
-        {children}
+        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
+          <Trophy className="h-3 w-3 text-white" />
+        </div>
+        <div>
+          <p className="text-[11px] font-black text-amber-200">+120 XP</p>
+          <p className="text-[8px] text-amber-300/70">Yangi daraja ochildi</p>
+        </div>
       </motion.div>
     </motion.div>
   );
 }
+
+/* ── LiveScene: right column — 4 glassy cards in 3D depth with pointer parallax ── */
+function LiveScene({ onNav }: { onNav: (tab: string) => void }) {
+  const reduce = useReducedMotion();
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!sceneRef.current || reduce) return;
+    const rect = sceneRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / (rect.width / 2);
+    const dy = (e.clientY - cy) / (rect.height / 2);
+    setTilt({ x: -dy * 6, y: dx * 8 });
+  }, [reduce]);
+
+  const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
+
+  const cards = [
+    { comp: TestCard, tab: 'mavjud_testlar', depth: 30, delay: 0.4, area: '0 0 / 55% 46%', z: 30, label: 'Mavjud testlar sahifasiga o\'tish' },
+    { comp: CasusCard, tab: 'mavjud_kazuslar', depth: 50, delay: 0.55, area: '45% 0 / 55% 50%', z: 35, label: 'Mavjud kazuslar sahifasiga o\'tish' },
+    { comp: MootCard, tab: 'moot_court', depth: 40, delay: 0.7, area: '0 48% / 52% 48%', z: 25, label: 'Moot Court sahifasiga o\'tish' },
+    { comp: BlogCard, tab: 'blog', depth: 20, delay: 0.85, area: '50% 50% / 50% 42%', z: 20, label: 'Blog sahifasiga o\'tish' },
+  ];
+
+  return (
+    <div
+      ref={sceneRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className="relative w-full h-full min-h-[420px]"
+      style={{ perspective: '1200px', transformStyle: 'preserve-3d' }}
+    >
+      {/* Soft radial glow behind cards */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(circle at 55% 45%, rgba(56,189,248,0.14), rgba(139,92,246,0.10) 40%, transparent 65%)' }}
+      />
+
+      {/* Subtle grid lines for depth */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 pointer-events-none opacity-20"
+        style={{
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+          maskImage: 'radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 100%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 100%)',
+        }}
+      />
+
+      <motion.div
+        animate={{ rotateX: tilt.x, rotateY: tilt.y }}
+        transition={{ type: 'spring', stiffness: 60, damping: 20 }}
+        className="absolute inset-0"
+        style={{ transformStyle: 'preserve-3d' }}
+      >
+        {cards.map((card, i) => {
+          const CardComp = card.comp;
+          const isHovered = hoveredIdx === i;
+          const isOtherHovered = hoveredIdx !== null && hoveredIdx !== i;
+          return (
+            <motion.div
+              key={i}
+              className="absolute"
+              style={{
+                left: card.area.split(' / ')[0].split(' ')[0],
+                top: card.area.split(' / ')[0].split(' ')[1],
+                width: card.area.split(' / ')[1].split(' ')[0],
+                height: card.area.split(' / ')[1].split(' ')[1],
+                transformStyle: 'preserve-3d',
+                zIndex: isHovered ? 50 : card.z,
+              }}
+              animate={{
+                scale: isHovered ? 1.04 : isOtherHovered ? 0.97 : 1,
+                z: isHovered ? card.depth + 30 : card.depth,
+              }}
+              transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+            >
+              <GlassyCard
+                depth={card.depth}
+                delay={card.delay}
+                onClick={() => onNav(card.tab)}
+                ariaLabel={card.label}
+                className="h-full"
+              >
+                <div
+                  onMouseEnter={() => setHoveredIdx(i)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  className="h-full"
+                >
+                  <CardComp reduce={reduce} />
+                </div>
+              </GlassyCard>
+            </motion.div>
+          );
+        })}
+
+        <XpBadge reduce={reduce} />
+      </motion.div>
+    </div>
+  );
+}
+
+/* ── Mobile wrapper components (static, no auto-animation) ── */
+function TestCardReduceless() { return <TestCard reduce={true} />; }
+function CasusCardReduceless() { return <CasusCard reduce={true} />; }
+function MootCardReduceless() { return <MootCard reduce={true} />; }
+function BlogCardReduceless() { return <BlogCard reduce={true} />; }
 
 export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   const { t } = useLang();
@@ -1046,169 +1601,30 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
         {/* Shooting stars */}
         <ShootingStars />
 
-        {/* Content */}
-        <div className="relative z-10 grid lg:grid-cols-[1.15fr_0.85fr] gap-10 items-center">
-          {/* Left column */}
-          <div>
-            {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.7, ease: 'easeOut' }}
-              className="inline-flex mb-6"
-            >
-              <div className="p-px rounded-full" style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.5), rgba(167,139,250,0.4))' }}>
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.06] backdrop-blur-md text-[11px] font-bold uppercase tracking-[0.2em] text-sky-200">
-                  <Zap className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-                  <span>SIZ KUTGAN FORMATDAGI TA'LIM</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-                </div>
-              </div>
-            </motion.div>
+        {/* Content — "Tirik ish stoli" (Living Work Desk) */}
+        <div className="relative z-10 grid lg:grid-cols-[0.38fr_0.62fr] gap-6 lg:gap-8 items-center">
+          {/* Left column — text */}
+          <HeroText onNav={handleNav} />
 
-            {/* Title */}
-            <motion.h1
-              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
-              className="font-black tracking-tighter leading-[1.02] mb-4"
-              style={{ fontSize: 'clamp(3rem, 8vw, 6.5rem)' }}
-            >
-              <span className="text-white">Fan</span>
-              <span className="ff-title-gradient inline-block pr-[0.06em]">Faster</span>
-            </motion.h1>
-
-            {/* Tagline */}
-            <motion.p
-              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.7, delay: 0.2, ease: 'easeOut' }}
-              className="mb-5"
-            >
-              <span
-                className="inline-block rounded-xl px-[18px] py-[10px] font-extrabold text-white relative"
-                style={{
-                  fontSize: 'clamp(1.3rem, 2.4vw, 2.4rem)',
-                  background: 'rgba(255,255,255,0.05)',
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                }}
-              >
-                <span
-                  className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
-                  style={{
-                    background: 'linear-gradient(180deg, #38bdf8, #8b5cf6)',
-                    boxShadow: '0 0 12px rgba(56,189,248,0.5)',
-                  }}
-                />
-                Orzuyingizdagi &apos;men&apos; bugun nimani bilishi kerak?
-              </span>
-            </motion.p>
-
-            {/* Description */}
-            <motion.p
-              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.7, delay: 0.3, ease: 'easeOut' }}
-              className="text-base md:text-lg text-slate-300 leading-relaxed max-w-xl mb-8"
-            >
-              <span className="text-sky-300 font-bold">AI+Human metodi</span> yordamida bilimni yodlamang
-              — uni chuqur tushunib, amalda qo&apos;llang.{' '}
-              <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
-            </motion.p>
-
-            {/* Buttons */}
-            <motion.div
-              initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.7, delay: 0.4, ease: 'easeOut' }}
-              className="flex flex-wrap gap-4"
-            >
-              <button
-                onClick={() => handleNav('kurslar')}
-                className="ff-shimmer group relative flex items-center gap-2 px-7 py-3.5 font-black text-sm rounded-2xl text-white overflow-hidden bg-gradient-to-r from-blue-500 to-indigo-600 hover:-translate-y-1 active:scale-[0.98] transition-all duration-300"
-                style={{ boxShadow: '0 8px 30px rgba(99,102,241,0.45)' }}
-              >
-                <Play className="h-4 w-4 fill-white relative z-10" />
-                <span className="relative z-10">O'qishni boshlash</span>
-              </button>
-
-              <button
-                onClick={() => handleNav('oqmatlar')}
-                className="flex items-center gap-2 px-7 py-3.5 bg-white/10 border border-white/25 text-white font-bold text-sm rounded-2xl hover:bg-white/20 hover:border-sky-400/50 active:scale-[0.98] transition-all backdrop-blur-md"
-              >
-                <BookOpen className="h-4 w-4" />
-                Materiallar
-              </button>
-            </motion.div>
+          {/* Right column — live scene (desktop) */}
+          <div className="hidden lg:block relative h-[460px]">
+            <LiveScene onNav={handleNav} />
           </div>
 
-          {/* Right column — floating glass cards (lg+ only) */}
-          <div className="hidden lg:flex relative items-center justify-center min-h-[360px]">
-            {/* Soft radial glow behind cards */}
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 pointer-events-none"
-              style={{ background: 'radial-gradient(circle at 55% 45%, rgba(56,189,248,0.12), rgba(139,92,246,0.08) 40%, transparent 65%)' }}
-            />
-
-            {/* Card 1: Moot Court */}
-            <HeroGlassCard rotate={-4} delay={0.45} duration={5} className="absolute top-[8%] left-[2%] w-[230px] z-20">
-              <div className="p-5">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
-                    <Scale className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-white">Moot Court</p>
-                    <p className="text-[10px] text-slate-400">AI sudya bilan jonli bahs</p>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  {[0, 1, 2, 3, 4].map(i => (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-600" />
-                      <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-500"
-                          initial={{ width: 0 }}
-                          whileInView={{ width: `${65 + i * 7}%` }}
-                          viewport={{ once: true }}
-                          transition={{ duration: 0.8, delay: 0.6 + i * 0.1, ease: 'easeOut' }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </HeroGlassCard>
-
-            {/* Card 2: Kazus tahlili */}
-            <HeroGlassCard rotate={3} delay={0.6} duration={6} className="absolute top-[28%] right-[0%] w-[210px] z-30">
-              <div className="p-5 flex items-center gap-4">
-                <MootCourtScoreRing />
-                <div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <BrainCircuit className="h-4 w-4 text-violet-400" />
-                    <p className="text-xs font-black text-white">Kazus tahlili</p>
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-relaxed">AI xolis bahosi</p>
-                </div>
-              </div>
-            </HeroGlassCard>
-
-            {/* Card 3: XP chip */}
-            <HeroGlassCard rotate={-2} delay={0.75} duration={7} className="absolute bottom-[6%] left-[18%] z-10">
-              <div className="px-4 py-3 flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-                  <Trophy className="h-3.5 w-3.5 text-white" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-white">+120 XP</p>
-                  <p className="text-[9px] text-slate-400">Yangi daraja ochildi</p>
-                </div>
-              </div>
-            </HeroGlassCard>
+          {/* Mobile fallback — stacked cards (no parallax, lighter animation) */}
+          <div className="lg:hidden space-y-3">
+            <GlassyCard depth={0} delay={0.3} onClick={() => handleNav('mavjud_testlar')} ariaLabel="Mavjud testlar sahifasiga o'tish">
+              <TestCardReduceless />
+            </GlassyCard>
+            <GlassyCard depth={0} delay={0.4} onClick={() => handleNav('mavjud_kazuslar')} ariaLabel="Mavjud kazuslar sahifasiga o'tish">
+              <CasusCardReduceless />
+            </GlassyCard>
+            <GlassyCard depth={0} delay={0.5} onClick={() => handleNav('moot_court')} ariaLabel="Moot Court sahifasiga o'tish">
+              <MootCardReduceless />
+            </GlassyCard>
+            <GlassyCard depth={0} delay={0.6} onClick={() => handleNav('blog')} ariaLabel="Blog sahifasiga o'tish">
+              <BlogCardReduceless />
+            </GlassyCard>
           </div>
         </div>
       </section>
