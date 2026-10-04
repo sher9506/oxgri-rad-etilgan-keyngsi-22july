@@ -880,15 +880,12 @@ interface GlassyCardProps {
 
 function GlassyCard({ children, depth, delay, onClick, ariaLabel, className = '', style }: GlassyCardProps) {
   const reduce = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-40px' });
 
   return (
     <motion.div
-      ref={ref}
-      initial={reduce ? false : { opacity: 0, y: 50, z: -80, filter: 'blur(10px)' }}
-      animate={inView ? { opacity: 1, y: 0, z: depth, filter: 'blur(0px)' } : {}}
-      transition={{ duration: 0.7, ease: EASE_OUT, delay }}
+      initial={false}
+      animate={{ z: depth }}
+      transition={{ type: 'spring', stiffness: 120, damping: 18 }}
       style={{
         transformStyle: 'preserve-3d',
         ...style,
@@ -1347,8 +1344,8 @@ function XpBadge({ reduce }: { reduce: boolean }) {
       initial={reduce ? false : { opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.6, ease: EASE_OUT, delay: 1.0 }}
-      className="absolute z-40"
-      style={{ bottom: '6%', right: '3%' }}
+      className="absolute z-40 pointer-events-none"
+      style={{ top: '-8px', left: '-8px' }}
     >
       <motion.div
         animate={reduce ? {} : { y: [0, -6, 0] }}
@@ -1368,7 +1365,7 @@ function XpBadge({ reduce }: { reduce: boolean }) {
   );
 }
 
-/* ── LiveScene: right column — 4 glassy cards in 3D depth with pointer parallax ── */
+/* ── LiveScene: right column — 2x2 grid of glassy cards with pointer parallax ── */
 function LiveScene({ onNav }: { onNav: (tab: string) => void }) {
   const reduce = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -1382,16 +1379,16 @@ function LiveScene({ onNav }: { onNav: (tab: string) => void }) {
     const cy = rect.top + rect.height / 2;
     const dx = (e.clientX - cx) / (rect.width / 2);
     const dy = (e.clientY - cy) / (rect.height / 2);
-    setTilt({ x: -dy * 6, y: dx * 8 });
+    setTilt({ x: -dy * 5, y: dx * 7 });
   }, [reduce]);
 
   const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
 
   const cards = [
-    { comp: TestCard, tab: 'mavjud_testlar', depth: 30, delay: 0.4, area: '0 0 / 55% 46%', z: 30, label: 'Mavjud testlar sahifasiga o\'tish' },
-    { comp: CasusCard, tab: 'mavjud_kazuslar', depth: 50, delay: 0.55, area: '45% 0 / 55% 50%', z: 35, label: 'Mavjud kazuslar sahifasiga o\'tish' },
-    { comp: MootCard, tab: 'moot_court', depth: 40, delay: 0.7, area: '0 48% / 52% 48%', z: 25, label: 'Moot Court sahifasiga o\'tish' },
-    { comp: BlogCard, tab: 'blog', depth: 20, delay: 0.85, area: '50% 50% / 50% 42%', z: 20, label: 'Blog sahifasiga o\'tish' },
+    { comp: TestCard, tab: 'mavjud_testlar', depth: 30, delay: 0.4, z: 30, label: 'Mavjud testlar sahifasiga o\'tish', staggerDown: false },
+    { comp: CasusCard, tab: 'mavjud_kazuslar', depth: 50, delay: 0.55, z: 35, label: 'Mavjud kazuslar sahifasiga o\'tish', staggerDown: true },
+    { comp: MootCard, tab: 'moot_court', depth: 40, delay: 0.7, z: 25, label: 'Moot Court sahifasiga o\'tish', staggerDown: true },
+    { comp: BlogCard, tab: 'blog', depth: 20, delay: 0.85, z: 20, label: 'Blog sahifasiga o\'tish', staggerDown: false },
   ];
 
   return (
@@ -1399,74 +1396,90 @@ function LiveScene({ onNav }: { onNav: (tab: string) => void }) {
       ref={sceneRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className="relative w-full h-full min-h-[420px]"
-      style={{ perspective: '1200px', transformStyle: 'preserve-3d' }}
+      className="relative w-full h-full"
+      style={{ perspective: '1400px', transformStyle: 'preserve-3d' }}
     >
       {/* Soft radial glow behind cards */}
       <div
         aria-hidden="true"
         className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(circle at 55% 45%, rgba(56,189,248,0.14), rgba(139,92,246,0.10) 40%, transparent 65%)' }}
+        style={{ background: 'radial-gradient(circle at 50% 50%, rgba(56,189,248,0.12), rgba(139,92,246,0.08) 45%, transparent 70%)' }}
       />
 
       {/* Subtle grid lines for depth */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 pointer-events-none opacity-20"
+        className="absolute inset-0 pointer-events-none opacity-[0.15]"
         style={{
           backgroundImage: 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-          maskImage: 'radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 100%)',
-          WebkitMaskImage: 'radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 100%)',
+          backgroundSize: '36px 36px',
+          maskImage: 'radial-gradient(ellipse 65% 65% at 50% 50%, black 35%, transparent 100%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 65% 65% at 50% 50%, black 35%, transparent 100%)',
         }}
       />
 
       <motion.div
         animate={{ rotateX: tilt.x, rotateY: tilt.y }}
         transition={{ type: 'spring', stiffness: 60, damping: 20 }}
-        className="absolute inset-0"
+        className="relative h-full"
         style={{ transformStyle: 'preserve-3d' }}
       >
-        {cards.map((card, i) => {
-          const CardComp = card.comp;
-          const isHovered = hoveredIdx === i;
-          const isOtherHovered = hoveredIdx !== null && hoveredIdx !== i;
-          return (
-            <motion.div
-              key={i}
-              className="absolute"
-              style={{
-                left: card.area.split(' / ')[0].split(' ')[0],
-                top: card.area.split(' / ')[0].split(' ')[1],
-                width: card.area.split(' / ')[1].split(' ')[0],
-                height: card.area.split(' / ')[1].split(' ')[1],
-                transformStyle: 'preserve-3d',
-                zIndex: isHovered ? 50 : card.z,
-              }}
-              animate={{
-                scale: isHovered ? 1.04 : isOtherHovered ? 0.97 : 1,
-                z: isHovered ? card.depth + 30 : card.depth,
-              }}
-              transition={{ type: 'spring', stiffness: 200, damping: 22 }}
-            >
-              <GlassyCard
-                depth={card.depth}
-                delay={card.delay}
-                onClick={() => onNav(card.tab)}
-                ariaLabel={card.label}
-                className="h-full"
+        {/* 2x2 grid with staggered second column */}
+        <div className="grid grid-cols-2 gap-x-5 gap-y-5 h-full items-stretch">
+          {/* Column 1: Test (top) + Moot Court (bottom) */}
+          {/* Column 2: Kazus (top, shifted down) + Blog (bottom, shifted down) */}
+          {cards.map((card, i) => {
+            const CardComp = card.comp;
+            const isHovered = hoveredIdx === i;
+            const isOtherHovered = hoveredIdx !== null && hoveredIdx !== i;
+            const colIdx = i % 2; // 0 = left col, 1 = right col
+            const isRightCol = colIdx === 1;
+            return (
+              <div
+                key={i}
+                className="relative"
+                style={{ transformStyle: 'preserve-3d' }}
               >
-                <div
-                  onMouseEnter={() => setHoveredIdx(i)}
-                  onMouseLeave={() => setHoveredIdx(null)}
+                <motion.div
+                  initial={reduce ? false : { opacity: 0, y: 40, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  transition={{ duration: 0.7, ease: EASE_OUT, delay: card.delay }}
+                  style={{
+                    transformStyle: 'preserve-3d',
+                    marginTop: isRightCol ? '32px' : '0px',
+                    zIndex: isHovered ? 50 : card.z,
+                  }}
                   className="h-full"
                 >
-                  <CardComp reduce={reduce} />
-                </div>
-              </GlassyCard>
-            </motion.div>
-          );
-        })}
+                  <motion.div
+                    animate={{
+                      scale: isHovered ? 1.03 : isOtherHovered ? 0.98 : 1,
+                      z: isHovered ? card.depth + 25 : card.depth,
+                    }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+                    style={{ transformStyle: 'preserve-3d', height: '100%' }}
+                  >
+                    <GlassyCard
+                      depth={card.depth}
+                      delay={0}
+                      onClick={() => onNav(card.tab)}
+                      ariaLabel={card.label}
+                      className="h-full"
+                    >
+                      <div
+                        onMouseEnter={() => setHoveredIdx(i)}
+                        onMouseLeave={() => setHoveredIdx(null)}
+                        className="h-full"
+                      >
+                        <CardComp reduce={reduce} />
+                      </div>
+                    </GlassyCard>
+                  </motion.div>
+                </motion.div>
+              </div>
+            );
+          })}
+        </div>
 
         <XpBadge reduce={reduce} />
       </motion.div>
@@ -1568,7 +1581,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
           e.currentTarget.style.setProperty('--mx', `${mx}%`);
           e.currentTarget.style.setProperty('--my', `${my}%`);
         }}
-        className="relative isolate overflow-hidden rounded-3xl mb-10 px-6 py-10 md:px-14 md:py-14 lg:py-16 bg-gradient-to-br from-[#040814] via-[#0a1a4d] to-[#050b1f]"
+        className="relative isolate overflow-hidden rounded-3xl mb-10 px-6 py-8 md:px-10 md:py-10 lg:py-12 bg-gradient-to-br from-[#040814] via-[#0a1a4d] to-[#050b1f]"
       >
         {/* Glows */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
@@ -1607,7 +1620,7 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
           <HeroText onNav={handleNav} />
 
           {/* Right column — live scene (desktop) */}
-          <div className="hidden lg:block relative h-[460px]">
+          <div className="hidden lg:block relative h-[440px]">
             <LiveScene onNav={handleNav} />
           </div>
 
