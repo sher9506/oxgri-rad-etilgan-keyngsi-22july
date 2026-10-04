@@ -867,44 +867,266 @@ function useReducedMotion() {
   return reduce;
 }
 
-/* ── GlassyCard: single shishasimon card wrapper with 3D translateZ + hover ── */
-interface GlassyCardProps {
-  children: React.ReactNode;
-  depth: number; // translateZ in px
-  delay: number;
-  onClick: () => void;
-  ariaLabel: string;
-  className?: string;
-  style?: React.CSSProperties;
-}
+/* ── ScenePanel content components (no headers, rendered inside tabpanel) ── */
 
-function GlassyCard({ children, depth, delay, onClick, ariaLabel, className = '', style }: GlassyCardProps) {
-  const reduce = useReducedMotion();
+function TestPanel({ reduce }: { reduce: boolean }) {
+  const [selected, setSelected] = useState(-1);
+  const [correctIdx] = useState(() => Math.floor(Math.random() * 4));
+  const cycleRef = useRef(0);
+
+  useEffect(() => {
+    if (reduce) return;
+    const interval = setInterval(() => {
+      cycleRef.current = (cycleRef.current + 1) % 4;
+      setSelected(cycleRef.current);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [reduce]);
+
+  const options = ['A variant', 'B variant', 'C variant', 'D variant'];
 
   return (
-    <motion.div
-      initial={false}
-      animate={{ z: depth }}
-      transition={{ type: 'spring', stiffness: 120, damping: 18 }}
-      style={{
-        transformStyle: 'preserve-3d',
-        ...style,
-      }}
-      className={className}
-    >
-      <button
-        onClick={onClick}
-        aria-label={ariaLabel}
-        className="group relative w-full text-left rounded-2xl bg-white/[0.07] border border-white/[0.12] backdrop-blur-2xl overflow-hidden transition-all duration-500 hover:bg-white/[0.10] hover:border-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-        style={{
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 12px 40px rgba(8,16,40,0.45)',
-        }}
-      >
-        {/* Soft inner glow */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-60" style={{ background: 'radial-gradient(circle at 30% 0%, rgba(56,189,248,0.10), transparent 60%)' }} />
-        <div className="relative z-10">{children}</div>
-      </button>
-    </motion.div>
+    <div className="flex flex-col h-full p-4">
+      <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 mb-3">
+        <p className="text-[12px] text-slate-200 leading-relaxed">
+          Quyidagi savollardan to'g'ri javobni belgilang:
+        </p>
+      </div>
+      <div className="space-y-2 flex-1">
+        {options.map((opt, i) => {
+          const isCorrect = i === correctIdx;
+          const isSelected = i === selected;
+          const showCorrect = isCorrect && selected === correctIdx;
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-2.5 rounded-lg px-3.5 py-2.5 border transition-all duration-500"
+              style={{
+                background: showCorrect ? 'rgba(16,185,129,0.15)' : isSelected ? 'rgba(56,189,248,0.10)' : 'rgba(255,255,255,0.03)',
+                borderColor: showCorrect ? 'rgba(16,185,129,0.4)' : isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.06)',
+              }}
+            >
+              <div
+                className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all"
+                style={{
+                  borderColor: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'rgba(255,255,255,0.2)',
+                  background: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'transparent',
+                }}
+              >
+                {showCorrect && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+              </div>
+              <span className="text-[11px] font-semibold transition-colors" style={{ color: showCorrect ? '#6ee7b7' : isSelected ? '#bae6fd' : '#94a3b8' }}>
+                {opt}
+              </span>
+              {showCorrect && (
+                <motion.span initial={reduce ? false : { opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="ml-auto text-[9px] font-black uppercase text-emerald-400">
+                  To'g'ri
+                </motion.span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CasusPanel({ reduce }: { reduce: boolean }) {
+  const [score, setScore] = useState(0);
+  const [bars, setBars] = useState<number[]>([0, 0, 0, 0, 0]);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-20px' });
+
+  useEffect(() => {
+    if (!inView) return;
+    const targets = [78, 85, 72, 90, 88];
+    const duration = 2000;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setScore(Math.round(eased * 92));
+      setBars(targets.map(t => Math.round(eased * t)));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [inView, reduce]);
+
+  useEffect(() => {
+    if (reduce || !inView) return;
+    const targets = [78, 85, 72, 90, 88];
+    const interval = setInterval(() => {
+      setBars(targets.map(t => t + Math.floor(Math.random() * 6 - 3)));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [inView, reduce]);
+
+  const R = 28;
+  const CIRC = 2 * Math.PI * R;
+  const offset = CIRC - (score / 100) * CIRC;
+
+  return (
+    <div ref={ref} className="flex flex-col h-full p-4 justify-center">
+      <div className="flex items-center gap-5 mb-4">
+        <div className="relative w-[80px] h-[80px] flex items-center justify-center shrink-0">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 70 70">
+            <circle cx="35" cy="35" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+            <circle cx="35" cy="35" r={R} fill="none" stroke="url(#casus-grad)" strokeWidth="4" strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.1s linear' }} />
+            <defs>
+              <linearGradient id="casus-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#38bdf8" />
+                <stop offset="100%" stopColor="#a78bfa" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-lg font-black text-white leading-none">{score}</span>
+            <span className="text-[7px] text-slate-400 font-bold">/100</span>
+          </div>
+        </div>
+        <div className="flex-1 space-y-2">
+          {['Mantiq', 'Dalil', 'Tahlil', 'Xulosa', 'Uslub'].map((label, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[9px] text-slate-400 w-12 shrink-0">{label}</span>
+              <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-sky-400 to-violet-400" style={{ width: `${bars[i]}%`, transition: 'width 1.5s cubic-bezier(0.22,1,0.36,1)' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MootPanel({ reduce }: { reduce: boolean }) {
+  const [typedText, setTypedText] = useState('');
+  const [showUserReply, setShowUserReply] = useState(false);
+  const fullText = "Ishda huquqbuzarlik sodir bo'lganda, sudga taqdim etiladigan asosiy dalillar qanday tartibda baholanadi?";
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-20px' });
+
+  useEffect(() => {
+    if (!inView || reduce) { if (inView) setTypedText(fullText); return; }
+    let charIdx = 0;
+    let replyTimer: ReturnType<typeof setTimeout>;
+    const typeInterval = setInterval(() => {
+      charIdx++;
+      setTypedText(fullText.slice(0, charIdx));
+      if (charIdx >= fullText.length) {
+        clearInterval(typeInterval);
+        replyTimer = setTimeout(() => setShowUserReply(true), 800);
+      }
+    }, 35);
+    return () => { clearInterval(typeInterval); clearTimeout(replyTimer); };
+  }, [inView, reduce]);
+
+  useEffect(() => {
+    if (reduce || !inView) return;
+    const loop = setInterval(() => {
+      setTypedText('');
+      setShowUserReply(false);
+      let charIdx = 0;
+      const typeInterval = setInterval(() => {
+        charIdx++;
+        setTypedText(fullText.slice(0, charIdx));
+        if (charIdx >= fullText.length) {
+          clearInterval(typeInterval);
+          setTimeout(() => setShowUserReply(true), 800);
+        }
+      }, 35);
+    }, 12000);
+    return () => clearInterval(loop);
+  }, [inView, reduce]);
+
+  return (
+    <div ref={ref} className="flex flex-col h-full p-4 justify-center">
+      <div className="space-y-2.5">
+        <div className="flex gap-2 items-start">
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+            <Scale className="h-3 w-3 text-white" />
+          </div>
+          <div className="flex-1 rounded-xl rounded-tl-sm bg-white/[0.06] border border-white/[0.08] px-3.5 py-2.5 min-h-[48px]">
+            <p className="text-[11px] text-slate-200 leading-relaxed">
+              {typedText}
+              {typedText.length < fullText.length && !reduce && (
+                <span className="inline-block w-[2px] h-3 bg-sky-400 ml-0.5 animate-pulse" />
+              )}
+            </p>
+          </div>
+        </div>
+        <AnimatePresence>
+          {showUserReply && (
+            <motion.div initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="flex gap-2 items-start justify-end">
+              <div className="max-w-[80%] rounded-xl rounded-tr-sm bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-400/20 px-3.5 py-2.5">
+                <p className="text-[11px] text-sky-100 leading-relaxed">
+                  Dalillar aniqlik, ishonchlilik va qonun bilan bog'liqligi bo'yicha...
+                </p>
+              </div>
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-400 to-sky-500 flex items-center justify-center shrink-0 mt-0.5">
+                <User className="h-3 w-3 text-white" />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function BlogPanel({ reduce }: { reduce: boolean }) {
+  interface BlogPostLite { sarlavha: string; ustoz_ismi: string; slug: string; }
+  const [post, setPost] = useState<BlogPostLite | null>(null);
+  const [loading, setLoading] = useState(true);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-20px' });
+
+  useEffect(() => {
+    if (!inView) return;
+    supabase
+      .from('blog_posts')
+      .select('sarlavha, ustoz_ismi, slug')
+      .eq('status', 'published')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        setPost(data && data.length > 0 ? data[0] : null);
+        setLoading(false);
+      })
+      .catch(() => { setLoading(false); });
+  }, [inView]);
+
+  return (
+    <div ref={ref} className="flex flex-col h-full p-4 justify-center">
+      {loading ? (
+        <div className="space-y-2.5">
+          <div className="h-3.5 w-full rounded-full bg-white/10 animate-pulse" />
+          <div className="h-3.5 w-3/4 rounded-full bg-white/8 animate-pulse" />
+          <div className="h-3.5 w-2/3 rounded-full bg-white/8 animate-pulse" />
+          <div className="flex items-center gap-2 mt-4">
+            <div className="w-7 h-7 rounded-full bg-white/10 animate-pulse" />
+            <div className="h-2.5 w-24 rounded-full bg-white/8 animate-pulse" />
+          </div>
+        </div>
+      ) : post ? (
+        <motion.div initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE_OUT }}>
+          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-4 mb-3">
+            <p className="text-[13px] font-bold text-white leading-snug line-clamp-3">{post.sarlavha}</p>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
+              <User className="h-3.5 w-3.5 text-white" />
+            </div>
+            <span className="text-[11px] text-slate-400 font-medium">{post.ustoz_ismi}</span>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-6 text-center">
+          <Newspaper className="h-8 w-8 text-slate-500 mx-auto mb-3" />
+          <p className="text-[11px] text-slate-400">Tez orada yangi maqolalar</p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -935,7 +1157,7 @@ function HeroText({ onNav }: { onNav: (tab: string) => void }) {
         );
       case 'title':
         return (
-          <h1 className="font-black tracking-tighter leading-[1.05] mb-3" style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)' }}>
+          <h1 className="font-black tracking-tighter leading-[1.05] mb-3" style={{ fontSize: 'clamp(2.2rem, 13vw, 3.5rem)' }}>
             <span className="text-white">Fan</span>
             <span className="ff-title-gradient inline-block pr-[0.06em]">Faster</span>
           </h1>
@@ -1004,374 +1226,34 @@ function HeroText({ onNav }: { onNav: (tab: string) => void }) {
   );
 }
 
-/* ── TestCard: auto-cycling quiz with green highlight on correct answer ── */
-function TestCard({ reduce }: { reduce: boolean }) {
-  const [selected, setSelected] = useState(-1);
-  const [correctIdx] = useState(() => Math.floor(Math.random() * 4));
-  const cycleRef = useRef(0);
-
-  useEffect(() => {
-    if (reduce) return;
-    const interval = setInterval(() => {
-      cycleRef.current = (cycleRef.current + 1) % 4;
-      const idx = cycleRef.current;
-      setSelected(idx);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [reduce]);
-
-  const options = ['A variant', 'B variant', 'C variant', 'D variant'];
-
-  return (
-    <div className="p-5">
-      <div className="flex items-center gap-2.5 mb-4">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
-          <HelpCircle className="h-4.5 w-4.5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-black text-white">Mavjud testlar</p>
-          <p className="text-[10px] text-slate-400">Bilim sinovi</p>
-        </div>
-      </div>
-      <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5 mb-3">
-        <p className="text-[11px] text-slate-300 leading-relaxed">
-          Quyidagi savollardan to'g'ri javobni belgilang:
-        </p>
-      </div>
-      <div className="space-y-2">
-        {options.map((opt, i) => {
-          const isCorrect = i === correctIdx;
-          const isSelected = i === selected;
-          const showCorrect = isCorrect && selected === correctIdx;
-          return (
-            <div
-              key={i}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 border transition-all duration-500"
-              style={{
-                background: showCorrect ? 'rgba(16,185,129,0.15)' : isSelected ? 'rgba(56,189,248,0.10)' : 'rgba(255,255,255,0.03)',
-                borderColor: showCorrect ? 'rgba(16,185,129,0.4)' : isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.06)',
-              }}
-            >
-              <div
-                className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all"
-                style={{
-                  borderColor: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'rgba(255,255,255,0.2)',
-                  background: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'transparent',
-                }}
-              >
-                {showCorrect && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
-              </div>
-              <span
-                className="text-[11px] font-semibold transition-colors"
-                style={{ color: showCorrect ? '#6ee7b7' : isSelected ? '#bae6fd' : '#94a3b8' }}
-              >
-                {opt}
-              </span>
-              {showCorrect && (
-                <motion.span
-                  initial={reduce ? false : { opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="ml-auto text-[9px] font-black uppercase text-emerald-400"
-                >
-                  To'g'ri
-                </motion.span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+/* ── LiveScene: single scene card with 4 rotating tabs ── */
+interface SceneTab {
+  id: string;
+  name: string;
+  subtitle: string;
+  icon: React.ComponentType<{ className?: string }>;
+  gradient: string;
+  navTab: string;
+  panel: React.ComponentType<{ reduce: boolean }>;
 }
 
-/* ── CasusCard: 92/100 ring + 5 animated criteria bars ── */
-function CasusCard({ reduce }: { reduce: boolean }) {
-  const [score, setScore] = useState(0);
-  const [bars, setBars] = useState<number[]>([0, 0, 0, 0, 0]);
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-30px' });
+const SCENE_TABS: SceneTab[] = [
+  { id: 'test', name: 'Mavjud testlar', subtitle: 'Bilim sinovi', icon: HelpCircle, gradient: 'from-sky-500 to-blue-600', navTab: 'mavjud_testlar', panel: TestPanel },
+  { id: 'kazus', name: 'Mavjud kazuslar', subtitle: 'AI xolis bahosi', icon: BrainCircuit, gradient: 'from-violet-500 to-purple-600', navTab: 'mavjud_kazuslar', panel: CasusPanel },
+  { id: 'moot', name: 'Moot Court', subtitle: 'AI sudya bilan jonli bahs', icon: Scale, gradient: 'from-blue-500 to-indigo-600', navTab: 'moot_court', panel: MootPanel },
+  { id: 'blog', name: 'Blog', subtitle: "So'nggi maqolalar", icon: Newspaper, gradient: 'from-emerald-500 to-teal-600', navTab: 'blog', panel: BlogPanel },
+];
 
-  useEffect(() => {
-    if (!inView) return;
-    const targets = [78, 85, 72, 90, 88];
-    const totalDuration = 2000;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min((now - start) / totalDuration, 1);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setScore(Math.round(eased * 92));
-      setBars(targets.map(t => Math.round(eased * t)));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [inView, reduce]);
-
-  // Idle breathing animation for bars after initial fill
-  useEffect(() => {
-    if (reduce || !inView) return;
-    const targets = [78, 85, 72, 90, 88];
-    const interval = setInterval(() => {
-      setBars(targets.map(t => t + Math.floor(Math.random() * 6 - 3)));
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [inView, reduce]);
-
-  const R = 28;
-  const CIRC = 2 * Math.PI * R;
-  const offset = CIRC - (score / 100) * CIRC;
-
-  return (
-    <div ref={ref} className="p-5">
-      <div className="flex items-center gap-2.5 mb-4">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
-          <BrainCircuit className="h-4.5 w-4.5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-black text-white">Mavjud kazuslar</p>
-          <p className="text-[10px] text-slate-400">AI xolis bahosi</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-4 mb-3">
-        <div className="relative w-[72px] h-[72px] flex items-center justify-center shrink-0">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 70 70">
-            <circle cx="35" cy="35" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-            <circle
-              cx="35" cy="35" r={R} fill="none"
-              stroke="url(#casus-grad)" strokeWidth="4" strokeLinecap="round"
-              strokeDasharray={CIRC} strokeDashoffset={offset}
-              style={{ transition: 'stroke-dashoffset 0.1s linear' }}
-            />
-            <defs>
-              <linearGradient id="casus-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#38bdf8" />
-                <stop offset="100%" stopColor="#a78bfa" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-base font-black text-white leading-none">{score}</span>
-            <span className="text-[7px] text-slate-400 font-bold">/100</span>
-          </div>
-        </div>
-        <div className="flex-1 space-y-1.5">
-          {['Mantiq', 'Dalil', 'Tahlil', 'Xulosa', 'Uslub'].map((label, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-[8px] text-slate-400 w-10 shrink-0">{label}</span>
-              <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-violet-400"
-                  style={{ width: `${bars[i]}%`, transition: 'width 1.5s cubic-bezier(0.22,1,0.36,1)' }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── MootCard: two-bubble dialog with typing animation ── */
-function MootCard({ reduce }: { reduce: boolean }) {
-  const [typedText, setTypedText] = useState('');
-  const [showUserReply, setShowUserReply] = useState(false);
-  const fullText = "Ishda huquqbuzarlik sodir bo'lganda, sudga taqdim etiladigan asosiy dalillar qanday tartibda baholanadi?";
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-30px' });
-
-  useEffect(() => {
-    if (!inView || reduce) {
-      if (inView) setTypedText(fullText);
-      return;
-    }
-    let charIdx = 0;
-    let replyTimer: ReturnType<typeof setTimeout>;
-    const typeInterval = setInterval(() => {
-      charIdx++;
-      setTypedText(fullText.slice(0, charIdx));
-      if (charIdx >= fullText.length) {
-        clearInterval(typeInterval);
-        replyTimer = setTimeout(() => setShowUserReply(true), 800);
-      }
-    }, 35);
-    return () => { clearInterval(typeInterval); clearTimeout(replyTimer); };
-  }, [inView, reduce]);
-
-  // Loop the animation
-  useEffect(() => {
-    if (reduce || !inView) return;
-    const loop = setInterval(() => {
-      setTypedText('');
-      setShowUserReply(false);
-      let charIdx = 0;
-      const typeInterval = setInterval(() => {
-        charIdx++;
-        setTypedText(fullText.slice(0, charIdx));
-        if (charIdx >= fullText.length) {
-          clearInterval(typeInterval);
-          setTimeout(() => setShowUserReply(true), 800);
-        }
-      }, 35);
-    }, 12000);
-    return () => clearInterval(loop);
-  }, [inView, reduce]);
-
-  return (
-    <div ref={ref} className="p-5">
-      <div className="flex items-center gap-2.5 mb-4">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
-          <Scale className="h-4.5 w-4.5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-black text-white">Moot Court</p>
-          <p className="text-[10px] text-slate-400">AI sudya bilan jonli bahs</p>
-        </div>
-      </div>
-      <div className="space-y-2.5">
-        {/* AI judge bubble */}
-        <div className="flex gap-2 items-start">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-            <Scale className="h-3 w-3 text-white" />
-          </div>
-          <div className="flex-1 rounded-xl rounded-tl-sm bg-white/[0.06] border border-white/[0.08] px-3 py-2 min-h-[44px]">
-            <p className="text-[10px] text-slate-200 leading-relaxed">
-              {typedText}
-              {typedText.length < fullText.length && !reduce && (
-                <span className="inline-block w-[2px] h-3 bg-sky-400 ml-0.5 animate-pulse" />
-              )}
-            </p>
-          </div>
-        </div>
-        {/* User reply bubble */}
-        <AnimatePresence>
-          {showUserReply && (
-            <motion.div
-              initial={reduce ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="flex gap-2 items-start justify-end"
-            >
-              <div className="max-w-[80%] rounded-xl rounded-tr-sm bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-400/20 px-3 py-2">
-                <p className="text-[10px] text-sky-100 leading-relaxed">
-                  Dalillar aniqlik, ishonchlilik va qonun bilan bog'liqligi bo'yicha...
-                </p>
-              </div>
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-400 to-sky-500 flex items-center justify-center shrink-0 mt-0.5">
-                <User className="h-3 w-3 text-white" />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-/* ── BlogCard: latest blog post from Supabase or elegant empty state ── */
-function BlogCard({ reduce }: { reduce: boolean }) {
-  interface BlogPostLite { sarlavha: string; ustoz_ismi: string; slug: string; }
-  const [post, setPost] = useState<BlogPostLite | null>(null);
-  const [loading, setLoading] = useState(true);
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-30px' });
-
-  useEffect(() => {
-    if (!inView) return;
-    supabase
-      .from('blog_posts')
-      .select('sarlavha, ustoz_ismi, slug')
-      .eq('status', 'published')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .then(({ data }) => {
-        setPost(data && data.length > 0 ? data[0] : null);
-        setLoading(false);
-      })
-      .catch(() => { setLoading(false); });
-  }, [inView]);
-
-  return (
-    <div ref={ref} className="p-5">
-      <div className="flex items-center gap-2.5 mb-4">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg" style={{ transform: 'translateZ(20px)' }}>
-          <Newspaper className="h-4.5 w-4.5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-black text-white">Blog</p>
-          <p className="text-[10px] text-slate-400">So'nggi maqolalar</p>
-        </div>
-      </div>
-      {loading ? (
-        <div className="space-y-2">
-          <div className="h-3 w-full rounded-full bg-white/10 animate-pulse" />
-          <div className="h-3 w-3/4 rounded-full bg-white/8 animate-pulse" />
-          <div className="flex items-center gap-2 mt-3">
-            <div className="w-6 h-6 rounded-full bg-white/10 animate-pulse" />
-            <div className="h-2 w-20 rounded-full bg-white/8 animate-pulse" />
-          </div>
-        </div>
-      ) : post ? (
-        <motion.div
-          initial={reduce ? false : { opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: EASE_OUT }}
-        >
-          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5 mb-2">
-            <p className="text-[12px] font-bold text-white leading-snug line-clamp-2">{post.sarlavha}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
-              <User className="h-3 w-3 text-white" />
-            </div>
-            <span className="text-[10px] text-slate-400 font-medium">{post.ustoz_ismi}</span>
-          </div>
-        </motion.div>
-      ) : (
-        <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5 text-center">
-          <Newspaper className="h-6 w-6 text-slate-500 mx-auto mb-2" />
-          <p className="text-[10px] text-slate-400">Tez orada yangi maqolalar</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── XpBadge: small "+120 XP" living element at scene edge ── */
-function XpBadge({ reduce }: { reduce: boolean }) {
-  return (
-    <motion.div
-      initial={reduce ? false : { opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.6, ease: EASE_OUT, delay: 1.0 }}
-      className="absolute z-40 pointer-events-none"
-      style={{ top: '-8px', left: '-8px' }}
-    >
-      <motion.div
-        animate={reduce ? {} : { y: [0, -6, 0] }}
-        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-400/30 backdrop-blur-xl"
-        style={{ boxShadow: '0 4px 20px rgba(245,158,11,0.15)' }}
-      >
-        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-          <Trophy className="h-3 w-3 text-white" />
-        </div>
-        <div>
-          <p className="text-[11px] font-black text-amber-200">+120 XP</p>
-          <p className="text-[8px] text-amber-300/70">Yangi daraja ochildi</p>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-/* ── LiveScene: right column — 2x2 grid of glassy cards with pointer parallax ── */
 function LiveScene({ onNav }: { onNav: (tab: string) => void }) {
   const reduce = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const inView = useInView(sceneRef, { once: false, margin: '-20px' });
 
+  // Pointer parallax
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!sceneRef.current || reduce) return;
     const rect = sceneRef.current.getBoundingClientRect();
@@ -1379,119 +1261,214 @@ function LiveScene({ onNav }: { onNav: (tab: string) => void }) {
     const cy = rect.top + rect.height / 2;
     const dx = (e.clientX - cx) / (rect.width / 2);
     const dy = (e.clientY - cy) / (rect.height / 2);
-    setTilt({ x: -dy * 5, y: dx * 7 });
+    setTilt({ x: -dy * 4, y: dx * 6 });
   }, [reduce]);
 
-  const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
+  const handleMouseLeave = useCallback(() => { setTilt({ x: 0, y: 0 }); setPaused(false); }, []);
+  const handleMouseEnter = useCallback(() => setPaused(true), []);
 
-  const cards = [
-    { comp: TestCard, tab: 'mavjud_testlar', depth: 30, delay: 0.4, z: 30, label: 'Mavjud testlar sahifasiga o\'tish', staggerDown: false },
-    { comp: CasusCard, tab: 'mavjud_kazuslar', depth: 50, delay: 0.55, z: 35, label: 'Mavjud kazuslar sahifasiga o\'tish', staggerDown: true },
-    { comp: MootCard, tab: 'moot_court', depth: 40, delay: 0.7, z: 25, label: 'Moot Court sahifasiga o\'tish', staggerDown: true },
-    { comp: BlogCard, tab: 'blog', depth: 20, delay: 0.85, z: 20, label: 'Blog sahifasiga o\'tish', staggerDown: false },
-  ];
+  // Auto-rotate tabs with progress bar
+  useEffect(() => {
+    if (reduce || !inView || paused) return;
+    const CYCLE_MS = 6000;
+    let start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const p = elapsed / CYCLE_MS;
+      if (p >= 1) {
+        setActiveIdx(prev => (prev + 1) % SCENE_TABS.length);
+        setProgress(0);
+        start = now;
+      } else {
+        setProgress(p);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [reduce, inView, paused]);
+
+  const currentTab = SCENE_TABS[activeIdx];
+  const CurrentPanel = currentTab.panel;
+  const CurrentIcon = currentTab.icon;
 
   return (
     <div
       ref={sceneRef}
       onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className="relative w-full h-full"
+      className="relative w-full"
       style={{ perspective: '1400px', transformStyle: 'preserve-3d' }}
     >
-      {/* Soft radial glow behind cards */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(circle at 50% 50%, rgba(56,189,248,0.12), rgba(139,92,246,0.08) 45%, transparent 70%)' }}
-      />
-
-      {/* Subtle grid lines for depth */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 pointer-events-none opacity-[0.15]"
-        style={{
-          backgroundImage: 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
-          backgroundSize: '36px 36px',
-          maskImage: 'radial-gradient(ellipse 65% 65% at 50% 50%, black 35%, transparent 100%)',
-          WebkitMaskImage: 'radial-gradient(ellipse 65% 65% at 50% 50%, black 35%, transparent 100%)',
-        }}
-      />
+      {/* Decorative ghost cards behind scene */}
+      <div aria-hidden="true" className="absolute pointer-events-none" style={{ inset: 0, transformStyle: 'preserve-3d' }}>
+        <div className="absolute inset-0 rounded-3xl bg-white/[0.03] border border-white/[0.05]" style={{ transform: 'translateZ(-40px) translateY(-24px) scale(0.97)', filter: 'blur(1px)' }} />
+        <div className="absolute inset-0 rounded-3xl bg-white/[0.02] border border-white/[0.03]" style={{ transform: 'translateZ(-80px) translateY(-48px) translateX(16px) scale(0.92)', filter: 'blur(2px)' }} />
+      </div>
 
       <motion.div
-        animate={{ rotateX: tilt.x, rotateY: tilt.y }}
-        transition={{ type: 'spring', stiffness: 60, damping: 20 }}
-        className="relative h-full"
+        initial={reduce ? false : { opacity: 0, y: 50, filter: 'blur(10px)' }}
+        animate={{ rotateX: tilt.x, rotateY: tilt.y, opacity: 1, y: 0, filter: 'blur(0px)' }}
+        transition={{ duration: 0.8, ease: EASE_OUT, delay: 0.3 }}
         style={{ transformStyle: 'preserve-3d' }}
+        className="relative"
       >
-        {/* 2x2 grid with staggered second column */}
-        <div className="grid grid-cols-2 gap-x-5 gap-y-5 h-full items-stretch">
-          {/* Column 1: Test (top) + Moot Court (bottom) */}
-          {/* Column 2: Kazus (top, shifted down) + Blog (bottom, shifted down) */}
-          {cards.map((card, i) => {
-            const CardComp = card.comp;
-            const isHovered = hoveredIdx === i;
-            const isOtherHovered = hoveredIdx !== null && hoveredIdx !== i;
-            const colIdx = i % 2; // 0 = left col, 1 = right col
-            const isRightCol = colIdx === 1;
-            return (
-              <div
-                key={i}
-                className="relative"
-                style={{ transformStyle: 'preserve-3d' }}
-              >
-                <motion.div
-                  initial={reduce ? false : { opacity: 0, y: 40, filter: 'blur(8px)' }}
-                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                  transition={{ duration: 0.7, ease: EASE_OUT, delay: card.delay }}
-                  style={{
-                    transformStyle: 'preserve-3d',
-                    marginTop: isRightCol ? '32px' : '0px',
-                    zIndex: isHovered ? 50 : card.z,
-                  }}
-                  className="h-full"
-                >
-                  <motion.div
-                    animate={{
-                      scale: isHovered ? 1.03 : isOtherHovered ? 0.98 : 1,
-                      z: isHovered ? card.depth + 25 : card.depth,
-                    }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 22 }}
-                    style={{ transformStyle: 'preserve-3d', height: '100%' }}
-                  >
-                    <GlassyCard
-                      depth={card.depth}
-                      delay={0}
-                      onClick={() => onNav(card.tab)}
-                      ariaLabel={card.label}
-                      className="h-full"
-                    >
-                      <div
-                        onMouseEnter={() => setHoveredIdx(i)}
-                        onMouseLeave={() => setHoveredIdx(null)}
-                        className="h-full"
-                      >
-                        <CardComp reduce={reduce} />
-                      </div>
-                    </GlassyCard>
-                  </motion.div>
-                </motion.div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Scene card */}
+        <div
+          className="relative rounded-3xl bg-white/[0.07] border border-white/[0.12] backdrop-blur-2xl overflow-hidden flex flex-col"
+          style={{
+            height: 'clamp(460px, 52vh, 520px)',
+            maxWidth: '640px',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 50px rgba(8,16,40,0.5)',
+          }}
+        >
+          {/* Inner glow */}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-50" style={{ background: 'radial-gradient(circle at 30% 0%, rgba(56,189,248,0.10), transparent 60%)' }} />
 
-        <XpBadge reduce={reduce} />
+          {/* Tab bar (56px) */}
+          <div role="tablist" aria-label="Sahna tablari" className="relative flex items-center gap-1.5 px-3 pt-3 shrink-0" style={{ height: '56px' }}>
+            {SCENE_TABS.map((tab, i) => {
+              const Icon = tab.icon;
+              const isActive = i === activeIdx;
+              return (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-label={`${tab.name} tabini ochish`}
+                  aria-controls={`scene-panel-${tab.id}`}
+                  onClick={() => { setActiveIdx(i); setProgress(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+                  style={{
+                    background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
+                    border: `1px solid ${isActive ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)'}`,
+                  }}
+                >
+                  <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${tab.gradient} flex items-center justify-center shrink-0`} style={{ transform: isActive ? 'translateZ(12px)' : 'translateZ(0)' }}>
+                    <Icon className="h-3.5 w-3.5 text-white" />
+                  </div>
+                  <span className="text-[10px] font-bold transition-colors hidden xl:block" style={{ color: isActive ? '#e2e8f0' : '#64748b' }}>
+                    {tab.name}
+                  </span>
+                  {isActive && !reduce && !paused && (
+                    <motion.div
+                      className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
+                      style={{ background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }}
+                      animate={{ scaleX: progress }}
+                      transition={{ ease: 'linear' }}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Header row (64px) */}
+          <div className="relative flex items-center gap-3 px-5 py-3 shrink-0 border-b border-white/[0.06]" style={{ height: '64px' }}>
+            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${currentTab.gradient} flex items-center justify-center shadow-lg`} style={{ transform: 'translateZ(20px)' }}>
+              <CurrentIcon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-black text-white leading-tight">{currentTab.name}</p>
+              <p className="text-[11px] text-slate-400">{currentTab.subtitle}</p>
+            </div>
+          </div>
+
+          {/* Mini-demo area (flex:1) */}
+          <div className="relative flex-1 min-h-0 overflow-hidden" style={{ height: 'calc(100% - 56px - 64px - 56px)' }}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeIdx}
+                id={`scene-panel-${currentTab.id}`}
+                role="tabpanel"
+                initial={reduce ? false : { opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduce ? {} : { opacity: 0, y: -12 }}
+                transition={{ duration: 0.35, ease: EASE_OUT }}
+                className="absolute inset-0"
+              >
+                <CurrentPanel reduce={reduce} />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* Bottom bar (56px) */}
+          <div className="relative flex items-center justify-between px-5 shrink-0 border-t border-white/[0.06]" style={{ height: '56px' }}>
+            <button
+              onClick={() => onNav(currentTab.navTab)}
+              aria-label={`${currentTab.name} sahifasiga o'tish`}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black text-white transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+              style={{
+                background: 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(139,92,246,0.15))',
+                border: '1px solid rgba(56,189,248,0.25)',
+              }}
+            >
+              Ochish <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+
+            {/* XP badge in its own zone */}
+            <motion.div
+              initial={reduce ? false : { opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6, ease: EASE_OUT, delay: 0.8 }}
+              className="flex items-center gap-2"
+            >
+              <motion.div
+                animate={reduce ? {} : { y: [0, -4, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/15 to-orange-500/15 border border-amber-400/25"
+              >
+                <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                  <Trophy className="h-2.5 w-2.5 text-white" />
+                </div>
+                <div className="leading-tight">
+                  <p className="text-[10px] font-black text-amber-200">+120 XP</p>
+                  <p className="text-[7px] text-amber-300/70">Yangi daraja ochildi</p>
+                </div>
+              </motion.div>
+            </motion.div>
+          </div>
+        </div>
       </motion.div>
     </div>
   );
 }
 
-/* ── Mobile wrapper components (static, no auto-animation) ── */
-function TestCardReduceless() { return <TestCard reduce={true} />; }
-function CasusCardReduceless() { return <CasusCard reduce={true} />; }
-function MootCardReduceless() { return <MootCard reduce={true} />; }
-function BlogCardReduceless() { return <BlogCard reduce={true} />; }
+/* ── Mobile scene: stacked static panels, no tilt ── */
+function MobileScene({ onNav }: { onNav: (tab: string) => void }) {
+  return (
+    <div className="space-y-3">
+      {SCENE_TABS.map((tab) => {
+        const Icon = tab.icon;
+        const Panel = tab.panel;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onNav(tab.navTab)}
+            aria-label={`${tab.name} sahifasiga o'tish`}
+            className="w-full text-left rounded-2xl bg-white/[0.07] border border-white/[0.12] backdrop-blur-xl overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 8px 24px rgba(8,16,40,0.3)' }}
+          >
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
+              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tab.gradient} flex items-center justify-center shrink-0`}>
+                <Icon className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-white">{tab.name}</p>
+                <p className="text-[10px] text-slate-400">{tab.subtitle}</p>
+              </div>
+            </div>
+            <div className="relative min-h-[180px]">
+              <Panel reduce={true} />
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
   const { t } = useLang();
@@ -1581,63 +1558,46 @@ export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
           e.currentTarget.style.setProperty('--mx', `${mx}%`);
           e.currentTarget.style.setProperty('--my', `${my}%`);
         }}
-        className="relative isolate overflow-hidden rounded-3xl mb-10 px-6 py-8 md:px-10 md:py-10 lg:py-12 bg-gradient-to-br from-[#040814] via-[#0a1a4d] to-[#050b1f]"
+        className="relative isolate rounded-3xl mb-10 px-6 py-8 md:px-10 md:py-10 lg:py-12 bg-gradient-to-br from-[#040814] via-[#0a1a4d] to-[#050b1f]"
       >
-        {/* Glows */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+        {/* Decorative background layers (clipped, content-safe) */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-3xl">
           <div className="absolute top-0 right-0 w-[28rem] h-[28rem] rounded-full bg-blue-500/25 blur-3xl -translate-y-1/3 translate-x-1/3" />
           <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl translate-y-1/3 -translate-x-1/4" />
           <div className="absolute top-1/2 left-1/3 w-72 h-72 rounded-full bg-sky-400/10 blur-3xl" />
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)`,
+              backgroundSize: '48px 48px',
+              maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
+              WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
+            }}
+          />
+          <div
+            className="ff-spotlight absolute inset-0"
+            style={{
+              background: 'radial-gradient(520px circle at var(--mx, 30%) var(--my, 20%), rgba(56,189,248,0.10), transparent 60%)',
+            }}
+          />
         </div>
 
-        {/* Grid overlay with radial mask */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0"
-          style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)`,
-            backgroundSize: '48px 48px',
-            maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
-            WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
-          }}
-        />
-
-        {/* Mouse spotlight */}
-        <div
-          aria-hidden="true"
-          className="ff-spotlight pointer-events-none absolute inset-0 z-0"
-          style={{
-            background: 'radial-gradient(520px circle at var(--mx, 30%) var(--my, 20%), rgba(56,189,248,0.10), transparent 60%)',
-          }}
-        />
-
-        {/* Shooting stars */}
+        {/* Shooting stars (decorative, clipped by parent) */}
         <ShootingStars />
 
         {/* Content — "Tirik ish stoli" (Living Work Desk) */}
-        <div className="relative z-10 grid lg:grid-cols-[0.38fr_0.62fr] gap-6 lg:gap-8 items-center">
+        <div className="relative z-10 grid lg:grid-cols-[0.42fr_0.58fr] gap-6 lg:gap-8 items-center min-h-[600px]">
           {/* Left column — text */}
           <HeroText onNav={handleNav} />
 
           {/* Right column — live scene (desktop) */}
-          <div className="hidden lg:block relative h-[440px]">
+          <div className="hidden lg:block relative">
             <LiveScene onNav={handleNav} />
           </div>
 
-          {/* Mobile fallback — stacked cards (no parallax, lighter animation) */}
-          <div className="lg:hidden space-y-3">
-            <GlassyCard depth={0} delay={0.3} onClick={() => handleNav('mavjud_testlar')} ariaLabel="Mavjud testlar sahifasiga o'tish">
-              <TestCardReduceless />
-            </GlassyCard>
-            <GlassyCard depth={0} delay={0.4} onClick={() => handleNav('mavjud_kazuslar')} ariaLabel="Mavjud kazuslar sahifasiga o'tish">
-              <CasusCardReduceless />
-            </GlassyCard>
-            <GlassyCard depth={0} delay={0.5} onClick={() => handleNav('moot_court')} ariaLabel="Moot Court sahifasiga o'tish">
-              <MootCardReduceless />
-            </GlassyCard>
-            <GlassyCard depth={0} delay={0.6} onClick={() => handleNav('blog')} ariaLabel="Blog sahifasiga o'tish">
-              <BlogCardReduceless />
-            </GlassyCard>
+          {/* Mobile fallback */}
+          <div className="lg:hidden">
+            <MobileScene onNav={handleNav} />
           </div>
         </div>
       </section>
