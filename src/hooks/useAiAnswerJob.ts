@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 
 export type AnswerJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
+export type AnswerMode = 'general' | 'sources' | 'lexion';
+export type LexionPhase = 'lexion_searching' | 'answering' | 'done' | 'error' | null;
 
 export type SourceItem =
   | { id: string; type: 'text'; title: string; content: string; charCount: number }
@@ -19,6 +21,9 @@ export interface AnswerJobState {
   isLibraryReuse?: boolean;
   libraryFull?: boolean;
   libraries?: LibraryItem[];
+  answerMode?: AnswerMode;
+  lexionPhase?: LexionPhase;
+  lexionFallback?: boolean;
 }
 
 export interface LibraryItem {
@@ -71,7 +76,7 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
   const { supabase } = await import('@/lib/supabase');
   const { data } = await supabase
     .from('case_answer_jobs')
-    .select('id, status, answer, error, created_at, applied, source_count')
+    .select('id, status, answer, error, created_at, applied, source_count, answer_mode, lexion_phase, lexion_fallback')
     .eq('case_id', caseId)
     .eq('teacher_id', ustozId)
     .order('created_at', { ascending: false })
@@ -80,38 +85,39 @@ async function restoreJobFromDb(caseId: string, ustozId: string): Promise<Answer
 
   if (!data) return null;
 
-  const ageMs = Date.now() - new Date(data.created_at).getTime();
+  const base = {
+    jobId: data.id,
+    applied: data.applied ?? false,
+    sourceCount: data.source_count ?? 0,
+    answerMode: (data.answer_mode as AnswerMode) || undefined,
+    lexionPhase: (data.lexion_phase as LexionPhase) || null,
+    lexionFallback: data.lexion_fallback ?? false,
+  };
+
   if (data.status === 'queued' || data.status === 'running') {
-    // Frontend polling'ni qayta boshlaydi va tashqi xizmatdan holatni so'raydi.
     return {
+      ...base,
       status: data.status as AnswerJobStatus,
       answer: data.answer,
       error: data.error,
-      jobId: data.id,
-      applied: data.applied ?? false,
-      sourceCount: data.source_count ?? 0,
     };
   }
 
   if (data.status === 'done') {
     return {
+      ...base,
       status: 'done',
       answer: data.answer,
       error: null,
-      jobId: data.id,
-      applied: data.applied ?? false,
-      sourceCount: data.source_count ?? 0,
     };
   }
 
   if (data.status === 'error' || data.status === 'timeout') {
     return {
+      ...base,
       status: data.status as AnswerJobStatus,
       answer: null,
       error: data.error,
-      jobId: data.id,
-      applied: data.applied ?? false,
-      sourceCount: data.source_count ?? 0,
     };
   }
 
@@ -164,6 +170,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
             applied: data.applied ?? false,
             libraryId: data.library_id || null,
             isLibraryReuse: data.is_library_reuse || false,
+            lexionPhase: (data.lexion_phase as LexionPhase) || null,
+            lexionFallback: data.lexion_fallback || false,
           });
         } else if (data.status === 'error') {
           stopPolling(caseId);
@@ -171,12 +179,16 @@ export function useAiAnswerJob(ustozId: string | undefined) {
             status: 'error',
             answer: null,
             error: data.error || 'Javob tayyorlanmadi. Qayta urinib ko\'ring.',
+            lexionPhase: (data.lexion_phase as LexionPhase) || null,
+            lexionFallback: data.lexion_fallback || false,
           });
         } else {
           updateJobState(caseId, {
             status: data.status as AnswerJobStatus,
             answer: null,
             error: null,
+            lexionPhase: (data.lexion_phase as LexionPhase) ?? undefined,
+            lexionFallback: data.lexion_fallback ?? false,
           });
         }
       } catch {
@@ -191,7 +203,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     kazusText: string,
     ustoz: string,
     sources?: SourceItem[],
-    options?: { libraryId?: string; saveLibrary?: boolean; libraryTitle?: string }
+    options?: { libraryId?: string; saveLibrary?: boolean; libraryTitle?: string; answerMode?: AnswerMode }
   ): Promise<void> => {
     if (!ustoz) return;
 
@@ -199,6 +211,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     if (current && (current.status === 'queued' || current.status === 'running')) {
       return;
     }
+
+    const mode = options?.answerMode || (sources && sources.length > 0 ? 'sources' : 'general');
 
     updateJobState(caseId, {
       status: 'queued',
@@ -209,6 +223,9 @@ export function useAiAnswerJob(ustozId: string | undefined) {
       sourceCount: sources?.length || 0,
       libraryFull: false,
       libraries: undefined,
+      answerMode: mode,
+      lexionPhase: mode === 'lexion' ? 'lexion_searching' : null,
+      lexionFallback: false,
     });
 
     try {
@@ -217,14 +234,17 @@ export function useAiAnswerJob(ustozId: string | undefined) {
         kazus_text: kazusText,
         title,
         ustoz_id: ustoz,
+        answer_mode: mode,
       };
-      if (options?.libraryId) {
-        payload.library_id = options.libraryId;
-      } else {
-        payload.sources = buildSourcesPayload(sources || []);
-        if (options?.saveLibrary) {
-          payload.save_library = true;
-          payload.library_title = options.libraryTitle;
+      if (mode !== 'lexion') {
+        if (options?.libraryId) {
+          payload.library_id = options.libraryId;
+        } else {
+          payload.sources = buildSourcesPayload(sources || []);
+          if (options?.saveLibrary) {
+            payload.save_library = true;
+            payload.library_title = options.libraryTitle;
+          }
         }
       }
       const data = await callEdgeFunction('case-answer-submit', payload);
@@ -283,7 +303,7 @@ export function useAiAnswerJob(ustozId: string | undefined) {
     kazusText: string,
     ustoz: string,
     sources?: SourceItem[],
-    options?: { libraryId?: string; saveLibrary?: boolean; libraryTitle?: string }
+    options?: { libraryId?: string; saveLibrary?: boolean; libraryTitle?: string; answerMode?: AnswerMode }
   ) => {
     stopPolling(caseId);
     updateJobState(caseId, {
@@ -295,6 +315,8 @@ export function useAiAnswerJob(ustozId: string | undefined) {
       sourceCount: 0,
       libraryFull: false,
       libraries: undefined,
+      lexionPhase: null,
+      lexionFallback: false,
     });
     await submitJob(caseId, title, kazusText, ustoz, sources, options);
   }, [stopPolling, updateJobState, submitJob]);
