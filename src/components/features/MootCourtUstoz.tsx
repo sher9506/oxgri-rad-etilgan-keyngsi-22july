@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Scale, Plus, Edit, Trash2, ToggleLeft, ToggleRight, Loader2, MessageSquare, Star, Eye, ChevronLeft, Award, RotateCw, AlertCircle, ArrowRight, Search, ChevronDown, SlidersHorizontal, FolderOpen, BookMarked, RefreshCw, CheckCircle, Clock, XCircle, Sparkles } from 'lucide-react';
 import { SourcesBlock } from './SourcesBlock';
-import type { SourceItem, LibraryItem, AnswerMode, LexionPhase } from '@/hooks/useAiAnswerJob';
+import type { SourceItem, LibraryItem } from '@/hooks/useAiAnswerJob';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
@@ -134,7 +134,6 @@ export default function MootCourtUstoz() {
   const [saveLibrary, setSaveLibrary] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [showNewAnswerBanner, setShowNewAnswerBanner] = useState(false);
-  const [answerMode, setAnswerMode] = useState<AnswerMode>('general');
   const [draftKey] = useState(() => `moot_draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   const namunaviyRef = useRef<HTMLTextAreaElement>(null);
   const aiAnswer = useAiAnswerJob(user?.ustoz_id);
@@ -385,7 +384,6 @@ export default function MootCourtUstoz() {
     setSources(dbSources);
     setSourcesSaved(true);
     setShowNewAnswerBanner(false);
-    setAnswerMode('general');
     setShowForm(true);
   };
 
@@ -419,13 +417,11 @@ export default function MootCourtUstoz() {
       return;
     }
     setLibraryError(null);
-    const options = answerMode === 'lexion'
-      ? { answerMode: 'lexion' as AnswerMode }
-      : selectedLibraryId
-      ? { libraryId: selectedLibraryId, answerMode }
+    const options = selectedLibraryId
+      ? { libraryId: selectedLibraryId }
       : saveLibrary
-      ? { saveLibrary: true, libraryTitle: sources[0]?.title || title, answerMode }
-      : { answerMode };
+      ? { saveLibrary: true, libraryTitle: sources[0]?.title || title }
+      : undefined;
     await aiAnswer.submitJob(caseId, title, kazusText, user.ustoz_id, sources, options);
   };
 
@@ -436,13 +432,11 @@ export default function MootCourtUstoz() {
       return;
     }
     setLibraryError(null);
-    const options = answerMode === 'lexion'
-      ? { answerMode: 'lexion' as AnswerMode }
-      : selectedLibraryId
-      ? { libraryId: selectedLibraryId, answerMode }
+    const options = selectedLibraryId
+      ? { libraryId: selectedLibraryId }
       : saveLibrary
-      ? { saveLibrary: true, libraryTitle: sources[0]?.title || title, answerMode }
-      : { answerMode };
+      ? { saveLibrary: true, libraryTitle: sources[0]?.title || title }
+      : undefined;
     await aiAnswer.retry(caseId, title, kazusText, user.ustoz_id, sources, options);
   };
 
@@ -960,13 +954,6 @@ export default function MootCourtUstoz() {
             </div>
 
             <div>
-              {/* ── Rejim tanlovchi ── */}
-              <AnswerModeSelector
-                answerMode={answerMode}
-                onChange={setAnswerMode}
-                disabled={!!(editingCase && aiAnswer.jobStates[editingCase.id] && (aiAnswer.jobStates[editingCase.id]!.status === 'queued' || aiAnswer.jobStates[editingCase.id]!.status === 'running'))}
-              />
-              {answerMode !== 'lexion' && (
               <SourcesBlock
                 sources={sources}
                 onAdd={handleAddSource}
@@ -996,13 +983,12 @@ export default function MootCourtUstoz() {
                 })).filter((m: any) => m.matn)}
                 onAddModdalar={handleAddModdalar}
               />
-              )}
-              {!sourcesSaved && answerMode !== 'lexion' && (
+              {!sourcesSaved && (
                 <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
                   <Loader2 className="h-2.5 w-2.5 animate-spin" /> Saqlanmoqda…
                 </p>
               )}
-              {sourcesSaved && sources.length > 0 && editingCase && answerMode !== 'lexion' && (
+              {sourcesSaved && sources.length > 0 && editingCase && (
                 <p className="text-[10px] text-green-500 mt-1 flex items-center gap-1">
                   <CheckCircle className="h-2.5 w-2.5" /> Saqlandi
                 </p>
@@ -1014,7 +1000,6 @@ export default function MootCourtUstoz() {
                   jobState={editingCase ? aiAnswer.jobStates[editingCase.id] : undefined}
                   canSubmit={true}
                   hasSources={sources.length > 0}
-                  answerMode={answerMode}
                   onSubmit={async () => {
                     if (!sarlavha.trim() || !tavsif.trim()) {
                       toast({ title: 'Avval kazus sarlavhasi va vaziyatini yozing', variant: 'destructive' });
@@ -1038,7 +1023,7 @@ export default function MootCourtUstoz() {
                 const jobState = editingCase ? aiAnswer.jobStates[editingCase.id] : undefined;
                 const isInProgress = jobState?.status === 'queued' || jobState?.status === 'running';
                 if (!isInProgress) return null;
-                return <AnswerWaitOverlay elapsedSec={elapsedSec} hasSources={sources.length > 0} lexionPhase={jobState?.lexionPhase} lexionFallback={jobState?.lexionFallback} />;
+                return <AnswerWaitOverlay elapsedSec={elapsedSec} hasSources={sources.length > 0} />;
               })()}
 
               {showNewAnswerBanner && (() => {
@@ -1589,28 +1574,11 @@ function AiEvaluationView({ session, onSaveTeacherScore, onReevaluate, reevaluat
   );
 }
 
-function AnswerWaitOverlay({ elapsedSec, hasSources, lexionPhase, lexionFallback }: { elapsedSec: number; hasSources: boolean; lexionPhase?: import('@/hooks/useAiAnswerJob').LexionPhase; lexionFallback?: boolean }) {
+function AnswerWaitOverlay({ elapsedSec, hasSources }: { elapsedSec: number; hasSources: boolean }) {
   const mins = Math.floor(elapsedSec / 60);
   const secs = elapsedSec % 60;
   const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
   const isLong = elapsedSec > 240;
-
-  const isLexionSearching = lexionPhase === 'lexion_searching';
-  const isLexionAnswering = lexionPhase === 'answering' && !lexionFallback;
-
-  const statusText = isLexionSearching
-    ? 'Qonun hujjatlari qidirilmoqda (Lexion)…'
-    : isLexionAnswering
-    ? 'Topilgan hujjatlar bo\'yicha tahlil tayyorlanmoqda…'
-    : hasSources
-    ? 'Manbalar bo\'yicha javob tayyorlanmoqda…'
-    : 'AI javob tayyorlanmoqda…';
-
-  const subText = isLexionSearching
-    ? 'Lexion modeli kazusga tegishli qonun hujjatlarini lex.uz saytidan qidiradi. Bu 1-3 daqiqa olishi mumkin.'
-    : isLexionAnswering
-    ? 'Topilgan qonun hujjatlari asosida AI tahlil tayyorlayapti.'
-    : 'Odatda 1-3 daqiqa. Sahifadan chiqib ketishingiz mumkin. Javob tayyor bo\'lgach shu yerda o\'zi paydo bo\'ladi va sizga xabar beramiz.';
 
   return (
     <div
@@ -1621,14 +1589,13 @@ function AnswerWaitOverlay({ elapsedSec, hasSources, lexionPhase, lexionFallback
       <div className="flex items-center gap-2 mb-1">
         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700">
           <span className="inline-block w-3 h-3 rounded-full bg-violet-400 animate-pulse" />
-          {statusText}
+          AI javob tayyorlanmoqda…
         </span>
         <span className="text-[10px] text-violet-500 ml-auto font-mono">{timeStr}</span>
       </div>
-      <p className="text-[10px] text-gray-500 leading-relaxed">{subText}</p>
-      {lexionFallback && (
-        <p className="text-[10px] text-amber-600 mt-1">Lexion topilmadi, umumiy rejimda davom etilmoqda.</p>
-      )}
+      <p className="text-[10px] text-gray-500 leading-relaxed">
+        Odatda 1-3 daqiqa. Sahifadan chiqib ketishingiz mumkin. Javob tayyor bo'lgach shu yerda o'zi paydo bo'ladi va sizga xabar beramiz.
+      </p>
       {isLong && (
         <p className="text-[10px] text-amber-600 mt-1">Odatdagidan uzoqroq ketyapti, kutishda davom eting.</p>
       )}
@@ -1636,11 +1603,10 @@ function AnswerWaitOverlay({ elapsedSec, hasSources, lexionPhase, lexionFallback
   );
 }
 
-function FormAiAnswerButton({ jobState, canSubmit, hasSources, answerMode, onSubmit, onRetry }: {
+function FormAiAnswerButton({ jobState, canSubmit, hasSources, onSubmit, onRetry }: {
   jobState?: import('@/hooks/useAiAnswerJob').AnswerJobState;
   canSubmit: boolean;
   hasSources: boolean;
-  answerMode?: import('@/hooks/useAiAnswerJob').AnswerMode;
   onSubmit: () => void;
   onRetry: () => void;
 }) {
@@ -1675,9 +1641,7 @@ function FormAiAnswerButton({ jobState, canSubmit, hasSources, answerMode, onSub
           aria-label="AI javob tayyorlanmoqda"
         >
           <Loader2 className="h-3 w-3 animate-spin" />
-          {answerMode === 'lexion'
-            ? (jobState?.lexionPhase === 'lexion_searching' ? 'Qonun hujjatlari qidirilmoqda…' : 'Tahlil tayyorlanmoqda…')
-            : hasSources ? 'Manbalar bo\'yicha javob tayyorlanmoqda…' : 'AI javob tayyorlanmoqda…'}
+          {hasSources ? 'Manbalar bo\'yicha javob tayyorlanmoqda…' : 'AI javob tayyorlanmoqda…'}
         </span>
         <span className="text-[9px] text-gray-400">Bu 1–2 daqiqa olishi mumkin</span>
       </span>
@@ -1703,52 +1667,6 @@ function FormAiAnswerButton({ jobState, canSubmit, hasSources, answerMode, onSub
       >
         <RotateCw className="h-2.5 w-2.5 mr-1" /> Qayta urinish
       </Button>
-    </div>
-  );
-}
-
-function AnswerModeSelector({ answerMode, onChange, disabled }: {
-  answerMode: AnswerMode;
-  onChange: (mode: AnswerMode) => void;
-  disabled?: boolean;
-}) {
-  const modes: { value: AnswerMode; label: string; desc: string }[] = [
-    { value: 'general', label: 'Umumiy', desc: 'Qonunlar bazasi' },
-    { value: 'sources', label: 'Manba bilan', desc: 'O\'z manbalingiz' },
-    { value: 'lexion', label: 'Lexion', desc: 'Avto qidiruv' },
-  ];
-
-  return (
-    <div className="mb-2">
-      <div className="flex items-center gap-1 mb-1.5">
-        <span className="text-[11px] font-bold text-gray-600">Rejim:</span>
-      </div>
-      <div className="grid grid-cols-3 gap-1.5">
-        {modes.map(m => {
-          const active = answerMode === m.value;
-          return (
-            <button
-              key={m.value}
-              type="button"
-              onClick={() => onChange(m.value)}
-              disabled={disabled}
-              className={`rounded-lg border px-2 py-2 text-center transition-all duration-200 ${active
-                ? 'border-blue-400 bg-blue-50 text-blue-700 shadow-sm'
-                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-              } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-              style={{ minHeight: '44px' }}
-            >
-              <p className="text-[11px] font-bold leading-tight">{m.label}</p>
-              <p className="text-[9px] text-gray-400 leading-tight mt-0.5">{m.desc}</p>
-            </button>
-          );
-        })}
-      </div>
-      {answerMode === 'lexion' && (
-        <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-          Lexion rejimida kazus matni avtomatik ravishda lex.uz saytidan tegishli qonun hujjatlarini topish uchun yuboriladi. Keyin topilgan hujjatlar asosida AI tahlil tayyorlaydi. Manbalar qo'shish shart emas.
-        </p>
-      )}
     </div>
   );
 }

@@ -1,5 +1,3 @@
-// Lexion mode support
-
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -19,9 +17,6 @@ const MAX_SOURCE_TEXT_LENGTH = 100000;
 const MAX_SOURCE_TITLE_LENGTH = 120;
 const SIGNED_URL_EXPIRY = 3600;
 const STORAGE_BUCKET = "case-sources";
-
-const INSTRUCTION =
-  "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
 
 interface SourceInput {
   type: 'text' | 'url' | 'file';
@@ -107,7 +102,10 @@ function getBackendUrl(cfg: BackendConfig, backend: number): string {
   return cfg.url;
 }
 
+// Faol statuslar: queued (navbatda) va running (bajarilmoqda).
+// done/error — yakunlangan, hisobga kirmaydi.
 const ACTIVE_STATUSES = ["queued", "running"];
+// 10 daqiqadan eski, hali yakunlanmagan ishlar qotib qolgan deb hisoblanadi — sanalmaydi.
 const STALE_MS = 10 * 60 * 1000;
 
 async function pickBackend(cfg: BackendConfig): Promise<number> {
@@ -136,6 +134,7 @@ async function pickBackend(cfg: BackendConfig): Promise<number> {
 
   if (count1 < count2) return 1;
   if (count2 < count1) return 2;
+  // Teng — almashtirib tur
   return lastBackend === 1 ? 2 : 1;
 }
 
@@ -200,56 +199,6 @@ function isServerError(status: number): boolean {
   return status === 0 || (status >= 500);
 }
 
-// ── Lexion config (from settings table) ──
-async function getLexionConfig(): Promise<{ url: string; key: string }> {
-  const { data, error } = await supabaseAdmin
-    .from("settings")
-    .select("key, text_value")
-    .in("key", ["LEXION_RENDER_URL", "LEXION_RENDER_API_KEY"]);
-  if (error || !data) return { url: "", key: "" };
-  const map: Record<string, string> = {};
-  for (const row of data) {
-    if (row.text_value) map[row.key] = row.text_value;
-  }
-  return {
-    url: (map["LEXION_RENDER_URL"] || "").trim(),
-    key: (map["LEXION_RENDER_API_KEY"] || "").trim(),
-  };
-}
-
-async function sendToLexion(
-  lexionCfg: { url: string; key: string },
-  serviceBody: Record<string, unknown>
-): Promise<ServiceResult> {
-  try {
-    const serviceRes = await fetch(`${lexionCfg.url}/api/jobs`, {
-      method: "POST",
-      headers: {
-        "X-API-Key": lexionCfg.key,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(serviceBody),
-    });
-
-    if (!serviceRes.ok) {
-      const errText = await serviceRes.text().catch(() => "");
-      let errMsg = "Lexion xizmati javob bermadi";
-      try {
-        const errJson = JSON.parse(errText);
-        if (errJson?.error) errMsg = String(errJson.error).slice(0, 300);
-        else if (errJson?.detail) errMsg = String(errJson.detail).slice(0, 300);
-      } catch { if (errText) errMsg = errText.slice(0, 300); }
-      return { serviceJobId: null, errorStatus: serviceRes.status, errorMsg: errMsg };
-    }
-
-    const serviceData = await serviceRes.json();
-    return { serviceJobId: serviceData.job_id ?? null };
-  } catch (fetchErr) {
-    console.error("[case-answer-submit] Lexion tarmoq xatosi:", fetchErr);
-    return { serviceJobId: null, errorStatus: 0, errorMsg: "Tarmoq xatosi" };
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -261,7 +210,6 @@ Deno.serve(async (req: Request) => {
     const library_id: string | undefined = body.library_id;
     const save_library: boolean = !!body.save_library;
     const library_title: string | undefined = body.library_title;
-    const answer_mode: string = body.answer_mode || (Array.isArray(sources) && sources.length > 0 ? 'sources' : 'general');
 
     if (!case_id || !kazus_text || !title || !ustoz_id) {
       return new Response(
@@ -276,147 +224,6 @@ Deno.serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const { data: caseData, error: caseError } = await supabaseAdmin
-      .from("moot_court_cases")
-      .select("ustoz_id")
-      .eq("id", case_id)
-      .maybeSingle();
-
-    if (caseError || !caseData) {
-      console.error("[case-answer-submit] Kazus topilmadi:", case_id);
-      return new Response(
-        JSON.stringify({ error: "Kazus topilmadi" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (caseData.ustoz_id !== ustoz_id) {
-      console.error("[case-answer-submit] Ruxsat yo'q:", ustoz_id, "!= case owner", caseData.ustoz_id);
-      return new Response(
-        JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    // LEXION REJIMI — 1-bosqich: qonun hujjatlarini topish
-    // ════════════════════════════════════════════════════════════════
-    if (answer_mode === 'lexion') {
-      const lexionCfg = await getLexionConfig();
-      if (!lexionCfg.url || !lexionCfg.key) {
-        console.error("[case-answer-submit] Lexion secret'lari sozlanmagan");
-        return new Response(
-          JSON.stringify({ error: "Lexion model hozir mavjud emas. Boshqa rejim tanlang." }),
-          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const { data: jobRow, error: jobError } = await supabaseAdmin
-        .from("case_answer_jobs")
-        .insert({
-          case_id,
-          teacher_id: ustoz_id,
-          status: "queued",
-          source_count: 0,
-          source_file_paths: '[]',
-          answer_mode: 'lexion',
-          lexion_phase: 'lexion_searching',
-        })
-        .select("id")
-        .single();
-
-      if (jobError || !jobRow) {
-        console.error("[case-answer-submit] Job yaratilmadi:", jobError?.message);
-        return new Response(
-          JSON.stringify({ error: "Job yaratilmadi" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const jobId = jobRow.id;
-      const lexionBody: Record<string, unknown> = {
-        title: "Lexion",
-        kazus_text,
-        external_id: `${jobId}-lex`,
-      };
-
-      console.log(`[case-answer-submit] Lexion 1-bosqich: external_id=${jobId}-lex`);
-      const lexionResult = await sendToLexion(lexionCfg, lexionBody);
-
-      if (lexionResult.serviceJobId) {
-        await supabaseAdmin
-          .from("case_answer_jobs")
-          .update({
-            lexion_job_id: lexionResult.serviceJobId,
-            status: "queued",
-          })
-          .eq("id", jobId);
-
-        return new Response(
-          JSON.stringify({ id: jobId }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Lexion 1-bosqich xato — Umumiy rejimga fallback
-      console.log(`[case-answer-submit] Lexion 1-bosqich xatosi, Umumiy rejimga o'tilmoqda: external_id=${jobId}`);
-
-      const cfg = await getAnswerServiceConfig();
-      if (!cfg.url || !cfg.key) {
-        await supabaseAdmin
-          .from("case_answer_jobs")
-          .update({ status: "error", error: "Javob tayyorlash xizmati hozir mavjud emas", lexion_phase: "error" })
-          .eq("id", jobId);
-        return new Response(
-          JSON.stringify({ error: "Javob tayyorlash xizmati hozir mavjud emas" }),
-          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const fallbackBody: Record<string, unknown> = {
-        title,
-        kazus_text,
-        external_id: `${jobId}-ans`,
-        instruction: INSTRUCTION,
-        sources: [],
-      };
-
-      const backend = await pickBackend(cfg);
-      const fallbackResult = await sendToBackend(backend, cfg, fallbackBody);
-
-      if (fallbackResult.serviceJobId) {
-        await supabaseAdmin
-          .from("case_answer_jobs")
-          .update({
-            backend,
-            service_job_id: fallbackResult.serviceJobId,
-            status: "queued",
-            lexion_fallback: true,
-            lexion_phase: "answering",
-            answer_mode: "general",
-          })
-          .eq("id", jobId);
-        return new Response(
-          JSON.stringify({ id: jobId }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const userMsg = "Javob tayyorlanmadi. Qayta urinib ko'ring.";
-      await supabaseAdmin
-        .from("case_answer_jobs")
-        .update({ status: "error", error: userMsg, lexion_phase: "error" })
-        .eq("id", jobId);
-      return new Response(
-        JSON.stringify({ error: userMsg }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    // ODDIY REJIMLAR (general / sources) — mavjud kodi o'zgartirilmasdan
-    // ════════════════════════════════════════════════════════════════
 
     const libraryEnabled = await getSetting("answer_library_enabled") === "true";
     const useLibrary = libraryEnabled && (library_id || save_library);
@@ -441,6 +248,28 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: "Yuklangan manbalardan matn topilmadi. Fayllarning matnli ekanligini tekshiring (skaner qilingan PDF bo'lmasligi kerak)." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: caseData, error: caseError } = await supabaseAdmin
+      .from("moot_court_cases")
+      .select("ustoz_id")
+      .eq("id", case_id)
+      .maybeSingle();
+
+    if (caseError || !caseData) {
+      console.error("[case-answer-submit] Kazus topilmadi:", case_id);
+      return new Response(
+        JSON.stringify({ error: "Kazus topilmadi" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (caseData.ustoz_id !== ustoz_id) {
+      console.error("[case-answer-submit] Ruxsat yo'q:", ustoz_id, "!= case owner", caseData.ustoz_id);
+      return new Response(
+        JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -585,7 +414,6 @@ Deno.serve(async (req: Request) => {
         status: "queued",
         source_count: validSources.length,
         source_file_paths: storagePaths.length > 0 ? JSON.stringify(storagePaths) : '[]',
-        answer_mode: answer_mode === 'sources' ? 'sources' : 'general',
       })
       .select("id")
       .single();
@@ -599,6 +427,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const jobId = jobRow.id;
+
+    const instruction =
+      "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
 
     console.log(`[case-answer-submit] external_id=${jobId} | ${validSources.length} ta manba (${storagePaths.length} fayl storage'dan)`);
     for (const s of serviceSources) {
@@ -614,7 +445,7 @@ Deno.serve(async (req: Request) => {
       title,
       kazus_text,
       external_id: jobId,
-      instruction: INSTRUCTION,
+      instruction,
       sources: serviceSources,
     };
 
@@ -635,12 +466,14 @@ Deno.serve(async (req: Request) => {
       console.log(`[case-answer-submit] backend=${backend} yiqildi, failover -> backend=${fallbackBackend}, external_id=${jobId}`);
       result = await sendToBackend(fallbackBackend, cfg, serviceBody);
       if (result.serviceJobId) {
+        // Muvaffaqiyatli failover — job'ga fallback backend'ni yozamiz
         await supabaseAdmin
           .from("case_answer_jobs")
           .update({ backend: fallbackBackend, service_job_id: result.serviceJobId, status: "queued" })
           .eq("id", jobId);
       }
     } else if (result.serviceJobId) {
+      // Muvaffaqiyatli — backend va service_job_id ni saqlaymiz
       await supabaseAdmin
         .from("case_answer_jobs")
         .update({ backend, service_job_id: result.serviceJobId, status: "queued" })
@@ -655,6 +488,7 @@ Deno.serve(async (req: Request) => {
         isFileSourceError = true;
       }
 
+      // 4xx — foydalanuvchiga aniq xabar; 5xx/tarmoq — umumiy xabar
       const isClientError = is4xx(result.errorStatus ?? 0);
       const userMsg = isFileSourceError
         ? "Faylni o'qib bo'lmadi. Boshqa fayl yuklab ko'ring yoki matnini \u00ab+ Matn\u00bb orqali qo'shing."

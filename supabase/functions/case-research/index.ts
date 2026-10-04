@@ -2,6 +2,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAIWithFallback } from '../_shared/ai-provider.ts';
+import { assertNotMaintenance } from '../_shared/maintenance.ts';
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -969,6 +970,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // ── Maintenance tekshiruvi ──
+    const maintenanceRes = await assertNotMaintenance();
+    if (maintenanceRes) return maintenanceRes;
+
     const { caseId, action } = await req.json() as { caseId: string; action?: 'run' | 'status' };
 
     if (!caseId) {
