@@ -1,2227 +1,1403 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { motion, useInView, useScroll, useTransform, AnimatePresence } from 'framer-motion';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
-  Award, Code2, Library, MessageSquare, BarChart3, ArrowRight,
-  BrainCircuit, Zap, BookOpen, Shield, User,
-  Users, FileText, Sparkles, Trophy, Rocket, Scale,
-  ChevronRight, Mail, Phone,
-  GraduationCap, Play, TrendingUp, Target, Brain,
-  HelpCircle, Lock, Info, ChevronDown,
-  CheckCircle2, Quote, Star, Compass, Eye, Lightbulb, Heart,
-  Send, Link2, LogOut, Newspaper
+  Scale, Play, FileText, GraduationCap, Library, Newspaper,
+  Layers, ArrowRight, BookOpen, Rocket,
+  CheckCircle2, Brain, ChevronDown, Trophy,
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { useLang } from '@/contexts/LangContext';
-import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   ANIMATION VARIANTS & HELPERS
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 40 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } }
-};
-
-const fadeIn = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { duration: 0.8 } }
-};
-
-const scaleIn = {
-  hidden: { opacity: 0, scale: 0.85 },
-  visible: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } }
-};
-
-const slideInLeft = {
-  hidden: { opacity: 0, x: -60 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } }
-};
-
-const slideInRight = {
-  hidden: { opacity: 0, x: 60 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } }
-};
-
-const staggerContainer = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.1, delayChildren: 0.05 } }
-};
-
-const staggerContainerFast = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.06 } }
-};
-
-/* ═══ Animated Counter with easing ═══ */
-function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: string }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-50px' });
-
-  useEffect(() => {
-    if (!inView) return;
-    let start = 0;
-    const duration = 2000;
-    const startTime = performance.now();
-
-    const animate = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.floor(eased * target);
-      setCount(current);
-      if (progress < 1) requestAnimationFrame(animate);
-      else setCount(target);
-    };
-    requestAnimationFrame(animate);
-  }, [inView, target]);
-
-  return <span ref={ref}>{count.toLocaleString()}{suffix}</span>;
-}
-
-/* ═══ 3D Tilt Card Wrapper ═══ */
-function TiltCard({ children, className = '', intensity = 8 }: { children: React.ReactNode; className?: string; intensity?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = (e.clientX - cx) / (rect.width / 2);
-    const dy = (e.clientY - cy) / (rect.height / 2);
-    setTilt({ x: -dy * intensity, y: dx * intensity });
-  }, [intensity]);
-
-  const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
-
-  return (
-    <div
-      ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      className={className}
-      style={{
-        transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-        transition: 'transform 0.2s ease-out',
-        transformStyle: 'preserve-3d',
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/* ═══ Scroll Progress Bar ═══ */
-function ScrollProgress() {
-  const { scrollYProgress } = useScroll();
-  const scaleX = useTransform(scrollYProgress, [0, 1], [0, 1]);
-  return (
-    <motion.div
-      className="fixed top-0 left-0 right-0 h-[3px] origin-left z-[60]"
-      style={{
-        scaleX,
-        background: 'linear-gradient(90deg, #3b82f6, #06b6d4, #0ea5e9)',
-      }}
-    />
-  );
-}
-
-/* ═══ Magnetic Button ═══ */
-function MagneticButton({ children, onClick, primary = false, className = '' }: { children: React.ReactNode; onClick: () => void; primary?: boolean; className?: string }) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - rect.width / 2;
-    const y = e.clientY - rect.top - rect.height / 2;
-    setOffset({ x: x * 0.25, y: y * 0.25 });
-  };
-
-  return (
-    <button
-      ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => setOffset({ x: 0, y: 0 })}
-      onClick={onClick}
-      className={className}
-      style={{
-        transform: `translate(${offset.x}px, ${offset.y}px)`,
-        transition: 'transform 0.2s ease-out',
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   DATA
-   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface SaytHaqidaProps {
   onNavigate: (tab: string) => void;
 }
 
-const FAQ_ITEMS = [
-  { q: "FanFaster.uz nima?", a: "FanFaster.uz — o'quvchilar uchun mo'ljallangan intellektual ta'lim platformasi. Sun'iy intellekt va inson tafakkurini birlashtirgan holda o'quv materiallari, testlar va shaxsiylashtirilgan ta'lim tajribasini taqdim etadi." },
-  { q: "Platformaga qanday ro'yxatdan o'tish mumkin?", a: "Ro'yxatdan o'tish Telegram bot orqali amalga oshiriladi. Kirish sahifasidagi bot havolasini bosing, telefon raqamingizni yuboring, ism-familiyangizni va parolni kiriting — tayyor." },
-  { q: "Parolimni unutib qo'ysam nima qilaman?", a: "Kirish sahifasida \"Parolni unutdim\" tugmasini bosing. Bot orqali Telegramingizga tasdiqlash kodi yuboriladi. Kodni kiritib yangi parol o'rnating." },
-  { q: "Bir odam ham o'quvchi, ham ustoz bo'la oladimi?", a: "Ha. Ustoz sifatida ro'yxatdan o'tib admin tasdiqlashini olsangiz, kirish sahifasida \"Ustoz\" tabini tanlang. O'quvchi sifatida kirish uchun esa \"O'quvchi\" tabini tanlang." },
-  { q: "Test boshlashda xato chiqyapti — nima qilaman?", a: "Ustozdan testga START berishini so'rang. Kod to'g'ri 5 raqamdan iborat ekanligini tekshiring. Muammo davom etsa, Yordam bo'limiga yozing yoki +998 90 268-63-63 ga qo'ng'iroq qiling." },
-  { q: "Ustoz sifatida qanday ro'yxatdan o'tiladi?", a: "Kirish sahifasida \"Ustoz\" tabini oching, \"Ro'yxatdan o'tish\" bo'limiga o'ting va bot havolasiga bosing. Bot orqali ariza topshiring — admin ko'rib chiqib, tasdiqlash to'g'risida Telegram xabar yuboradi." },
-  { q: "Testlar va kazuslar bepulmi?", a: "Ko'pchilik test va kazuslar bepul. Ba'zi ustoz materiallari pullik bo'lishi mumkin — narx test/kazus sahifasida ko'rsatiladi." },
-  { q: "Qaysi qurilmalardan foydalanish mumkin?", a: "Internetga ulangan har qanday kompyuter, noutbuk, planshet yoki smartfondan foydalanish mumkin. Chrome, Firefox, Safari yoki Edge brauzerlaridan foydalanish tavsiya etiladi." }
-];
+const reduceMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isTouch = typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
 
-const MAXFIYLIK_MATN = `FanFaster.uz (keyingi o'rinlarda "Biz", "Platforma" yoki "FanFaster") o'quvchilar uchun mo'ljallangan intellektual ta'lim platformasi bo'lib, sun'iy intellekt va inson tafakkuri sintezidan foydalanadi.
+const SERIF = "'Source Serif 4 Variable', 'Source Serif 4', 'Iowan Old Style', Georgia, serif";
+const SANS = "'Inter Variable', Inter, system-ui, sans-serif";
 
-**Oxirgi yangilanish:** 2026-yil 4-iyun
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
+};
 
-**1. Biz To'playdigan Ma'lumotlar**
+const stagger = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.08 } },
+};
 
-• Ro'yxatdan o'tish ma'lumotlari: Ism, familiya, telefon raqami va boshqa aloqa ma'lumotlari.
-• Profil ma'lumotlari: Ta'lim darajasi, qiziqishlar, o'quv maqsadlari.
-• Foydalanish ma'lumotlari: Ko'rilgan sahifalar, test natijalari, sarflangan vaqt.
-• Texnik ma'lumotlar: IP manzili, brauzer turi, qurilma turi.
-
-**2. Ma'lumotlardan Foydalanish Maqsadlari**
-
-• Platformaga kirishni ta'minlash va xizmatlarni taqdim etish
-• O'quv materiallarini shaxsiylashtirish
-• Platformani yaxshilash va xatolarni tuzatish
-• Xavfsizlikni ta'minlash va firibgarlikni oldini olish
-
-**3. Foydalanuvchi Huquqlari**
-
-Siz o'z ma'lumotlaringizga kirish, tuzatish va o'chirishga huquqiga egasiz. Murojaat: info@fanfaster.uz`;
-
-const SHARTLAR_MATN = `FanFaster.uz platformasiga xush kelibsiz!
-
-**Oxirgi yangilanish:** 2026-yil 4-iyun
-
-**1. Foydalanuvchi Majburiyatlari**
-
-• Ro'yxatdan o'tishda to'g'ri va aniq ma'lumotlar kiritish
-• Login va parolni maxfiy saqlash
-• Platformadan faqat qonuniy maqsadlarda foydalanish
-• Boshqa foydalanuvchilarga nisbatan bezorilik qilmaslik
-
-**2. Intellektual Mulk**
-
-Platformadagi barcha kontent FanFaster.uz ning mulki bo'lib, mualliflik huquqi qonunlari bilan himoyalangan.
-
-**3. Aloqa**
-
-• Email: info@fanfaster.uz
-• Telefon: +998-90-268-63-63`;
-
-function FormatMatn({ text }: { text: string }) {
+/* ═══ Spotlight card — cursor-following glow ═══ */
+function SpotlightCard({ children, className = '', onClick, style }: { children: React.ReactNode; className?: string; onClick?: () => void; style?: React.CSSProperties }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!ref.current || reduceMotion) return;
+    const rect = ref.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    ref.current.style.setProperty('--sx', `${x}%`);
+    ref.current.style.setProperty('--sy', `${y}%`);
+  }, []);
   return (
-    <div className="space-y-2 text-sm text-slate-600 leading-relaxed">
-      {text.split('\n').map((line, i) => {
-        if (!line.trim()) return <div key={i} className="h-1" />;
-        if (line.startsWith('**') && line.endsWith('**')) {
-          return <p key={i} className="font-bold text-slate-800 mt-3">{line.replace(/\*\*/g, '')}</p>;
-        }
-        if (line.startsWith('•')) {
-          return <p key={i} className="pl-3 text-slate-600">{line}</p>;
-        }
-        return <p key={i}>{line}</p>;
-      })}
+    <div
+      ref={ref}
+      onMouseMove={onMouseMove}
+      onClick={onClick}
+      className={`ff-spotlight relative overflow-hidden ${className}`}
+      style={{ ['--sx' as any]: '50%', ['--sy' as any]: '50%', ...style }}
+    >
+      {children}
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   "QANDAY ISHLAYDI?" — Redesigned section
-   Sub-components: ConnectingLine, PhoneMockup, HowItWorksSection
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-type HowItWorksStep = {
-  num: string;
-  title: string;
-  desc: string;
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-  glow: string;
-  accent: string;
+/* ═════════════════════════════════════════════════════════════════
+   Hero color tokens
+   ═════════════════════════════════════════════════════════════════ */
+const C = {
+  bg: '#F3F8FF',
+  bg2: '#E8F1FE',
+  ink: '#0B1530',
+  secondary: '#44526E',
+  muted: '#5B6A87',
+  cobalt1: '#2F68E8',
+  cobalt2: '#1D4ED8',
+  cobaltLight: '#3B8BFF',
+  cobaltTint: '#EAF2FF',
+  cobaltLine: '#CFE0FB',
+  gold: '#C99A3B',
+  goldTint: '#FBF1D9',
+  goldInk: '#8A5F0A',
+  success: '#0F6E4F',
+  successTint: '#E3F6EE',
+  line: '#D3E2F8',
+  card: '#FFFFFF',
+  ffCard: '#FFFFFF',
+  goldDeep: '#B8862E',
+  successOnNavy: '#9BE7C4',
+  panel1: '#FBFDFF',
+  panel2: '#E6F0FD',
+  // Moot Court card
+  navy1: '#0D1B42',
+  navy2: '#17306E',
+  navy3: '#1E3F8F',
+  onNavy: '#EAF1FF',
+  onNavyMuted: 'rgba(234,241,255,.72)',
+  skyOnNavy: '#8DB7FF',
+  rimLight: 'rgba(141,183,255,.28)',
+  shadow: 'rgba(13,27,66,.55)',
+  cardShadow: 'rgba(13,27,66,.28)',
 };
 
-const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
-  {
-    num: '01',
-    title: 'Telegram botni oching',
-    desc: "Botni oching va «Start» tugmasini bosing.",
-    icon: Send,
-    color: 'from-blue-500 to-cyan-500',
-    glow: 'shadow-blue-500/25',
-    accent: '#3b82f6',
-  },
-  {
-    num: '02',
-    title: 'Havolani bosing',
-    desc: "Bot sizga profilingizga kirish havolasini yuboradi. Havolani bosasiz va profilingiz ochiladi.",
-    icon: Link2,
-    color: 'from-cyan-500 to-teal-500',
-    glow: 'shadow-cyan-500/25',
-    accent: '#06b6d4',
-  },
-  {
-    num: '03',
-    title: 'Bir marta kirasiz',
-    desc: "Bu ishni har safar qilish shart emas. Profilingiz qurilmangizda saqlanib qoladi. O'zingiz «Chiqish»ni bosmaguningizcha qayta kirmaysiz.",
-    icon: Lock,
-    color: 'from-sky-500 to-blue-500',
-    glow: 'shadow-sky-500/25',
-    accent: '#0ea5e9',
-  },
-  {
-    num: '04',
-    title: "O'rganing va natijani ko'ring",
-    desc: "Kursni tanlang, savollarga javob yozing. Sun'iy intellekt javobingizni tahlil qilib baho beradi, statistikangiz esa zaif tomonlaringizni ko'rsatadi.",
-    icon: TrendingUp,
-    color: 'from-emerald-500 to-teal-500',
-    glow: 'shadow-emerald-500/25',
-    accent: '#10b981',
-  },
-];
+const STORY_Q = "Da'vogar, dalilingizni qaysi norma bilan asoslaysiz?";
+const STORY_A = "Fuqarolik kodeksining mulk huquqi bo'yicha normalari bilan\u2026";
+const CRITERIA = ['Mantiq', 'Dalil', 'Tahlil', 'Xulosa', 'Uslub'];
 
-/* ── ConnectingLine: SVG stroke that draws itself when in view ── */
-function ConnectingLine({ activeStep, isMobile }: { activeStep: number; isMobile: boolean }) {
-  const ref = useRef<SVGSVGElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-60px' });
-  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* ═════════════════════════════════════════════════════════════════
+   useTiltParallax — lerp-based 3D tilt + idle float + aurora drift
+   ═════════════════════════════════════════════════════════════════ */
+function useTiltParallax(
+  stageRef: React.RefObject<HTMLDivElement>,
+  cardRef: React.RefObject<HTMLDivElement>,
+  shadowRef: React.RefObject<HTMLDivElement>,
+  frontRef: React.RefObject<HTMLDivElement>,
+  auroraRef: React.RefObject<HTMLDivElement>,
+) {
+  const target = useRef({ x: 0, y: 0 });
+  const current = useRef({ x: 0, y: 0 });
+  const mouseActive = useRef(false);
+  const glarePos = useRef({ x: 50, y: 50 });
 
-  if (isMobile) {
-    return (
-      <svg ref={ref} className="absolute left-[27px] top-0 bottom-0 w-2 pointer-events-none" aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 2 100">
-        <line x1="1" y1="0" x2="1" y2="100" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
-        <line
-          x1="1" y1="0" x2="1" y2="100"
-          stroke="url(#vline-grad)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          pathLength={1}
-          strokeDasharray={1}
-          strokeDashoffset={reduce ? 0 : inView ? 1 - (activeStep + 1) / 4 : 1}
-          style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.22,1,0.36,1)' }}
-        />
-        <defs>
-          <linearGradient id="vline-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="50%" stopColor="#06b6d4" />
-            <stop offset="100%" stopColor="#10b981" />
-          </linearGradient>
-        </defs>
-      </svg>
-    );
-  }
+  useEffect(() => {
+    if (reduceMotion || isTouch) return;
+    let raf = 0;
+    const baseRX = 4, baseRY = -9;
 
+    const tick = () => {
+      current.current.x += (target.current.x - current.current.x) * 0.08;
+      current.current.y += (target.current.y - current.current.y) * 0.08;
+
+      const t = performance.now() / 1000;
+      const idleX = Math.sin(t * 0.65) * 5;
+      const idleY = Math.cos(t * 0.5 + 1.2) * 5;
+      const floatX = mouseActive.current ? 0 : idleX;
+      const floatY = mouseActive.current ? 0 : idleY;
+
+      if (cardRef.current) {
+        const rx = baseRX + current.current.y * -0.6 + floatY * 0.3;
+        const ry = baseRY + current.current.x * 0.6 + floatX * 0.3;
+        cardRef.current.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg) translateZ(0)`;
+      }
+      if (shadowRef.current) {
+        shadowRef.current.style.transform = `translateX(${(baseRY + current.current.x * 0.6) * 1.5}px) scaleX(0.85)`;
+      }
+      if (frontRef.current) {
+        const fx = current.current.x * -1.4 + Math.sin(t * 0.9 + 2.4) * (mouseActive.current ? 0 : 4);
+        const fy = current.current.y * -1.4 + Math.cos(t * 0.7 + 1.6) * (mouseActive.current ? 0 : 4);
+        frontRef.current.style.transform = `translate3d(${fx}px, ${fy}px, 70px)`;
+      }
+      if (auroraRef.current) {
+        const ax = current.current.x * 0.3 + Math.sin(t * 0.08) * 30;
+        const ay = current.current.y * 0.3 + Math.cos(t * 0.06) * 20;
+        auroraRef.current.style.transform = `translate3d(${ax}px, ${ay}px, 0)`;
+      }
+
+      const stage = stageRef.current;
+      if (stage && cardRef.current) {
+        const rect = cardRef.current.getBoundingClientRect();
+        const stageRect = stage.getBoundingClientRect();
+        const gx = ((rect.left + rect.width / 2 - stageRect.left) / stageRect.width) * 100;
+        const gy = ((rect.top + rect.height / 2 - stageRect.top) / stageRect.height) * 100;
+        glarePos.current.x += (gx - glarePos.current.x) * 0.1;
+        glarePos.current.y += (gy - glarePos.current.y) * 0.1;
+        cardRef.current.style.setProperty('--glare-x', `${glarePos.current.x}%`);
+        cardRef.current.style.setProperty('--glare-y', `${glarePos.current.y}%`);
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [stageRef, cardRef, shadowRef, frontRef, auroraRef]);
+
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!stageRef.current || reduceMotion || isTouch) return;
+    mouseActive.current = true;
+    const rect = stageRef.current.getBoundingClientRect();
+    const dx = (e.clientX - rect.left - rect.width / 2) / (rect.width / 2);
+    const dy = (e.clientY - rect.top - rect.height / 2) / (rect.height / 2);
+    target.current = { x: Math.max(-8, Math.min(8, dx * 8)), y: Math.max(-8, Math.min(8, dy * 8)) };
+  }, [stageRef]);
+
+  const onMouseLeave = useCallback(() => {
+    mouseActive.current = false;
+    target.current = { x: 0, y: 0 };
+  }, []);
+
+  return { onMouseMove, onMouseLeave };
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   useStoryLoop — 9s cycle: question → answer → evaluating → result → fade
+   ═════════════════════════════════════════════════════════════════ */
+function useStoryLoop() {
+  const [cycleKey, setCycleKey] = useState(0);
+  const [phase, setPhase] = useState(reduceMotion ? 3 : 0);
+  const [qText, setQText] = useState(reduceMotion ? STORY_Q : '');
+  const [aText, setAText] = useState(reduceMotion ? STORY_A : '');
+  const [score, setScore] = useState(reduceMotion ? 92 : 0);
+  const [filledCr, setFilledCr] = useState(reduceMotion ? 5 : 0);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    setPhase(0); setQText(''); setAText(''); setScore(0); setFilledCr(0);
+    const timers = [
+      setTimeout(() => setPhase(1), 1600),
+      setTimeout(() => setPhase(2), 4000),
+      setTimeout(() => setPhase(3), 5000),
+      setTimeout(() => setPhase(4), 8000),
+      setTimeout(() => setCycleKey(k => k + 1), 9000),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [cycleKey]);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    setQText(''); setAText('');
+    let qi = 0, ai = 0;
+    const qTimer = setTimeout(() => {
+      const qInt = setInterval(() => {
+        qi++; setQText(STORY_Q.slice(0, qi));
+        if (qi >= STORY_Q.length) clearInterval(qInt);
+      }, 30);
+    }, 300);
+    const aTimer = setTimeout(() => {
+      const aInt = setInterval(() => {
+        ai++; setAText(STORY_A.slice(0, ai));
+        if (ai >= STORY_A.length) clearInterval(aInt);
+      }, 26);
+    }, 1900);
+    return () => { clearTimeout(qTimer); clearTimeout(aTimer); };
+  }, [cycleKey]);
+
+  useEffect(() => {
+    if (phase < 3) { setScore(0); setFilledCr(0); return; }
+    if (reduceMotion) { setScore(92); setFilledCr(5); return; }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / 1500, 1);
+      setScore(Math.round((1 - Math.pow(1 - p, 3)) * 92));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    const crInt = setInterval(() => setFilledCr(c => c >= 5 ? (clearInterval(crInt), 5) : c + 1), 250);
+    return () => clearInterval(crInt);
+  }, [phase]);
+
+  return { cycleKey, phase, qText, aText, score, filledCr };
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   HeroBackdrop — aurora blobs + grain + dot grid + cursor glow
+   ═════════════════════════════════════════════════════════════════ */
+function HeroBackdrop({ auroraRef, bgRef }: { auroraRef: React.RefObject<HTMLDivElement>; bgRef: React.RefObject<HTMLDivElement> }) {
   return (
-    <svg ref={ref} className="absolute top-[44px] left-0 right-0 h-2 pointer-events-none" aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 100 2">
-      <line x1="0" y1="1" x2="100" y2="1" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
-      <line
-        x1="0" y1="1" x2="100" y2="1"
-        stroke="url(#hline-grad)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        pathLength={1}
-        strokeDasharray={1}
-        strokeDashoffset={reduce ? 0 : inView ? 1 - (activeStep + 1) / 4 : 1}
-        style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.22,1,0.36,1)' }}
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        WebkitMaskImage: 'radial-gradient(ellipse 75% 70% at 50% 50%, rgba(13,27,66,1) 35%, rgba(13,27,66,0) 100%)',
+        maskImage: 'radial-gradient(ellipse 75% 70% at 50% 50%, rgba(13,27,66,1) 35%, rgba(13,27,66,0) 100%)',
+      }}
+    >
+      <div ref={auroraRef} className="absolute inset-0 pointer-events-none" style={{ willChange: 'transform' }}>
+        <div className="absolute rounded-full" style={{ width: 500, height: 500, left: '5%', top: '10%', background: 'radial-gradient(circle, rgba(47,104,232,0.15), transparent 70%)', filter: 'blur(60px)', animation: reduceMotion ? 'none' : 'ff-aurora1 35s ease-in-out infinite' }} />
+        <div className="absolute rounded-full" style={{ width: 420, height: 420, left: '40%', top: '5%', background: 'radial-gradient(circle, rgba(59,139,255,0.12), transparent 70%)', filter: 'blur(55px)', animation: reduceMotion ? 'none' : 'ff-aurora2 40s ease-in-out infinite' }} />
+        <div className="absolute rounded-full" style={{ width: 380, height: 380, left: '60%', top: '30%', background: 'radial-gradient(circle, rgba(201,154,59,0.10), transparent 70%)', filter: 'blur(50px)', animation: reduceMotion ? 'none' : 'ff-aurora3 38s ease-in-out infinite' }} />
+      </div>
+
+      {/* Cursor-following soft white glow */}
+      <div
+        ref={bgRef}
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(400px circle at var(--bg-x, 50%) var(--bg-y, 50%), rgba(255,255,255,0.5), transparent 60%)', ['--bg-x' as any]: '50%', ['--bg-y' as any]: '30%' }}
       />
-      <defs>
-        <linearGradient id="hline-grad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="33%" stopColor="#06b6d4" />
-          <stop offset="66%" stopColor="#0ea5e9" />
-          <stop offset="100%" stopColor="#10b981" />
-        </linearGradient>
-      </defs>
-    </svg>
+
+      {/* Static grid — fades toward edges */}
+      <div className="absolute inset-0 pointer-events-none ff-grid-bg" />
+    </div>
   );
 }
 
-/* ── PhoneMockup: CSS 3D phone with animated scenes synced to activeStep ── */
-function PhoneMockup({ activeStep }: { activeStep: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [tilt, setTilt] = useState({ x: -8, y: 12 });
-  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = (e.clientX - cx) / (rect.width / 2);
-    const dy = (e.clientY - cy) / (rect.height / 2);
-    setTilt({ x: -8 + -dy * 6, y: 12 + dx * 8 });
-  }, []);
-
-  const handleMouseLeave = useCallback(() => setTilt({ x: -8, y: 12 }), []);
-
-  const scene = (idx: number) => (
-    <motion.div
-      key={idx}
-      initial={reduce ? false : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute inset-0 flex flex-col"
-    >
-      {idx === 0 && (
-        <div className="flex flex-col h-full p-3 gap-2">
-          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
-              <Send className="w-2.5 h-2.5 text-white" />
-            </div>
-            <span className="text-[8px] font-bold text-slate-700">FanFaster Bot</span>
-          </div>
-          <div className="flex-1 flex flex-col justify-end gap-1.5">
-            <div className="self-end max-w-[70%] bg-blue-500 text-white text-[7px] rounded-xl rounded-tr-sm px-2 py-1.5 font-medium">
-              /start
-            </div>
-            <motion.div
-              initial={reduce ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 0.4 }}
-              className="self-start max-w-[80%] bg-slate-100 text-slate-700 text-[7px] rounded-xl rounded-tl-sm px-2 py-1.5"
-            >
-              Assalomu alaykum! Profilingizga kirish uchun tugmani bosing.
-            </motion.div>
-            <motion.button
-              initial={reduce ? false : { opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.7, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="self-start max-w-[80%] bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-[7px] font-bold rounded-lg px-2.5 py-1.5 shadow-sm flex items-center gap-1"
-            >
-              <Link2 className="w-2.5 h-2.5" /> Profilga kirish
-            </motion.button>
-          </div>
-        </div>
-      )}
-      {idx === 1 && (
-        <div className="flex flex-col h-full p-3 gap-1.5">
-          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
-            <div>
-              <div className="text-[7px] font-bold text-slate-800 leading-tight">FanFaster</div>
-              <div className="text-[6px] text-emerald-500 font-medium">online</div>
-            </div>
-          </div>
-          <motion.div
-            initial={reduce ? false : { opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="flex-1 flex flex-col items-center justify-center gap-1"
-          >
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-md">
-              <GraduationCap className="w-4 h-4 text-white" />
-            </div>
-            <div className="text-[8px] font-black text-slate-800">Xush kelibsiz!</div>
-            <div className="text-[6px] text-slate-400">O'quvchi kabineti</div>
-          </motion.div>
-        </div>
-      )}
-      {idx === 2 && (
-        <div className="flex flex-col h-full p-3 gap-1.5">
-          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
-            <div className="text-[7px] font-bold text-slate-800">FanFaster</div>
-          </div>
-          <div className="flex-1 flex flex-col items-center justify-center gap-2">
-            <motion.div
-              initial={reduce ? false : { scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="relative"
-            >
-              <div className="w-12 h-12 rounded-full border-2 border-emerald-400 flex items-center justify-center bg-emerald-50">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-              </div>
-              <motion.div
-                animate={reduce ? {} : { scale: [1, 1.3, 1], opacity: [0.4, 0, 0.4] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute inset-0 rounded-full border-2 border-emerald-400"
-              />
-            </motion.div>
-            <div className="text-[7px] font-bold text-slate-600 text-center leading-tight">
-              Profil saqlandi<br />
-              <span className="text-[6px] text-slate-400 font-normal">Chiqishni bosmaguningizcha qoladi</span>
-            </div>
-            <div className="flex items-center gap-1 text-[6px] text-slate-300 mt-0.5">
-              <LogOut className="w-2.5 h-2.5" />
-              <span>Chiqish</span>
-            </div>
-          </div>
-        </div>
-      )}
-      {idx === 3 && (
-        <div className="flex flex-col h-full p-3 gap-1.5">
-          <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
-            <div className="text-[7px] font-bold text-slate-800">Kurs · Modul 1</div>
-          </div>
-          <div className="flex-1 flex flex-col gap-1.5">
-            <div className="bg-slate-50 rounded-lg p-1.5 border border-slate-100">
-              <div className="text-[6px] text-slate-400 mb-0.5">Savol</div>
-              <div className="text-[7px] text-slate-700 leading-tight">Huquqning asosiy tushunchasi nima?</div>
-              <div className="text-[6px] text-slate-400 mt-1 mb-0.5">Javob</div>
-              <div className="text-[6px] text-slate-600 leading-tight">Huquq — bu davlat tomonidan...</div>
-            </div>
-            <motion.div
-              initial={reduce ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.4 }}
-              className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-1.5 border border-emerald-100 flex items-center gap-1.5"
-            >
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shrink-0">
-                <Brain className="w-3 h-3 text-white" />
-              </div>
-              <div className="flex-1">
-                <div className="text-[6px] font-bold text-emerald-700">AI bahosi: 92/100</div>
-                <div className="h-1 bg-emerald-100 rounded-full mt-0.5 overflow-hidden">
-                  <motion.div
-                    initial={reduce ? { width: '92%' } : { width: '0%' }}
-                    animate={{ width: '92%' }}
-                    transition={{ delay: 0.5, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
-                  />
-                </div>
-              </div>
-            </motion.div>
-            <motion.div
-              initial={reduce ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6, duration: 0.4 }}
-              className="flex items-end gap-[2px] h-5 px-0.5"
-            >
-              {[40, 55, 48, 70, 62, 85, 92].map((h, i) => (
-                <motion.div
-                  key={i}
-                  initial={reduce ? { height: `${h}%` } : { height: '0%' }}
-                  animate={{ height: `${h}%` }}
-                  transition={{ delay: 0.7 + i * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                  className={`flex-1 rounded-sm ${i >= 5 ? 'bg-gradient-to-t from-emerald-500 to-teal-400' : 'bg-slate-200'}`}
-                />
-              ))}
-            </motion.div>
-          </div>
-        </div>
-      )}
-    </motion.div>
-  );
+/* ═════════════════════════════════════════════════════════════════
+   HeroCopy — label, title, description, buttons, trust badges
+   ═════════════════════════════════════════════════════════════════ */
+function HeroCopy({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  const titleParts = ["Orzuyingizdagi ", "'men' ", "bugun "];
 
   return (
-    <div
-      ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      className="relative"
-      style={{ perspective: '900px' }}
-    >
-      <div
-        className="relative mx-auto"
-        style={{
-          transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-          transition: 'transform 0.4s cubic-bezier(0.22,1,0.36,1)',
-          transformStyle: 'preserve-3d',
-        }}
+    <div className="relative ff-glass ff-hero-panel flex flex-col justify-center">
+      {/* Eyebrow pill */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="mb-6"
       >
-        {/* Phone frame */}
-        <div className="relative w-[180px] h-[360px] rounded-[2rem] bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl p-2">
-          {/* Screen */}
-          <div className="relative w-full h-full rounded-[1.5rem] bg-white overflow-hidden" style={{ transform: 'translateZ(1px)' }}>
-            {/* Notch */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-3 bg-slate-800 rounded-b-xl z-10" />
+        <span className="ff-eyebrow">
+          <span className="ff-eyebrow-dot" style={{ animation: reduceMotion ? 'none' : 'ff-pulse 2s ease-in-out infinite' }} />
+          SIZ KUTGAN FORMATDAGI TA'LIM
+        </span>
+      </motion.div>
 
-            <AnimatePresence mode="wait">
-              {scene(activeStep)}
-            </AnimatePresence>
+      {/* Title — serif H1 */}
+      <h1 className="ff-h1 ff-serif mb-5" style={{ color: 'var(--ink)' }}>
+        {titleParts.map((word, i) => (
+          <span key={i}>
+            <span className="inline-block overflow-hidden align-bottom" style={{ paddingBottom: '0.08em' }}>
+              <motion.span
+                className="inline-block"
+                initial={{ y: '110%' }}
+                animate={{ y: 0 }}
+                transition={{ duration: 0.7, delay: 0.1 + i * 0.06, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+              >
+                {word}
+              </motion.span>
+            </span>
+            {' '}
+          </span>
+        ))}
+        <span className="inline-block overflow-hidden align-bottom" style={{ paddingBottom: '0.08em', whiteSpace: 'nowrap' }}>
+          <motion.span
+            className="inline-block ff-hero-italic"
+            initial={{ y: '110%' }}
+            animate={{ y: 0 }}
+            transition={{ duration: 0.7, delay: 0.28, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+          >
+            nimani bilishi kerak?
+          </motion.span>
+        </span>
+        {/* Gold underline SVG */}
+        <svg className="block mt-1" width="280" height="10" viewBox="0 0 280 10" fill="none" style={{ overflow: 'visible' }}>
+          <motion.path
+            d="M2 6 Q 70 2, 140 5 T 278 4"
+            stroke={C.gold}
+            strokeWidth="3"
+            strokeLinecap="round"
+            fill="none"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </svg>
+      </h1>
 
-            {/* Home indicator */}
-            <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-slate-300 rounded-full" />
+      {/* Description */}
+      <motion.p
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="ff-hero-lead"
+      >
+        Qonunlarni shunchaki yodlamang — ularning <span style={{ color: 'var(--cobalt-2)', fontWeight: 600 }}>mantiqiy kuchini his qiling</span>. <span style={{ color: 'var(--ink)', fontWeight: 600 }}>FanFaster</span> bilan real keyslarni tahlil qiling va har qanday vaziyatda professional yechim topishni o'rganing.
+      </motion.p>
+
+      {/* Buttons */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="flex flex-wrap gap-3 mb-7"
+      >
+        <button
+          onClick={() => onNavigate('sinov')}
+          className="ff-magnet-btn group flex items-center gap-2 px-6 py-3 font-semibold text-sm transition-all hover:-translate-y-0.5 active:scale-95 ff-focus"
+          style={{
+            background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))',
+            color: '#fff',
+            borderRadius: 16,
+            boxShadow: '0 16px 32px -14px rgba(29,78,216,.55)',
+          }}
+        >
+          <Play className="h-4 w-4 fill-white" />
+          O&rsquo;qishni boshlash
+        </button>
+        <button
+          onClick={() => onNavigate('oqmatlar')}
+          className="flex items-center gap-2 px-5 py-3 font-semibold text-sm transition-all active:scale-95 ff-focus"
+          style={{
+            background: 'var(--ff-card)',
+            border: '1px solid var(--cobalt-line)',
+            color: 'var(--ink)',
+            borderRadius: 16,
+          }}
+        >
+          <BookOpen className="h-4 w-4" />
+          Materiallarni ko&rsquo;rish
+          <ArrowRight className="h-3.5 w-3.5" style={{ color: 'var(--cobalt-2)' }} />
+        </button>
+      </motion.div>
+
+      {/* Segmented chips row */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.65 }}
+        className="ff-seg"
+      >
+        {[
+          { label: 'AI bilan 24/7 amaliy simulyatsiya', tile: 'var(--cobalt-tint)', color: 'var(--cobalt-2)' },
+          { label: 'Tajribali ustozlar ko\'magi', tile: 'var(--gold-tint)', color: 'var(--gold-ink)' },
+          { label: 'Platformani hoziroq sinab ko\'ring', tile: 'var(--success-tint)', color: 'var(--success)' },
+        ].map((badge) => (
+          <div key={badge.label} className="ff-seg-cell">
+            <div className="ff-seg-icon-tile" style={{ background: badge.tile }}>
+              <Rocket className="h-4 w-4" style={{ color: badge.color }} />
+            </div>
+            <span>{badge.label}</span>
           </div>
-        </div>
+        ))}
+      </motion.div>
+    </div>
+  );
+}
 
-        {/* Reflection shadow */}
-        <div
-          className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-[140px] h-8 rounded-full blur-xl"
-          style={{ background: 'radial-gradient(ellipse, rgba(56,189,248,0.15), transparent 70%)' }}
-        />
+/* ═════════════════════════════════════════════════════════════════
+   StoryDialog — chat bubbles + evaluating indicator
+   ═════════════════════════════════════════════════════════════════ */
+function StoryDialog({ phase, cycleKey, qText, aText }: {
+  phase: number; cycleKey: number; qText: string; aText: string;
+}) {
+  const fading = phase === 4;
+  const dialogVisible = phase <= 3;
+
+  return (
+    <div className="flex flex-col gap-2" style={{ height: 190 }}>
+      <AnimatePresence>
+        {dialogVisible && (
+          <motion.div
+            key={`q-${cycleKey}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: fading ? 0 : 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="self-start max-w-[90%]"
+          >
+            <div className="rounded-2xl rounded-tl-md px-3 py-2 leading-relaxed" style={{ background: 'rgba(234,241,255,.07)', border: '1px solid rgba(234,241,255,.14)' }}>
+              <span className="text-[10px] font-bold block mb-0.5" style={{ color: C.skyOnNavy, fontFamily: SERIF }}>AI Sudya</span>
+              <span className="text-[14.5px]" style={{ color: C.onNavy, fontFamily: SERIF }}>
+                {qText}
+                {!reduceMotion && qText.length < STORY_Q.length && qText.length > 0 && <span className="animate-pulse">|</span>}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {phase >= 1 && dialogVisible && (
+          <motion.div
+            key={`a-${cycleKey}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: fading ? 0 : 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="self-end max-w-[90%]"
+          >
+            <div className="rounded-2xl rounded-tr-md px-3 py-2 leading-relaxed" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
+              <span className="text-[10px] font-bold block mb-0.5" style={{ color: 'rgba(234,241,255,.85)' }}>Siz</span>
+              <span className="text-[14.5px] text-white" style={{ fontFamily: SANS }}>
+                {aText}
+                {!reduceMotion && phase === 1 && aText.length < STORY_A.length && aText.length > 0 && <span className="animate-pulse">|</span>}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {phase === 2 && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="self-start">
+          <div className="flex items-center gap-1.5 rounded-xl px-3 py-2" style={{ background: 'rgba(234,241,255,.05)' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: C.skyOnNavy, animation: `ff-typing 1.2s ${i * 0.15}s infinite ease-in-out` }} />
+            ))}
+            <span className="text-[11px] ml-1" style={{ color: C.onNavyMuted }}>AI baholamoqda</span>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   ResultPanel — skeleton during evaluation, real result after
+   ═════════════════════════════════════════════════════════════════ */
+function ResultPanel({ phase, cycleKey, score, filledCr }: {
+  phase: number; cycleKey: number; score: number; filledCr: number;
+}) {
+  const showResult = phase >= 3;
+  const fading = phase === 4;
+  const R = 20, CIRC = 2 * Math.PI * R;
+  const offset = CIRC - (score / 100) * CIRC;
+  const showSkeleton = phase === 2;
+  const showReal = phase >= 3;
+
+  return (
+    <div style={{ height: 130 }} className="relative">
+      {/* Skeleton during evaluation */}
+      <AnimatePresence>
+        {showSkeleton && (
+          <motion.div key={`sk-${cycleKey}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-full shrink-0 ff-skeleton" />
+            <div className="flex flex-wrap gap-1.5 flex-1">
+              {CRITERIA.map(c => (
+                <div key={c} className="text-[10px] font-bold px-2 py-0.5 rounded-full ff-skeleton" style={{ width: 52, height: 18 }} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Real result */}
+      <AnimatePresence>
+        {showReal && (
+          <motion.div
+            key={`r-${cycleKey}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: fading ? 0 : 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+            className="absolute inset-0 flex flex-col gap-2 justify-center"
+          >
+            <div className="flex items-center gap-3.5">
+              {/* Score ring */}
+              <div className="relative w-12 h-12 shrink-0">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 50 50">
+                  <circle cx="25" cy="25" r={R} fill="none" stroke="rgba(234,241,255,.12)" strokeWidth="3" />
+                  <circle cx="25" cy="25" r={R} fill="none" stroke="url(#ff-ring-grad)" strokeWidth="3" strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.3s ease' }} />
+                  <defs>
+                    <linearGradient id="ff-ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor={C.successOnNavy} />
+                      <stop offset="100%" stopColor={C.skyOnNavy} />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[12px] font-bold" style={{ color: C.onNavy }}>{score}<span className="text-[7px] opacity-50">/100</span></span>
+                </div>
+              </div>
+              {/* Criteria */}
+              <div className="flex flex-wrap gap-1.5 flex-1">
+                {CRITERIA.map((c, i) => (
+                  <span key={c} className="text-[10px] font-bold px-2 py-0.5 rounded-full transition-all duration-300" style={i < filledCr ? { background: 'rgba(155,231,196,.14)', border: '1px solid rgba(155,231,196,.34)', color: C.successOnNavy } : { background: 'rgba(234,241,255,.04)', border: '1px solid rgba(234,241,255,.10)', color: 'rgba(234,241,255,.5)' }}>
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {/* XP badge — inside card, right side, full text */}
+            {score >= 90 && (
+              <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: fading ? 0 : 1 }} transition={{ type: 'spring', stiffness: 200, damping: 14, delay: 0.4 }} className="self-end">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-deep))', boxShadow: '0 4px 16px rgba(201,154,59,.3)' }}>
+                  <Trophy className="h-3.5 w-3.5" style={{ color: C.ink }} />
+                  <div className="leading-none">
+                    <p className="text-[11px] font-bold whitespace-nowrap" style={{ color: C.ink }}>+120 XP</p>
+                    <p className="text-[8px] whitespace-nowrap mt-0.5" style={{ color: 'rgba(11,21,48,.7)' }}>Yangi daraja ochildi</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   CourtCard — Moot Court card with dialog + result + CTA
+   ═════════════════════════════════════════════════════════════════ */
+function CourtCard({ onNavigate, story }: { onNavigate: (tab: string) => void; story: ReturnType<typeof useStoryLoop> }) {
+  return (
+    <div
+      className="rounded-[24px] flex flex-col"
+      style={{
+        width: 'min(480px, 100%)',
+        height: 510,
+        background: `linear-gradient(160deg, ${C.navy1} 0%, ${C.navy2} 70%, ${C.navy3} 100%)`,
+        boxShadow: `0 50px 90px -35px ${C.shadow}, inset 0 1px 0 ${C.rimLight}`,
+        border: '1px solid rgba(141,183,255,.28)',
+        position: 'relative',
+        ['--glare-x' as any]: '50%',
+        ['--glare-y' as any]: '50%',
+      }}
+    >
+      {/* Glare overlay on card surface */}
+      {!reduceMotion && !isTouch && (
+        <div className="absolute inset-0 rounded-[24px] pointer-events-none" style={{
+          background: 'radial-gradient(200px circle at var(--glare-x, 50%) var(--glare-y, 50%), rgba(255,255,255,0.10), transparent 70%)',
+        }} />
+      )}
+
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b" style={{ borderColor: 'rgba(141,183,255,.15)' }}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
+          <Scale className="h-4 w-4 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-bold" style={{ color: C.onNavy, fontFamily: SERIF }}>Moot Court</p>
+          <p className="text-[10px]" style={{ color: C.onNavyMuted }}>AI sudya bilan jonli bahs</p>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 flex flex-col px-4 py-3 gap-2 overflow-hidden">
+        <StoryDialog phase={story.phase} cycleKey={story.cycleKey} qText={story.qText} aText={story.aText} />
+        <ResultPanel phase={story.phase} cycleKey={story.cycleKey} score={story.score} filledCr={story.filledCr} />
+      </div>
+
+      {/* Footer — CTA */}
+      <div className="px-4 pb-4 pt-1">
+        <button
+          onClick={() => onNavigate('moot_court')}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 font-semibold text-sm rounded-xl transition-all ff-focus"
+          style={{ background: 'var(--ff-card)', color: 'var(--cobalt-2)' }}
+        >
+          <Scale className="h-3.5 w-3.5" />
+          Bahsni boshlash
+        </button>
       </div>
     </div>
   );
 }
 
-/* ── FloatingBackgroundShapes: very subtle 3D wire shapes ── */
-function FloatingBackgroundShapes() {
-  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* ═════════════════════════════════════════════════════════════════
+   FloatChips — glassmorphic chips in front layer
+   ═════════════════════════════════════════════════════════════════ */
+function FloatChips({ onNavigate, blogTitle }: { onNavigate: (tab: string) => void; blogTitle: string | null }) {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+    <div className="absolute inset-0 pointer-events-none">
+      {/* Test chip — bottom-left of card, extends below-left */}
       <motion.div
-        animate={reduce ? {} : { y: [0, -20, 0], rotate: [0, 6, 0] }}
-        transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute top-[10%] left-[8%] w-20 h-20 opacity-[0.07]"
-        style={{ transformStyle: 'preserve-3d' }}
+        initial={{ opacity: 0, x: -16, y: 12 }}
+        animate={{ opacity: 1, x: 0, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        className="absolute"
+        style={{ left: -16, bottom: 52 }}
       >
-        <div className="w-full h-full border-2 border-blue-400 rounded-lg" style={{ transform: 'rotateY(35deg) rotateX(15deg)' }} />
+        <button
+          onClick={() => onNavigate('mavjud_testlar')}
+          className="pointer-events-auto flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-all text-left ff-focus"
+          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 24, boxShadow: '0 18px 40px -18px rgba(13,27,66,.28)' }}
+          onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 22px 44px -16px rgba(13,27,66,.38)'}
+          onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 18px 40px -18px rgba(13,27,66,.28)'}
+        >
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
+            <FileText className="h-3.5 w-3.5 text-white" />
+          </div>
+          <div className="leading-none text-left">
+            <p className="text-[11px] font-bold" style={{ color: 'var(--ink)' }}>Mavjud testlar</p>
+            <p className="text-[9px] mt-1" style={{ color: 'var(--ink-body)' }}>Bilim sinovi</p>
+          </div>
+          <div className="flex items-center gap-1 ml-1">
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'var(--success-tint)', color: 'var(--success)' }}>A</span>
+            {!reduceMotion && (
+              <motion.span
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{ duration: 2.5, repeat: Infinity, delay: 1 }}
+                className="text-[8px] font-bold whitespace-nowrap"
+                style={{ color: 'var(--success)' }}
+              >
+                TO'G'RI
+              </motion.span>
+            )}
+          </div>
+        </button>
       </motion.div>
+
+      {/* Blog chip — top-right of card, extends above-right */}
       <motion.div
-        animate={reduce ? {} : { y: [0, 15, 0], rotate: [0, -8, 0] }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-        className="absolute top-[60%] right-[10%] w-16 h-16 opacity-[0.08]"
+        initial={{ opacity: 0, x: 16, y: -12 }}
+        animate={{ opacity: 1, x: 0, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.9, ease: [0.22, 1, 0.36, 1] }}
+        className="absolute"
+        style={{ right: -12, top: 48 }}
       >
-        <div className="w-full h-full border-2 border-cyan-400 rounded-lg" style={{ transform: 'rotateY(-30deg) rotateZ(10deg)' }} />
-      </motion.div>
-      <motion.div
-        animate={reduce ? {} : { y: [0, -12, 0], rotate: [0, 4, 0] }}
-        transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
-        className="absolute top-[30%] right-[20%] w-12 h-12 opacity-[0.06]"
-      >
-        <div className="w-full h-full border-2 border-emerald-400 rounded-lg" style={{ transform: 'rotateX(25deg) rotateY(20deg)' }} />
+        <button
+          onClick={() => onNavigate('blog')}
+          className="pointer-events-auto flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-all text-left max-w-[200px] ff-focus"
+          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 24, boxShadow: '0 18px 40px -18px rgba(13,27,66,.28)' }}
+          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 22px 44px -16px rgba(13,27,66,.38)'; e.currentTarget.style.borderColor = 'var(--cobalt-line)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 18px 40px -18px rgba(13,27,66,.28)'; e.currentTarget.style.borderColor = 'var(--line)'; }}
+        >
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--gold-tint)' }}>
+            <Newspaper className="h-3.5 w-3.5" style={{ color: 'var(--gold-ink)' }} />
+          </div>
+          <div className="leading-none text-left min-w-0">
+            <p className="text-[11px] font-bold" style={{ color: 'var(--ink)' }}>Blog</p>
+            <p className="text-[9px] mt-1 truncate" style={{ color: 'var(--ink-body)' }}>{blogTitle || 'So\'nggi maqolalar'}</p>
+          </div>
+        </button>
       </motion.div>
     </div>
   );
 }
 
-/* ── HowItWorksSection: main composed section ── */
-function HowItWorksSection() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const [activeStep, setActiveStep] = useState(0);
-  const [isMobile, setIsMobile] = useState(false);
-  const inView = useInView(sectionRef, { margin: '-80px' });
-  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* ═════════════════════════════════════════════════════════════════
+   StageScene — 3D perspective container wrapping card + chips + shadow
+   ═════════════════════════════════════════════════════════════════ */
+function StageScene({ onNavigate, blogTitle }: { onNavigate: (tab: string) => void; blogTitle: string | null }) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const shadowRef = useRef<HTMLDivElement>(null);
+  const frontRef = useRef<HTMLDivElement>(null);
+  const auroraRef = useRef<HTMLDivElement>(null);
+  const bgRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    setIsMobile(mq.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  // Auto-advance the active step when in view (unless reduced motion)
-  useEffect(() => {
-    if (!inView || reduce) return;
-    if (isMobile && window.matchMedia('(hover: none)').matches) {
-      // On touch mobile, auto-advance too
-    }
-    const interval = setInterval(() => {
-      setActiveStep((prev) => (prev + 1) % 4);
-    }, 3500);
-    return () => clearInterval(interval);
-  }, [inView, reduce, isMobile]);
+  const { onMouseMove, onMouseLeave } = useTiltParallax(stageRef, cardRef, shadowRef, frontRef, auroraRef);
+  const story = useStoryLoop();
 
   return (
-    <section className="mb-12" ref={sectionRef}>
-      <div className="relative">
-        <FloatingBackgroundShapes />
+    <div className="relative w-full h-full">
+      {/* Backdrop layer — outside 3D context, first layer */}
+      <HeroBackdrop auroraRef={auroraRef} bgRef={bgRef} />
 
+      {/* Static decor: halo + dashed ring — outside 3D context */}
+      <div className="absolute pointer-events-none" style={{ width: 440, height: 440, left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 0 }}>
+        <div className="ff-halo" style={{ width: 440, height: 440, left: 0, top: 0 }} />
+        <div className="ff-ring" style={{ width: 380, height: 380, left: 30, top: 30 }} />
+        {/* Two small dots on the ring */}
+        <div style={{ position: 'absolute', width: 8, height: 8, borderRadius: '50%', background: 'var(--cobalt-1)', left: 190, top: 20, boxShadow: '0 0 12px rgba(47,104,232,.4)' }} />
+        <div style={{ position: 'absolute', width: 6, height: 6, borderRadius: '50%', background: 'var(--gold)', left: 340, top: 190, boxShadow: '0 0 10px rgba(201,154,59,.4)' }} />
+      </div>
+
+      {/* 3D perspective container — only card wrapper inside */}
+      <div
+        ref={stageRef}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        className="absolute inset-0 flex items-center justify-center"
+        style={{ perspective: '1400px', transformStyle: 'preserve-3d' }}
+      >
+        {/* Card wrapper — positioned in center */}
         <motion.div
-          variants={staggerContainer}
+          initial={{ opacity: 0, z: -220, scale: 0.9 }}
+          animate={{ opacity: 1, z: 0, scale: 1 }}
+          transition={{ duration: 1, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="relative"
+          style={{ transformStyle: 'preserve-3d', width: 'min(480px, 100%)', height: 510 }}
+        >
+          {/* Floor shadow */}
+          <div
+            ref={shadowRef}
+            className="absolute rounded-[50%]"
+            style={{
+              width: '80%', height: 30, bottom: -20, left: '10%',
+              background: `radial-gradient(ellipse, ${C.shadow}, transparent 70%)`,
+              filter: 'blur(12px)',
+              willChange: 'transform',
+            }}
+          />
+          {/* The card itself */}
+          <div ref={cardRef} style={{ willChange: 'transform', transformStyle: 'preserve-3d' }}>
+            <CourtCard onNavigate={onNavigate} story={story} />
+          </div>
+          {/* Front chips layer */}
+          <div ref={frontRef} className="absolute inset-0 pointer-events-none" style={{ transformStyle: 'preserve-3d', willChange: 'transform' }}>
+            <FloatChips onNavigate={onNavigate} blogTitle={blogTitle} />
+          </div>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   1. HERO — bright stage, 9s story loop, 3D parallax
+   ═════════════════════════════════════════════════════════════════ */
+function HeroSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  const [blogTitle, setBlogTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('blog_posts')
+      .select('title')
+      .eq('status', 'published')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.title) setBlogTitle(data.title); });
+  }, []);
+
+  return (
+    <>
+      <style>{`
+        .ff-hero-italic {
+          background: linear-gradient(120deg, var(--cobalt-2) 0%, var(--cobalt-light) 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: transparent;
+          font-style: italic;
+          font-family: 'Source Serif 4 Variable', 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
+          padding-right: 0.08em;
+        }
+        .ff-skeleton {
+          background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 100%);
+          background-size: 200% 100%;
+          animation: ff-shimmer 1.5s ease-in-out infinite;
+          border-radius: 9999px;
+        }
+        @keyframes ff-shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @keyframes ff-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.3); }
+        }
+        @keyframes ff-typing {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+          40% { transform: translateY(-6px); opacity: 1; }
+        }
+        @keyframes ff-aurora1 {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(40px, -20px) scale(1.1); }
+          66% { transform: translate(-20px, 30px) scale(0.95); }
+        }
+        @keyframes ff-aurora2 {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(-30px, 20px) scale(0.9); }
+          66% { transform: translate(30px, -15px) scale(1.08); }
+        }
+        @keyframes ff-aurora3 {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(-25px, -20px) scale(1.12); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ff-skeleton, .ff-pulse, .ff-typing { animation: none !important; }
+        }
+      `}</style>
+
+      <section className="ff-hero-sec">
+        <div className="mx-auto lg:h-full" style={{ maxWidth: 1280, padding: '0 40px' }}>
+          <div className="grid lg:grid-cols-[48fr_52fr] lg:h-full gap-6 items-center">
+            {/* LEFT — Copy */}
+            <div className="relative z-10">
+              <HeroCopy onNavigate={onNavigate} />
+              {/* sr-only static equivalent for accessibility */}
+              <span className="sr-only">
+                Moot Court demo: AI Sudya so&rsquo;raydi &ldquo;{STORY_Q}&rdquo;. Siz javob berasiz &ldquo;{STORY_A}&rdquo;. Natija: 92/100. Mezonlar: {CRITERIA.join(', ')}. +120 XP Yangi daraja ochildi.
+              </span>
+            </div>
+
+            {/* RIGHT — Stage (desktop) */}
+            <div className="relative hidden lg:block lg:h-full">
+              <StageScene onNavigate={onNavigate} blogTitle={blogTitle} />
+            </div>
+
+            {/* Mobile — simplified stage */}
+            <div className="lg:hidden relative z-10 pb-6">
+              <CourtCard onNavigate={onNavigate} story={useStoryLoop()} />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => onNavigate('mavjud_testlar')}
+                  className="flex items-center gap-2 px-3 py-2 text-left"
+                  style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 16 }}
+                >
+                  <FileText className="h-4 w-4" style={{ color: 'var(--cobalt-2)' }} />
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: 'var(--ink)' }}>Mavjud testlar</p>
+                    <p className="text-[10px]" style={{ color: 'var(--ink-body)' }}>Bilim sinovi</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => onNavigate('blog')}
+                  className="flex items-center gap-2 px-3 py-2 text-left"
+                  style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 16 }}
+                >
+                  <Newspaper className="h-4 w-4" style={{ color: 'var(--gold-ink)' }} />
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: 'var(--ink)' }}>Blog</p>
+                    <p className="text-[10px]" style={{ color: 'var(--ink-body)' }}>{blogTitle || 'So\'nggi maqolalar'}</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* ═══ 2. STATS STRIP ═══ */
+function StatsStrip() {
+  const [stats, setStats] = useState<{ label: string; value: number }[] | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-50px' });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const [testRes, kazusRes, blogRes] = await Promise.allSettled([
+          supabase.from('testlar').select('*', { count: 'exact', head: true }).eq('ommaviy', true),
+          supabase.from('toplamlar').select('*', { count: 'exact', head: true }).eq('ommaviy', true),
+          supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+        ]);
+
+        const items: { label: string; value: number }[] = [];
+        if (testRes.status === 'fulfilled' && testRes.value.count !== null && testRes.value.count > 0)
+          items.push({ label: 'Mavjud testlar', value: testRes.value.count });
+        if (kazusRes.status === 'fulfilled' && kazusRes.value.count !== null && kazusRes.value.count > 0)
+          items.push({ label: 'Mavjud kazuslar', value: kazusRes.value.count });
+        if (blogRes.status === 'fulfilled' && blogRes.value.count !== null && blogRes.value.count > 0)
+          items.push({ label: 'Maqolalar', value: blogRes.value.count });
+
+        setStats(items.length > 0 ? items : null);
+      } catch {
+        setStats(null);
+      }
+    };
+    fetchStats();
+  }, []);
+
+  if (!stats) return null;
+
+  return (
+    <section className="px-4 md:px-6 py-6">
+      <div className="mx-auto" style={{ maxWidth: 1360 }} ref={ref}>
+        <motion.div
+          variants={stagger}
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          className="relative z-10 space-y-10"
+          viewport={{ once: true }}
+          className="flex flex-wrap items-center justify-center gap-8 md:gap-16 py-6 px-8 rounded-2xl backdrop-blur-sm"
+          style={{ background: 'rgba(255,255,255,.6)', border: '1px solid var(--line)' }}
         >
-          {/* Heading */}
-          <motion.div variants={fadeUp} className="text-center space-y-2">
-            <p className="text-xs font-black text-blue-600 uppercase tracking-[0.35em]">Jarayon</p>
-            <h2 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900">Qanday ishlaydi?</h2>
-            <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-              Bir marta kirasiz — qolganini FanFaster o'zi eslab qoladi.
-            </p>
-          </motion.div>
-
-          {/* Desktop: phone left, steps right | Mobile: phone top, steps below */}
-          <div className="flex flex-col md:flex-row gap-8 md:gap-12 items-center md:items-start justify-center">
-            {/* Phone mockup */}
-            <motion.div
-              variants={fadeUp}
-              className="shrink-0 md:sticky md:top-8"
-            >
-              <PhoneMockup activeStep={activeStep} />
+          {stats.map((s, i) => (
+            <motion.div key={i} variants={fadeUp} className="text-center">
+              <p className="text-3xl md:text-4xl font-bold tabular-nums" style={{ color: 'var(--ink)' }}>
+                <AnimatedNumber target={s.value} start={inView} />
+              </p>
+              <p className="text-xs font-semibold mt-1" style={{ color: 'var(--ink-muted)' }}>{s.label}</p>
             </motion.div>
-
-            {/* Steps */}
-            <motion.div variants={fadeUp} className="flex-1 max-w-2xl w-full">
-              <div className="relative">
-                <ConnectingLine activeStep={activeStep} isMobile={isMobile} />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {HOW_IT_WORKS_STEPS.map((s, i) => {
-                    const isActive = i === activeStep;
-                    const Icon = s.icon;
-                    return (
-                      <motion.div
-                        key={i}
-                        variants={fadeUp}
-                        onMouseEnter={() => setActiveStep(i)}
-                        onClick={() => setActiveStep(i)}
-                        className="relative cursor-pointer"
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setActiveStep(i);
-                          }
-                        }}
-                        aria-label={`${s.num}-qadam: ${s.title}`}
-                      >
-                        <div
-                          className={`relative rounded-2xl border bg-white/80 backdrop-blur-xl overflow-hidden transition-all duration-500`}
-                          style={{
-                            borderColor: isActive ? s.accent + '40' : 'rgba(255,255,255,0.6)',
-                            boxShadow: isActive ? `0 8px 30px ${s.accent}15` : '0 1px 3px rgba(0,0,0,0.04)',
-                            transform: isActive ? 'translateY(-2px)' : 'translateY(0)',
-                          }}
-                        >
-                          <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${s.color} transition-opacity duration-500`} style={{ opacity: isActive ? 1 : 0.3 }} />
-
-                          <div className="p-5 flex flex-col gap-3 pt-6" style={{ transformStyle: 'preserve-3d' }}>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[11px] font-black tabular-nums" style={{ color: isActive ? s.accent : '#cbd5e1' }}>
-                                {s.num}
-                              </span>
-                              <div
-                                className={`w-10 h-10 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-lg ${s.glow} transition-transform duration-500`}
-                                style={{
-                                  transform: isActive ? 'translateZ(12px) scale(1.05)' : 'translateZ(4px) scale(1)',
-                                }}
-                              >
-                                <Icon className="h-5 w-5 text-white" />
-                              </div>
-                              {/* Node dot */}
-                              <div className="ml-auto flex items-center gap-2">
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full transition-all duration-500"
-                                  style={{
-                                    background: isActive ? s.accent : '#e2e8f0',
-                                    boxShadow: isActive ? `0 0 8px ${s.accent}80` : 'none',
-                                  }}
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <h3 className="font-black text-slate-900 text-sm mb-1.5">{s.title}</h3>
-                              <p className="text-xs text-slate-500 leading-relaxed">{s.desc}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            </motion.div>
-          </div>
+          ))}
         </motion.div>
       </div>
     </section>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MAIN COMPONENT
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-function ShootingStars() {
-  const ref = useRef<HTMLCanvasElement>(null);
-
+function AnimatedNumber({ target, start }: { target: number; start: boolean }) {
+  const [count, setCount] = useState(0);
   useEffect(() => {
-    const canvas = ref.current;
-    const parent = canvas?.parentElement;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !parent || !ctx) return;
-
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const ANGLE = (32 * Math.PI) / 180;
-    const dx = Math.cos(ANGLE);
-    const dy = Math.sin(ANGLE);
-    let w = 0, h = 0, raf = 0, visible = true;
-    let last = performance.now();
-
-    type Star = { x: number; y: number; len: number; speed: number; alpha: number; size: number; wait: number };
-    type Dot = { x: number; y: number; r: number; phase: number; rate: number };
-    let stars: Star[] = [];
-    let dots: Dot[] = [];
-
-    const spawn = (initial: boolean): Star => {
-      const fromTop = Math.random() < 0.7;
-      return {
-        x: initial ? Math.random() * w : fromTop ? Math.random() * w * 1.1 - w * 0.1 : -40,
-        y: initial ? Math.random() * h : fromTop ? -40 : Math.random() * h * 0.5,
-        len: 80 + Math.random() * 140,
-        speed: 260 + Math.random() * 380,
-        alpha: 0.5 + Math.random() * 0.5,
-        size: 1 + Math.random() * 1.2,
-        wait: initial ? 0 : Math.random() * 3,
-      };
+    if (!start || reduceMotion) { if (start) setCount(target); return; }
+    const duration = 1500;
+    const startTime = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setCount(Math.floor(eased * target));
+      if (p < 1) requestAnimationFrame(tick);
+      else setCount(target);
     };
-
-    const resize = () => {
-      w = parent.clientWidth;
-      h = parent.clientHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const n = Math.round(Math.min(26, Math.max(10, w / 70)));
-      stars = Array.from({ length: n }, () => spawn(true));
-      dots = Array.from({ length: Math.round((w * h) / 9000) }, () => ({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        r: Math.random() < 0.15 ? 2 : 1,
-        phase: Math.random() * Math.PI * 2,
-        rate: 0.6 + Math.random() * 1.6,
-      }));
-    };
-
-    const frame = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 0.05);
-      last = now;
-      ctx.clearRect(0, 0, w, h);
-
-      for (const d of dots) {
-        const a = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin((now / 1000) * d.rate + d.phase));
-        ctx.fillStyle = `rgba(186,230,253,${a * 0.6})`;
-        ctx.fillRect(d.x, d.y, d.r, d.r);
-      }
-
-      if (!reduce) {
-        for (let i = 0; i < stars.length; i++) {
-          const s = stars[i];
-          if (s.wait > 0) { s.wait -= dt; continue; }
-          s.x += dx * s.speed * dt;
-          s.y += dy * s.speed * dt;
-          const tx = s.x - dx * s.len;
-          const ty = s.y - dy * s.len;
-          const g = ctx.createLinearGradient(tx, ty, s.x, s.y);
-          g.addColorStop(0, 'rgba(125,211,252,0)');
-          g.addColorStop(1, `rgba(186,230,253,${s.alpha})`);
-          ctx.strokeStyle = g;
-          ctx.lineWidth = s.size;
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(tx, ty);
-          ctx.lineTo(s.x, s.y);
-          ctx.stroke();
-          ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, s.size * 0.9, 0, Math.PI * 2);
-          ctx.fill();
-          if (tx > w || ty > h) stars[i] = spawn(false);
-        }
-      }
-
-      if (!reduce && visible) raf = requestAnimationFrame(frame);
-      else raf = 0;
-    };
-
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(parent);
-    const io = new IntersectionObserver(([e]) => {
-      visible = e.isIntersecting;
-      if (visible && !reduce && !raf) {
-        last = performance.now();
-        raf = requestAnimationFrame(frame);
-      }
-    });
-    io.observe(parent);
-    raf = requestAnimationFrame(frame);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      io.disconnect();
-    };
-  }, []);
-
-  return <canvas ref={ref} aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 h-full w-full" />;
+    requestAnimationFrame(tick);
+  }, [start, target]);
+  return <>{count.toLocaleString()}</>;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   "TIRIK ISH STOLI" — Living Work Desk hero sub-components
-   HeroText, LiveScene, TestCard, CasusCard, MootCard, BlogCard, XpBadge
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══ 3. FEATURE GRID ═══ */
+function FeatureGrid({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  const [latestBlogTitle, setLatestBlogTitle] = useState<string | null>(null);
 
-const EASE_OUT = [0.22, 1, 0.36, 1] as [number, number, number, number];
-
-function useReducedMotion() {
-  const [reduce, setReduce] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReduce(mq.matches);
-    const h = (e: MediaQueryListEvent) => setReduce(e.matches);
-    mq.addEventListener('change', h);
-    return () => mq.removeEventListener('change', h);
+    supabase
+      .from('blog_posts')
+      .select('title')
+      .eq('status', 'published')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.title) setLatestBlogTitle(data.title); });
   }, []);
-  return reduce;
-}
 
-/* ── ScenePanel content components (no headers, rendered inside tabpanel) ── */
-
-function TestPanel({ reduce }: { reduce: boolean }) {
-  const [selected, setSelected] = useState(-1);
-  const [correctIdx] = useState(() => Math.floor(Math.random() * 4));
-  const cycleRef = useRef(0);
-
-  useEffect(() => {
-    if (reduce) return;
-    const interval = setInterval(() => {
-      cycleRef.current = (cycleRef.current + 1) % 4;
-      setSelected(cycleRef.current);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [reduce]);
-
-  const options = ['A variant', 'B variant', 'C variant', 'D variant'];
+  const features = [
+    { icon: FileText, color: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))', title: 'Mavjud testlar', desc: "Ommaviy testlar bilan bilimingizni xolis filtrdan o'tkazing.", tab: 'mavjud_testlar', demo: 'test' as const },
+    { icon: Brain, color: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-light))', title: 'Mavjud kazuslar', desc: 'Haqiqiy huquqiy vaziyatlar va AI ning xolis bahosi.', tab: 'mavjud_kazuslar', demo: 'kazus' as const },
+    { icon: Scale, color: 'linear-gradient(135deg, var(--navy-1), var(--navy-3))', title: 'Moot Court', desc: 'AI sudya bilan jonli bahs. Ustoz bahoni tasdiqlaydi.', tab: 'moot_court', demo: 'moot' as const },
+    { icon: Library, color: 'linear-gradient(135deg, var(--cobalt-2), var(--cobalt-light))', title: "O'quv materiallari", desc: "Sara va tizimlashtirilgan kontent — murakkab mavzular oddiy tilda.", tab: 'oqmatlar', demo: null },
+    { icon: Layers, color: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-light))', title: 'Savol–javoblar', desc: "Savollarga javoblar kutubxonasi — bilimni mustahkamlang.", tab: 'savol_javob', demo: null },
+    { icon: Newspaper, color: 'linear-gradient(135deg, var(--gold), var(--gold-ink))', title: 'Blog', desc: latestBlogTitle || 'Yuridik mavzularda maqolalar va tahlillar.', tab: 'blog', demo: null },
+  ];
 
   return (
-    <div className="flex flex-col h-full p-4">
-      <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 mb-3">
-        <p className="text-[12px] text-slate-200 leading-relaxed">
-          Quyidagi savollardan to'g'ri javobni belgilang:
-        </p>
+    <section className="px-4 md:px-6 py-12">
+      <div className="mx-auto" style={{ maxWidth: 1360 }}>
+        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} className="text-center mb-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] mb-2" style={{ color: 'var(--cobalt-2)' }}>Biz taqdim etamiz</p>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight ff-serif" style={{ color: 'var(--ink)' }}>Funksiyalar</h2>
+        </motion.div>
+
+        <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-60px' }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {features.map((f, i) => {
+            const Icon = f.icon;
+            return (
+              <motion.div key={i} variants={fadeUp}>
+                <SpotlightCard
+                  onClick={() => onNavigate(f.tab)}
+                  className="group h-full rounded-3xl bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-500 cursor-pointer"
+                  style={{ border: '1px solid var(--line)' }}
+                >
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-[0.04] transition-opacity duration-500 rounded-3xl" style={{ background: f.color }} />
+                  <div className="p-6 flex flex-col gap-4 relative z-10 h-full">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shrink-0" style={{ background: f.color }}>
+                        <Icon className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-bold leading-tight" style={{ color: 'var(--ink)' }}>{f.title}</h3>
+                        <p className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--ink-body)' }}>{f.desc}</p>
+                      </div>
+                    </div>
+
+                    {/* Mini demos */}
+                    {f.demo === 'test' && <MiniTestDemo />}
+                    {f.demo === 'kazus' && <MiniKazusDemo />}
+                    {f.demo === 'moot' && <MiniMootDemo />}
+
+                    <div className="flex items-center gap-1.5 text-sm font-semibold group-hover:gap-3 transition-all mt-auto" style={{ color: 'var(--cobalt-2)' }}>
+                      Batafsil <ArrowRight className="h-4 w-4" />
+                    </div>
+                  </div>
+                </SpotlightCard>
+              </motion.div>
+            );
+          })}
+        </motion.div>
       </div>
-      <div className="space-y-2 flex-1">
-        {options.map((opt, i) => {
-          const isCorrect = i === correctIdx;
-          const isSelected = i === selected;
-          const showCorrect = isCorrect && selected === correctIdx;
-          return (
-            <div
-              key={i}
-              className="flex items-center gap-2.5 rounded-lg px-3.5 py-2.5 border transition-all duration-500"
-              style={{
-                background: showCorrect ? 'rgba(16,185,129,0.15)' : isSelected ? 'rgba(56,189,248,0.10)' : 'rgba(255,255,255,0.03)',
-                borderColor: showCorrect ? 'rgba(16,185,129,0.4)' : isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.06)',
-              }}
-            >
-              <div
-                className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all"
-                style={{
-                  borderColor: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'rgba(255,255,255,0.2)',
-                  background: showCorrect ? '#10b981' : isSelected ? '#38bdf8' : 'transparent',
-                }}
-              >
-                {showCorrect && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
-              </div>
-              <span className="text-[11px] font-semibold transition-colors" style={{ color: showCorrect ? '#6ee7b7' : isSelected ? '#bae6fd' : '#94a3b8' }}>
-                {opt}
-              </span>
-              {showCorrect && (
-                <motion.span initial={reduce ? false : { opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="ml-auto text-[9px] font-black uppercase text-emerald-400">
-                  To'g'ri
-                </motion.span>
-              )}
-            </div>
-          );
-        })}
-      </div>
+    </section>
+  );
+}
+
+/* ── Mini demos for feature cards ── */
+function MiniTestDemo() {
+  const [selected, setSelected] = useState(-1);
+  useEffect(() => {
+    if (reduceMotion) { setSelected(1); return; }
+    const interval = setInterval(() => {
+      setSelected(prev => (prev + 1) % 4);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <div className="flex flex-col gap-1.5 mt-1">
+      {['A variant', 'B variant', 'C variant', 'D variant'].map((v, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <div className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${selected === i ? '' : ''}`} style={selected === i ? { background: 'var(--success)', borderColor: 'var(--success)' } : { borderColor: 'var(--line)' }} />
+          <span className="text-xs" style={{ color: 'var(--ink-body)' }}>{v}</span>
+          {selected === i && (
+            <motion.span initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="text-[10px] font-bold ml-auto" style={{ color: 'var(--success)' }}>
+              TO'G'RI
+            </motion.span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
-function CasusPanel({ reduce }: { reduce: boolean }) {
-  const [score, setScore] = useState(0);
-  const [bars, setBars] = useState<number[]>([0, 0, 0, 0, 0]);
+function MiniKazusDemo() {
   const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-20px' });
+  const inView = useInView(ref, { once: true });
+  const [score, setScore] = useState(0);
+  const [filledCriteria, setFilledCriteria] = useState(0);
+  const criteria = ['Mantiq', 'Dalil', 'Tahlil', 'Xulosa', 'Uslub'];
 
   useEffect(() => {
-    if (!inView) return;
-    const targets = [78, 85, 72, 90, 88];
-    const duration = 2000;
+    if (!inView || reduceMotion) { if (inView) { setScore(92); setFilledCriteria(5); } return; }
+    const duration = 1400;
     const start = performance.now();
     const tick = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setScore(Math.round(eased * 92));
-      setBars(targets.map(t => Math.round(eased * t)));
+      setScore(Math.round((1 - Math.pow(1 - p, 3)) * 92));
       if (p < 1) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
-  }, [inView, reduce]);
-
-  useEffect(() => {
-    if (reduce || !inView) return;
-    const targets = [78, 85, 72, 90, 88];
-    const interval = setInterval(() => {
-      setBars(targets.map(t => t + Math.floor(Math.random() * 6 - 3)));
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [inView, reduce]);
+    const crInterval = setInterval(() => setFilledCriteria(c => c >= 5 ? (clearInterval(crInterval), 5) : c + 1), 300);
+    return () => clearInterval(crInterval);
+  }, [inView]);
 
   const R = 28;
   const CIRC = 2 * Math.PI * R;
   const offset = CIRC - (score / 100) * CIRC;
 
   return (
-    <div ref={ref} className="flex flex-col h-full p-4 justify-center">
-      <div className="flex items-center gap-5 mb-4">
-        <div className="relative w-[80px] h-[80px] flex items-center justify-center shrink-0">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 70 70">
-            <circle cx="35" cy="35" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-            <circle cx="35" cy="35" r={R} fill="none" stroke="url(#casus-grad)" strokeWidth="4" strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.1s linear' }} />
-            <defs>
-              <linearGradient id="casus-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#38bdf8" />
-                <stop offset="100%" stopColor="#a78bfa" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-lg font-black text-white leading-none">{score}</span>
-            <span className="text-[7px] text-slate-400 font-bold">/100</span>
-          </div>
+    <div ref={ref} className="flex items-center gap-4 mt-1">
+      <div className="relative w-16 h-16 shrink-0">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 70 70">
+          <circle cx="35" cy="35" r={R} fill="none" stroke="var(--line)" strokeWidth="4" />
+          <circle cx="35" cy="35" r={R} fill="none" stroke="url(#kz-grad)" strokeWidth="4" strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
+          <defs><linearGradient id="kz-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="var(--cobalt-1)" /><stop offset="100%" stopColor="var(--cobalt-light)" /></linearGradient></defs>
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-sm font-bold" style={{ color: 'var(--cobalt-2)' }}>{score}</span>
         </div>
-        <div className="flex-1 space-y-2">
-          {['Mantiq', 'Dalil', 'Tahlil', 'Xulosa', 'Uslub'].map((label, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-[9px] text-slate-400 w-12 shrink-0">{label}</span>
-              <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-sky-400 to-violet-400" style={{ width: `${bars[i]}%`, transition: 'width 1.5s cubic-bezier(0.22,1,0.36,1)' }} />
-              </div>
-            </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5 flex-1">
+        {criteria.map((c, i) => (
+          <span key={i} className="text-[10px] font-bold px-2 py-0.5 rounded-full transition-all duration-300" style={i < filledCriteria ? { background: 'var(--cobalt-tint)', color: 'var(--cobalt-2)' } : { background: 'var(--bg-2)', color: 'var(--ink-muted)' }}>
+            {c}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniMootDemo() {
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      <div className="rounded-lg px-3 py-2 flex items-center gap-2" style={{ background: 'var(--cobalt-tint)' }}>
+        <div className="flex gap-1">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--cobalt-1)', animation: `mc-typing-bounce 1.2s ${i * 0.15}s infinite ease-in-out` }} />
           ))}
         </div>
+        <span className="text-[10px] font-bold" style={{ color: 'var(--cobalt-2)' }}>AI sudya yozmoqda...</span>
       </div>
     </div>
   );
 }
 
-function MootPanel({ reduce }: { reduce: boolean }) {
-  const [typedText, setTypedText] = useState('');
-  const [showUserReply, setShowUserReply] = useState(false);
-  const fullText = "Ishda huquqbuzarlik sodir bo'lganda, sudga taqdim etiladigan asosiy dalillar qanday tartibda baholanadi?";
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-20px' });
+/* ═══ 4. PROCESS STEPS ═══ */
+function ProcessSteps() {
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(sectionRef, { once: true, margin: '-60px' });
+  const [activeStep, setActiveStep] = useState(0);
+
+  const steps = [
+    { num: '01', title: "O'rganing", desc: "O'quv materiallari orqali nazariy bilim oling.", icon: Library, color: 'var(--cobalt-1)' },
+    { num: '02', title: 'Sinang', desc: 'Test va kazuslar bilan bilimingizni tekshiring.', icon: FileText, color: 'var(--cobalt-2)' },
+    { num: '03', title: 'AI baholaydi', desc: 'Mezonlar bo\u2018yicha xolis baho oling.', icon: Brain, color: 'var(--cobalt-light)' },
+    { num: '04', title: 'Ustoz tasdiqlaydi', desc: 'Moot Court natijangiz ustoz tomonidan tasdiqlanadi.', icon: CheckCircle2, color: 'var(--success)' },
+  ];
 
   useEffect(() => {
-    if (!inView || reduce) { if (inView) setTypedText(fullText); return; }
-    let charIdx = 0;
-    let replyTimer: ReturnType<typeof setTimeout>;
-    const typeInterval = setInterval(() => {
-      charIdx++;
-      setTypedText(fullText.slice(0, charIdx));
-      if (charIdx >= fullText.length) {
-        clearInterval(typeInterval);
-        replyTimer = setTimeout(() => setShowUserReply(true), 800);
-      }
-    }, 35);
-    return () => { clearInterval(typeInterval); clearTimeout(replyTimer); };
-  }, [inView, reduce]);
-
-  useEffect(() => {
-    if (reduce || !inView) return;
-    const loop = setInterval(() => {
-      setTypedText('');
-      setShowUserReply(false);
-      let charIdx = 0;
-      const typeInterval = setInterval(() => {
-        charIdx++;
-        setTypedText(fullText.slice(0, charIdx));
-        if (charIdx >= fullText.length) {
-          clearInterval(typeInterval);
-          setTimeout(() => setShowUserReply(true), 800);
-        }
-      }, 35);
-    }, 12000);
-    return () => clearInterval(loop);
-  }, [inView, reduce]);
-
-  return (
-    <div ref={ref} className="flex flex-col h-full p-4 justify-center">
-      <div className="space-y-2.5">
-        <div className="flex gap-2 items-start">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-            <Scale className="h-3 w-3 text-white" />
-          </div>
-          <div className="flex-1 rounded-xl rounded-tl-sm bg-white/[0.06] border border-white/[0.08] px-3.5 py-2.5 min-h-[48px]">
-            <p className="text-[11px] text-slate-200 leading-relaxed">
-              {typedText}
-              {typedText.length < fullText.length && !reduce && (
-                <span className="inline-block w-[2px] h-3 bg-sky-400 ml-0.5 animate-pulse" />
-              )}
-            </p>
-          </div>
-        </div>
-        <AnimatePresence>
-          {showUserReply && (
-            <motion.div initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="flex gap-2 items-start justify-end">
-              <div className="max-w-[80%] rounded-xl rounded-tr-sm bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-400/20 px-3.5 py-2.5">
-                <p className="text-[11px] text-sky-100 leading-relaxed">
-                  Dalillar aniqlik, ishonchlilik va qonun bilan bog'liqligi bo'yicha...
-                </p>
-              </div>
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-400 to-sky-500 flex items-center justify-center shrink-0 mt-0.5">
-                <User className="h-3 w-3 text-white" />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-function BlogPanel({ reduce }: { reduce: boolean }) {
-  interface BlogPostLite { sarlavha: string; ustoz_ismi: string; slug: string; }
-  const [post, setPost] = useState<BlogPostLite | null>(null);
-  const [loading, setLoading] = useState(true);
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-20px' });
-
-  useEffect(() => {
-    if (!inView) return;
-    supabase
-      .from('blog_posts')
-      .select('sarlavha, ustoz_ismi, slug')
-      .eq('status', 'published')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .then(({ data }) => {
-        setPost(data && data.length > 0 ? data[0] : null);
-        setLoading(false);
-      })
-      .catch(() => { setLoading(false); });
+    if (!inView || reduceMotion) return;
+    const interval = setInterval(() => setActiveStep(s => (s + 1) % 4), 3000);
+    return () => clearInterval(interval);
   }, [inView]);
 
   return (
-    <div ref={ref} className="flex flex-col h-full p-4 justify-center">
-      {loading ? (
-        <div className="space-y-2.5">
-          <div className="h-3.5 w-full rounded-full bg-white/10 animate-pulse" />
-          <div className="h-3.5 w-3/4 rounded-full bg-white/8 animate-pulse" />
-          <div className="h-3.5 w-2/3 rounded-full bg-white/8 animate-pulse" />
-          <div className="flex items-center gap-2 mt-4">
-            <div className="w-7 h-7 rounded-full bg-white/10 animate-pulse" />
-            <div className="h-2.5 w-24 rounded-full bg-white/8 animate-pulse" />
-          </div>
-        </div>
-      ) : post ? (
-        <motion.div initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE_OUT }}>
-          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-4 mb-3">
-            <p className="text-[13px] font-bold text-white leading-snug line-clamp-3">{post.sarlavha}</p>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
-              <User className="h-3.5 w-3.5 text-white" />
-            </div>
-            <span className="text-[11px] text-slate-400 font-medium">{post.ustoz_ismi}</span>
-          </div>
+    <section className="px-4 md:px-6 py-12" ref={sectionRef}>
+      <div className="mx-auto" style={{ maxWidth: 1360 }}>
+        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] mb-2" style={{ color: 'var(--cobalt-2)' }}>Jarayon</p>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight ff-serif" style={{ color: 'var(--ink)' }}>Qanday ishlaydi?</h2>
         </motion.div>
-      ) : (
-        <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-6 text-center">
-          <Newspaper className="h-8 w-8 text-slate-500 mx-auto mb-3" />
-          <p className="text-[11px] text-slate-400">Tez orada yangi maqolalar</p>
-        </div>
-      )}
-    </div>
-  );
-}
 
-/* ── HeroText: left column (badge, title, tagline, description, buttons) ── */
-function HeroText({ onNav }: { onNav: (tab: string) => void }) {
-  const reduce = useReducedMotion();
-  const items = [
-    { el: 'badge', delay: 0 },
-    { el: 'title', delay: 0.08 },
-    { el: 'tagline', delay: 0.16 },
-    { el: 'desc', delay: 0.24 },
-    { el: 'buttons', delay: 0.32 },
-  ];
+        <div className="relative">
+          {/* Connecting line */}
+          <div className="absolute top-[36px] left-0 right-0 h-0.5 rounded-full hidden md:block" style={{ background: 'var(--line)' }} />
+          <div
+            className="absolute top-[36px] left-0 h-0.5 rounded-full hidden md:block transition-all duration-700"
+            style={{ width: `${(activeStep + 1) / 4 * 100}%`, background: 'linear-gradient(90deg, var(--cobalt-1), var(--cobalt-2), var(--cobalt-light), var(--success))' }}
+          />
 
-  const renderEl = (key: string) => {
-    switch (key) {
-      case 'badge':
-        return (
-          <div className="inline-flex mb-5">
-            <div className="p-px rounded-full" style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.5), rgba(167,139,250,0.4))' }}>
-              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.06] backdrop-blur-md text-[10px] font-bold uppercase tracking-[0.2em] text-sky-200">
-                <Zap className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                <span>SIZ KUTGAN FORMATDAGI TA'LIM</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-              </div>
-            </div>
-          </div>
-        );
-      case 'title':
-        return (
-          <h1 className="font-black tracking-tighter leading-[1.05] mb-3" style={{ fontSize: 'clamp(2.2rem, 13vw, 3.5rem)' }}>
-            <span className="text-white">Fan</span>
-            <span className="ff-title-gradient inline-block pr-[0.06em]">Faster</span>
-          </h1>
-        );
-      case 'tagline':
-        return (
-          <p className="mb-4">
-            <span
-              className="inline-block rounded-xl px-4 py-2.5 font-extrabold text-white relative"
-              style={{ fontSize: 'clamp(1.1rem, 1.8vw, 1.7rem)', background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
-            >
-              <span
-                className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
-                style={{ background: 'linear-gradient(180deg, #38bdf8, #8b5cf6)', boxShadow: '0 0 12px rgba(56,189,248,0.5)' }}
-              />
-              Orzuyingizdagi &apos;men&apos; bugun nimani bilishi kerak?
-            </span>
-          </p>
-        );
-      case 'desc':
-        return (
-          <p className="text-sm md:text-base text-slate-300 leading-relaxed max-w-lg mb-6">
-            <span className="text-sky-300 font-bold">AI+Human metodi</span> yordamida bilimni yodlamang
-            — uni chuqur tushunib, amalda qo&apos;llang.{' '}
-            <span className="text-white font-bold">FanFaster</span> — ertangi yuristni bugun tayyorlaydi.
-          </p>
-        );
-      case 'buttons':
-        return (
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => onNav('sinov')}
-              className="ff-shimmer group relative flex items-center gap-2 px-6 py-3 font-black text-sm rounded-2xl text-white overflow-hidden bg-gradient-to-r from-blue-500 to-indigo-600 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300"
-              style={{ boxShadow: '0 8px 30px rgba(99,102,241,0.45)' }}
-            >
-              <Play className="h-4 w-4 fill-white relative z-10" />
-              <span className="relative z-10">O'qishni boshlash</span>
-            </button>
-            <button
-              onClick={() => onNav('oqmatlar')}
-              className="flex items-center gap-2 px-6 py-3 bg-white/10 border border-white/25 text-white font-bold text-sm rounded-2xl hover:bg-white/20 hover:border-sky-400/50 active:scale-[0.98] transition-all backdrop-blur-md"
-            >
-              <BookOpen className="h-4 w-4" />
-              Materiallar
-            </button>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div>
-      {items.map((item) => (
-        <motion.div
-          key={item.el}
-          initial={reduce ? false : { opacity: 0, y: 28, filter: 'blur(6px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ duration: 0.6, ease: EASE_OUT, delay: item.delay }}
-        >
-          {renderEl(item.el)}
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-/* ── LiveScene: single scene card with 4 rotating tabs ── */
-interface SceneTab {
-  id: string;
-  name: string;
-  subtitle: string;
-  icon: React.ComponentType<{ className?: string }>;
-  gradient: string;
-  navTab: string;
-  panel: React.ComponentType<{ reduce: boolean }>;
-}
-
-const SCENE_TABS: SceneTab[] = [
-  { id: 'test', name: 'Mavjud testlar', subtitle: 'Bilim sinovi', icon: HelpCircle, gradient: 'from-sky-500 to-blue-600', navTab: 'mavjud_testlar', panel: TestPanel },
-  { id: 'kazus', name: 'Mavjud kazuslar', subtitle: 'AI xolis bahosi', icon: BrainCircuit, gradient: 'from-violet-500 to-purple-600', navTab: 'mavjud_kazuslar', panel: CasusPanel },
-  { id: 'moot', name: 'Moot Court', subtitle: 'AI sudya bilan jonli bahs', icon: Scale, gradient: 'from-blue-500 to-indigo-600', navTab: 'moot_court', panel: MootPanel },
-  { id: 'blog', name: 'Blog', subtitle: "So'nggi maqolalar", icon: Newspaper, gradient: 'from-emerald-500 to-teal-600', navTab: 'blog', panel: BlogPanel },
-];
-
-function LiveScene({ onNav }: { onNav: (tab: string) => void }) {
-  const reduce = useReducedMotion();
-  const sceneRef = useRef<HTMLDivElement>(null);
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const inView = useInView(sceneRef, { once: false, margin: '-20px' });
-
-  // Pointer parallax
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!sceneRef.current || reduce) return;
-    const rect = sceneRef.current.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = (e.clientX - cx) / (rect.width / 2);
-    const dy = (e.clientY - cy) / (rect.height / 2);
-    setTilt({ x: -dy * 4, y: dx * 6 });
-  }, [reduce]);
-
-  const handleMouseLeave = useCallback(() => { setTilt({ x: 0, y: 0 }); setPaused(false); }, []);
-  const handleMouseEnter = useCallback(() => setPaused(true), []);
-
-  // Auto-rotate tabs with progress bar
-  useEffect(() => {
-    if (reduce || !inView || paused) return;
-    const CYCLE_MS = 6000;
-    let start = performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      const elapsed = now - start;
-      const p = elapsed / CYCLE_MS;
-      if (p >= 1) {
-        setActiveIdx(prev => (prev + 1) % SCENE_TABS.length);
-        setProgress(0);
-        start = now;
-      } else {
-        setProgress(p);
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [reduce, inView, paused]);
-
-  const currentTab = SCENE_TABS[activeIdx];
-  const CurrentPanel = currentTab.panel;
-  const CurrentIcon = currentTab.icon;
-
-  return (
-    <div
-      ref={sceneRef}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      className="relative w-full"
-      style={{ perspective: '1400px', transformStyle: 'preserve-3d' }}
-    >
-      {/* Decorative ghost cards behind scene */}
-      <div aria-hidden="true" className="absolute pointer-events-none" style={{ inset: 0, transformStyle: 'preserve-3d' }}>
-        <div className="absolute inset-0 rounded-3xl bg-white/[0.03] border border-white/[0.05]" style={{ transform: 'translateZ(-40px) translateY(-24px) scale(0.97)', filter: 'blur(1px)' }} />
-        <div className="absolute inset-0 rounded-3xl bg-white/[0.02] border border-white/[0.03]" style={{ transform: 'translateZ(-80px) translateY(-48px) translateX(16px) scale(0.92)', filter: 'blur(2px)' }} />
-      </div>
-
-      <motion.div
-        initial={reduce ? false : { opacity: 0, y: 50, filter: 'blur(10px)' }}
-        animate={{ rotateX: tilt.x, rotateY: tilt.y, opacity: 1, y: 0, filter: 'blur(0px)' }}
-        transition={{ duration: 0.8, ease: EASE_OUT, delay: 0.3 }}
-        style={{ transformStyle: 'preserve-3d' }}
-        className="relative"
-      >
-        {/* Scene card */}
-        <div
-          className="relative rounded-3xl bg-white/[0.07] border border-white/[0.12] backdrop-blur-2xl overflow-hidden flex flex-col"
-          style={{
-            height: 'clamp(460px, 52vh, 520px)',
-            maxWidth: '640px',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 50px rgba(8,16,40,0.5)',
-          }}
-        >
-          {/* Inner glow */}
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-50" style={{ background: 'radial-gradient(circle at 30% 0%, rgba(56,189,248,0.10), transparent 60%)' }} />
-
-          {/* Tab bar (56px) */}
-          <div role="tablist" aria-label="Sahna tablari" className="relative flex items-center gap-1.5 px-3 pt-3 shrink-0" style={{ height: '56px' }}>
-            {SCENE_TABS.map((tab, i) => {
-              const Icon = tab.icon;
-              const isActive = i === activeIdx;
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative">
+            {steps.map((s, i) => {
+              const Icon = s.icon;
+              const isActive = i === activeStep;
               return (
-                <button
-                  key={tab.id}
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-label={`${tab.name} tabini ochish`}
-                  aria-controls={`scene-panel-${tab.id}`}
-                  onClick={() => { setActiveIdx(i); setProgress(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-                  style={{
-                    background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
-                    border: `1px solid ${isActive ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)'}`,
-                  }}
+                <motion.div
+                  key={i}
+                  variants={fadeUp}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true }}
+                  className="text-center"
                 >
-                  <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${tab.gradient} flex items-center justify-center shrink-0`} style={{ transform: isActive ? 'translateZ(12px)' : 'translateZ(0)' }}>
-                    <Icon className="h-3.5 w-3.5 text-white" />
+                  <div
+                    className="relative w-14 h-14 rounded-2xl mx-auto flex items-center justify-center transition-all duration-500"
+                    style={{
+                      background: isActive ? s.color : 'var(--bg-2)',
+                      boxShadow: isActive ? `0 8px 24px rgba(13,27,66,.15)` : 'none',
+                      transform: isActive ? 'translateY(-2px) scale(1.05)' : 'translateY(0) scale(1)',
+                    }}
+                  >
+                    <Icon className="h-6 w-6" style={{ color: isActive ? 'white' : 'var(--ink-muted)' }} />
                   </div>
-                  <span className="text-[10px] font-bold transition-colors hidden xl:block" style={{ color: isActive ? '#e2e8f0' : '#64748b' }}>
-                    {tab.name}
-                  </span>
-                  {isActive && !reduce && !paused && (
-                    <motion.div
-                      className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
-                      style={{ background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }}
-                      animate={{ scaleX: progress }}
-                      transition={{ ease: 'linear' }}
-                    />
-                  )}
-                </button>
+                  <p className="text-[10px] font-bold tabular-nums mt-3" style={{ color: isActive ? s.color : 'var(--ink-muted)' }}>{s.num}</p>
+                  <h3 className="text-sm font-bold mt-1" style={{ color: 'var(--ink)' }}>{s.title}</h3>
+                  <p className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--ink-body)' }}>{s.desc}</p>
+                </motion.div>
               );
             })}
           </div>
-
-          {/* Header row (64px) */}
-          <div className="relative flex items-center gap-3 px-5 py-3 shrink-0 border-b border-white/[0.06]" style={{ height: '64px' }}>
-            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${currentTab.gradient} flex items-center justify-center shadow-lg`} style={{ transform: 'translateZ(20px)' }}>
-              <CurrentIcon className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-black text-white leading-tight">{currentTab.name}</p>
-              <p className="text-[11px] text-slate-400">{currentTab.subtitle}</p>
-            </div>
-          </div>
-
-          {/* Mini-demo area (flex:1) */}
-          <div className="relative flex-1 min-h-0 overflow-hidden" style={{ height: 'calc(100% - 56px - 64px - 56px)' }}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeIdx}
-                id={`scene-panel-${currentTab.id}`}
-                role="tabpanel"
-                initial={reduce ? false : { opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduce ? {} : { opacity: 0, y: -12 }}
-                transition={{ duration: 0.35, ease: EASE_OUT }}
-                className="absolute inset-0"
-              >
-                <CurrentPanel reduce={reduce} />
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          {/* Bottom bar (56px) */}
-          <div className="relative flex items-center justify-between px-5 shrink-0 border-t border-white/[0.06]" style={{ height: '56px' }}>
-            <button
-              onClick={() => onNav(currentTab.navTab)}
-              aria-label={`${currentTab.name} sahifasiga o'tish`}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black text-white transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-              style={{
-                background: 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(139,92,246,0.15))',
-                border: '1px solid rgba(56,189,248,0.25)',
-              }}
-            >
-              Ochish <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-
-            {/* XP badge in its own zone */}
-            <motion.div
-              initial={reduce ? false : { opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, ease: EASE_OUT, delay: 0.8 }}
-              className="flex items-center gap-2"
-            >
-              <motion.div
-                animate={reduce ? {} : { y: [0, -4, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/15 to-orange-500/15 border border-amber-400/25"
-              >
-                <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                  <Trophy className="h-2.5 w-2.5 text-white" />
-                </div>
-                <div className="leading-tight">
-                  <p className="text-[10px] font-black text-amber-200">+120 XP</p>
-                  <p className="text-[7px] text-amber-300/70">Yangi daraja ochildi</p>
-                </div>
-              </motion.div>
-            </motion.div>
-          </div>
         </div>
-      </motion.div>
-    </div>
+      </div>
+    </section>
   );
 }
 
-/* ── Mobile scene: stacked static panels, no tilt ── */
-function MobileScene({ onNav }: { onNav: (tab: string) => void }) {
+/* ═══ 5. CTA BAND ═══ */
+function CtaBand({ onNavigate }: { onNavigate: (tab: string) => void }) {
   return (
-    <div className="space-y-3">
-      {SCENE_TABS.map((tab) => {
-        const Icon = tab.icon;
-        const Panel = tab.panel;
-        return (
-          <button
-            key={tab.id}
-            onClick={() => onNav(tab.navTab)}
-            aria-label={`${tab.name} sahifasiga o'tish`}
-            className="w-full text-left rounded-2xl bg-white/[0.07] border border-white/[0.12] backdrop-blur-xl overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 8px 24px rgba(8,16,40,0.3)' }}
-          >
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
-              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tab.gradient} flex items-center justify-center shrink-0`}>
-                <Icon className="h-4 w-4 text-white" />
+    <section className="px-4 md:px-6 py-12">
+      <div className="mx-auto" style={{ maxWidth: 1360 }}>
+        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }}>
+          <SpotlightCard className="rounded-3xl overflow-hidden" >
+            <div className="relative px-6 py-12 md:px-14 md:py-14 text-center" style={{ background: 'linear-gradient(135deg, var(--navy-1), var(--navy-2), var(--navy-3))' }}>
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute top-0 right-0 w-80 h-80 rounded-full blur-3xl translate-x-1/3 -translate-y-1/3" style={{ background: 'rgba(47,104,232,.15)' }} />
+                <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full blur-3xl -translate-x-1/4 translate-y-1/3" style={{ background: 'rgba(141,183,255,.10)' }} />
               </div>
-              <div>
-                <p className="text-sm font-black text-white">{tab.name}</p>
-                <p className="text-[10px] text-slate-400">{tab.subtitle}</p>
+              <div className="relative z-10">
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3 ff-serif" style={{ color: 'var(--on-navy)' }}>Bilimingizni bugun sinab ko&rsquo;ring</h2>
+                <p className="text-sm max-w-md mx-auto mb-8" style={{ color: 'var(--on-navy-muted)' }}>AI+Human metodi yordamida bilimni chuqur tushuning va amalda qo&rsquo;llang.</p>
+                <div className="flex flex-wrap gap-4 justify-center">
+                  <button
+                    onClick={() => onNavigate('sinov')}
+                    className="flex items-center gap-2 px-7 py-3.5 text-white font-semibold text-sm rounded-2xl transition-all active:scale-95 hover:-translate-y-0.5"
+                    style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))', boxShadow: '0 8px 24px rgba(29,78,216,.35)' }}
+                  >
+                    <Play className="h-4 w-4 fill-white" />
+                    O&rsquo;qishni boshlash
+                  </button>
+                  <button
+                    onClick={() => onNavigate('mavjud_kazuslar')}
+                    className="flex items-center gap-2 px-6 py-3.5 text-white font-semibold text-sm rounded-2xl active:scale-95 transition-all backdrop-blur-md"
+                    style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(141,183,255,.2)' }}
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                    Mavjud kazuslarni ko&rsquo;rish
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="relative min-h-[180px]">
-              <Panel reduce={true} />
-            </div>
-          </button>
-        );
-      })}
-    </div>
+          </SpotlightCard>
+        </motion.div>
+      </div>
+    </section>
   );
 }
 
-export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
-  const { t } = useLang();
-  const { user, isAuthenticated } = useAuth();
-  const [activeBottomTab, setActiveBottomTab] = useState('haqida');
-  const [activeLegal, setActiveLegal] = useState<'none' | 'maxfiylik' | 'shartlar'>('none');
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+/* ═══ 6. FAQ ═══ */
+const FAQ_ITEMS = [
+  {
+    q: "FanFaster nima va kimlar uchun?",
+    a: "FanFaster — o'zbek tilidagi huquq ta'limi platformasi. Bu yerda o'quv materiallarini o'rganish, test va kazuslar bilan bilimni sinash hamda AI sudya bilan jonli bahs qilish bir joyga jamlangan. Platforma huquq yo'nalishida o'qiyotgan talabalar, imtihonga tayyorlanayotganlar va ustozlar uchun mo'ljallangan.",
+  },
+  {
+    q: "Moot Court qanday ishlaydi?",
+    a: "Ustoz kazus tayyorlaydi: vaziyat, tegishli qonun moddalari va AI qaysi rolni (sudya yoki qarshi tomon) o'ynashi belgilanadi. Siz o'z tomoningizni tanlab, AI bilan bahslashasiz. Bahs qiyinligi uch darajada bo'ladi: Yengil, O'rta va Qattiq. Belgilangan almashinuvlar soniga yetganda AI yakuniy nutq so'zlab, sessiyani tugatadi.",
+  },
+  {
+    q: "Bahoni kim qo'yadi?",
+    a: "AI bahsingizni besh mezon bo'yicha xolis baholaydi: Mantiq, Dalil, Tahlil, Xulosa va Uslub. Keyin ustoz natijani ko'rib chiqadi va bahoni tasdiqlaydi yoki o'zgartiradi, ya'ni yakuniy baho ustozniki.",
+  },
+  {
+    q: "Ro'yxatdan o'tmasdan sinab ko'rsam bo'ladimi?",
+    a: "Ha. Mehmon sifatida kirib, Moot Court'ni cheklangan miqdordagi bepul almashinuv bilan sinab ko'rishingiz mumkin. To'liq foydalanish uchun tizimga kirish kerak bo'ladi.",
+  },
+  {
+    q: "Qayerdan boshlash kerak?",
+    a: "Yo'l oddiy: avval O'quv materiallari bilan nazariyani o'rganing, so'ng Mavjud testlar va kazuslarda bilimingizni tekshiring, tayyor bo'lganda Moot Court'da AI sudya bilan bahslashing. Savol–javoblar bo'limi mavzularni mustahkamlashga yordam beradi.",
+  },
+  {
+    q: "Ustozlar platformadan qanday foydalanadi?",
+    a: "Ustoz Moot Court uchun kazus yaratadi, talabalar natijalarini ko'radi va AI bergan bahoni tasdiqlaydi yoki tuzatadi. Talabaga qayta urinishga ruxsat berish ham ustozning qo'lida.",
+  },
+];
 
-  const heroRef = useRef<HTMLDivElement>(null);
-
-  const { scrollYProgress } = useScroll();
-
-  const handleNav = (tab: string) => {
-    setActiveBottomTab(tab);
-    onNavigate(tab);
-  };
-
-  const stats = [
-    { icon: Users, value: 1200, suffix: '+', label: 'Faol foydalanuvchilar', color: 'from-blue-500 to-cyan-500' },
-    { icon: FileText, value: 4500, suffix: '+', label: 'Testlar va savollar', color: 'from-cyan-500 to-teal-500' },
-    { icon: BrainCircuit, value: 850, suffix: '+', label: 'AI baholangan kazuslar', color: 'from-sky-500 to-blue-500' },
-    { icon: BookOpen, value: 98, suffix: '%', label: 'Mamnunlik darajasi', color: 'from-emerald-500 to-teal-500' }
-  ];
-
-
-
-  const features = [
-    { icon: BookOpen, color: 'from-blue-500 to-cyan-500', glow: 'group-hover:shadow-blue-500/25', badge: "Modulli ta'lim", title: 'Kurslar', desc: "Coursera uslubida Kurs → Modul → Dars tuzilmasi. Video, PDF, Audio va test bilan to'liq o'quv jarayoni.", btn: "Kurslarga o'tish", tab: 'kurslar' },
-    { icon: Library, color: 'from-cyan-500 to-teal-500', glow: 'group-hover:shadow-cyan-500/25', badge: "O'quv markazi", title: "O'quv materiallari", desc: "Sara va miyaga tez muhrlanadigan kontent. Murakkab mavzular oddiy tilda tushuntirilgan.", btn: "Materiallarni ko'rish", tab: 'oqmatlar' },
-    { icon: BarChart3, color: 'from-sky-500 to-blue-500', glow: 'group-hover:shadow-sky-500/25', badge: 'Bilim sinovi', title: 'Mavjud testlar', desc: "Xolis va qat'iy filtrlardan o'tgan testlar. O'z kuchingizni amalda tasdiqlang.", btn: 'Testlarni boshlash', tab: 'mavjud_testlar' },
-    { icon: BrainCircuit, color: 'from-emerald-500 to-teal-500', glow: 'group-hover:shadow-emerald-500/25', badge: 'AI tahlil', title: 'Mavjud kazuslar', desc: "Haqiqiy muammolar, murakkab ssenariylar va ularga AI ning xolis bahosi.", btn: 'Kazus yechishni boshlash', tab: 'mavjud_kazuslar' }
-  ];
-
-  const values = [
-    { icon: Eye, title: 'Vizyon', desc: "Har bir o'quvchi o'z salohiyatini to'liq ro'yoobga chiqarishi uchun zamonaviy vositalar yaratish." },
-    { icon: Lightbulb, title: 'Innovatsiya', desc: "Sun'iy intellekt va pedagogik tajribani birlashtirib, ta'limda yangi standartlar o'rnatish." },
-    { icon: Heart, title: "G'amxo'rlik", desc: "Har bir o'quvchiga shaxsiylashtirilgan yondashuv — sizning muvaffaqiyatingiz bizning maqsadimiz." },
-    { icon: Shield, title: 'Sifat', desc: "Faqat eng sara, tekshirilgan va tizimlashtirilgan bilim. Hech qanday shovqin, faqat foyda." }
-  ];
+function FaqSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <div className="w-full mx-auto font-sans text-slate-900 selection:bg-blue-200 selection:text-blue-900">
+    <section className="px-4 md:px-6 py-12">
+      <div className="mx-auto" style={{ maxWidth: 900 }}>
+        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] mb-2" style={{ color: 'var(--cobalt-2)' }}>Savol–javoblar</p>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight ff-serif" style={{ color: 'var(--ink)' }}>Ko'p so'raladigan savollar</h2>
+        </motion.div>
 
-      <ScrollProgress />
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          HERO SECTION — Premium cinematic hero
-          ═══════════════════════════════════════════════════════════════════ */}
-      <style>{`
-        @keyframes ff-flow {
-          0%   { background-position: 0% 50%; }
-          100% { background-position: 100% 50%; }
-        }
-        .ff-title-gradient {
-          background: linear-gradient(100deg, #ffffff 0%, #7dd3fc 20%, #38bdf8 38%, #818cf8 58%, #c4b5fd 74%, #ffffff 100%);
-          background-size: 250% 100%;
-          -webkit-background-clip: text;
-          background-clip: text;
-          -webkit-text-fill-color: transparent;
-          color: transparent;
-          animation: ff-flow 8s ease-in-out infinite alternate;
-          filter: drop-shadow(0 0 28px rgba(56,189,248,0.35));
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .ff-title-gradient { animation: none; -webkit-text-fill-color: #7dd3fc; color: #7dd3fc; filter: none; }
-        }
-        .ff-shimmer::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.25) 50%, transparent 70%);
-          transform: translateX(-100%);
-          transition: transform 0.6s ease;
-          pointer-events: none;
-        }
-        .ff-shimmer:hover::after { transform: translateX(100%); }
-        @media (hover: none) {
-          .ff-spotlight { display: none; }
-        }
-      `}</style>
-      <section
-        ref={heroRef}
-        onMouseMove={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const mx = ((e.clientX - rect.left) / rect.width) * 100;
-          const my = ((e.clientY - rect.top) / rect.height) * 100;
-          e.currentTarget.style.setProperty('--mx', `${mx}%`);
-          e.currentTarget.style.setProperty('--my', `${my}%`);
-        }}
-        className="relative isolate rounded-3xl mb-10 px-6 py-8 md:px-10 md:py-10 lg:py-12 bg-gradient-to-br from-[#040814] via-[#0a1a4d] to-[#050b1f]"
-      >
-        {/* Decorative background layers (clipped, content-safe) */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-3xl">
-          <div className="absolute top-0 right-0 w-[28rem] h-[28rem] rounded-full bg-blue-500/25 blur-3xl -translate-y-1/3 translate-x-1/3" />
-          <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl translate-y-1/3 -translate-x-1/4" />
-          <div className="absolute top-1/2 left-1/3 w-72 h-72 rounded-full bg-sky-400/10 blur-3xl" />
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage: `linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)`,
-              backgroundSize: '48px 48px',
-              maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
-              WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 100%)',
-            }}
-          />
-          <div
-            className="ff-spotlight absolute inset-0"
-            style={{
-              background: 'radial-gradient(520px circle at var(--mx, 30%) var(--my, 20%), rgba(56,189,248,0.10), transparent 60%)',
-            }}
-          />
-        </div>
-
-        {/* Shooting stars (decorative, clipped by parent) */}
-        <ShootingStars />
-
-        {/* Content — "Tirik ish stoli" (Living Work Desk) */}
-        <div className="relative z-10 grid lg:grid-cols-[0.42fr_0.58fr] gap-6 lg:gap-8 items-center min-h-[600px]">
-          {/* Left column — text */}
-          <HeroText onNav={handleNav} />
-
-          {/* Right column — live scene (desktop) */}
-          <div className="hidden lg:block relative">
-            <LiveScene onNav={handleNav} />
-          </div>
-
-          {/* Mobile fallback */}
-          <div className="lg:hidden">
-            <MobileScene onNav={handleNav} />
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          STATISTICS — Animated counters with glass cards
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          className="grid grid-cols-2 md:grid-cols-4 gap-4"
-        >
-          {stats.map((s, i) => (
-            <motion.div key={i} variants={scaleIn}>
-              <TiltCard intensity={6} className="h-full">
-                <Card className="group relative border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm rounded-2xl hover:shadow-xl transition-all duration-300 overflow-hidden h-full">
-                  <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br ${s.color} pointer-events-none`} style={{ mixBlendMode: 'overlay' }} />
-                  <CardContent className="p-5 flex flex-col items-center text-center gap-2 relative z-10">
-                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-lg`}>
-                      <s.icon className="h-5 w-5 text-white" />
-                    </div>
-                    <p className="text-2xl md:text-3xl font-black text-slate-900 tabular-nums">
-                      <AnimatedCounter target={s.value} suffix={s.suffix} />
-                    </p>
-                    <p className="text-xs text-slate-500 font-semibold leading-tight">{s.label}</p>
-                  </CardContent>
-                </Card>
-              </TiltCard>
+        <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true }} className="space-y-3">
+          {FAQ_ITEMS.map((item, i) => (
+            <motion.div key={i} variants={fadeUp}>
+              <div className="bg-white rounded-2xl overflow-hidden transition-all duration-300" style={openIndex === i ? { border: '1px solid var(--cobalt-line)', boxShadow: '0 4px 12px rgba(13,27,66,.08)' } : { border: '1px solid var(--line)' }}>
+                <button
+                  onClick={() => setOpenIndex(openIndex === i ? null : i)}
+                  aria-expanded={openIndex === i}
+                  aria-controls={`faq-panel-${i}`}
+                  className="w-full flex items-center justify-between px-5 py-4 transition-colors text-left ff-focus"
+                  style={{ }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span className="text-[15px] font-semibold pr-4" style={{ color: 'var(--ink)' }}>{item.q}</span>
+                  <motion.div animate={{ rotate: openIndex === i ? 180 : 0 }} transition={{ duration: 0.3 }} className="shrink-0">
+                    <ChevronDown className="h-4 w-4" style={{ color: openIndex === i ? 'var(--cobalt-2)' : 'var(--ink-muted)' }} />
+                  </motion.div>
+                </button>
+                <AnimatePresence initial={false}>
+                  {openIndex === i && (
+                    <motion.div
+                      id={`faq-panel-${i}`}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-5 pb-4 pt-1 border-t" style={{ borderColor: 'var(--line)' }}>
+                        <p className="text-[15px] leading-[1.7]" style={{ color: 'var(--ink-body)' }}>{item.a}</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </motion.div>
           ))}
         </motion.div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          USER STATE — Welcome or CTA
-          ═══════════════════════════════════════════════════════════════════ */}
-      {isAuthenticated && user ? (
-        <section className="mb-12">
-          <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
-            <Card className="border border-blue-100/80 bg-gradient-to-r from-blue-50 via-cyan-50 to-sky-50 rounded-3xl shadow-md overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-blue-200/20 blur-3xl translate-x-1/3 -translate-y-1/3" />
-              <CardContent className="p-6 md:p-8 relative z-10">
-                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <motion.div
-                      initial={{ scale: 0, rotate: -180 }}
-                      whileInView={{ scale: 1, rotate: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                      className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg"
-                    >
-                      <span className="text-white font-black text-lg uppercase">{user.ism?.[0]}{user.familiya?.[0]}</span>
-                    </motion.div>
-                    <div>
-                      <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-0.5">Xush kelibsiz!</p>
-                      <h2 className="text-xl font-black text-slate-900">{user.ism} {user.familiya}</h2>
-                      <p className="text-sm text-slate-500 font-medium capitalize">{user.rol === 'ustoz' ? 'Ustoz' : "O'quvchi"}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button onClick={() => handleNav('kurslar')} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-bold text-sm rounded-xl transition-all active:scale-[0.98] shadow-md">
-                      <BookOpen className="h-3.5 w-3.5" />Kurslarga o'tish
-                    </button>
-                    <button onClick={() => handleNav('profil')} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-xl hover:bg-slate-50 transition-all active:scale-[0.98]">
-                      <User className="h-3.5 w-3.5" />Profil
-                    </button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </section>
-      ) : (
-        <section className="mb-12">
-          <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
-            <Card className="border border-amber-100/80 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 rounded-3xl shadow-md overflow-hidden relative">
-              <motion.div
-                className="absolute top-0 right-0 w-64 h-64 rounded-full bg-orange-200/20 blur-3xl translate-x-1/3 -translate-y-1/3"
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-              />
-              <CardContent className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-5 relative z-10">
-                <div className="flex items-center gap-4">
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    whileInView={{ scale: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                    className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg"
-                  >
-                    <Target className="h-6 w-6 text-white" />
-                  </motion.div>
-                  <div>
-                    <h2 className="text-lg font-black text-slate-900">Bilim darajangizni aniqlang</h2>
-                    <p className="text-sm text-slate-500 font-medium">Ro'yxatdan o'tib, shaxsiy o'quv rejangizni yarating</p>
-                  </div>
-                </div>
-                <MagneticButton
-                  onClick={() => window.dispatchEvent(new Event('open-login-modal'))}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-xl shadow-lg transition-all active:scale-[0.98] whitespace-nowrap"
-                >
-                  Bepul boshlash<ArrowRight className="h-4 w-4" />
-                </MagneticButton>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </section>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          HOW IT WORKS — Redesigned with 3D phone mockup & animated connecting line
-          ═══════════════════════════════════════════════════════════════════ */}
-      <HowItWorksSection />
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          FEATURE CARDS — Premium hover with glow
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} className="space-y-8">
-          <motion.div variants={fadeUp} className="text-center space-y-2">
-            <p className="text-xs font-black text-cyan-600 uppercase tracking-[0.35em]">Imkoniyatlar</p>
-            <h2 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900">Nima o'rganishingiz mumkin?</h2>
-            <p className="text-sm text-slate-500 max-w-md mx-auto">FanFaster sizga to'liq ta'lim ekotizimini taqdim etadi</p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {features.map((f, i) => (
-              <motion.div key={i} variants={fadeUp} className="group">
-                <Card className={`relative border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm rounded-3xl overflow-hidden h-full hover:shadow-2xl hover:-translate-y-1 ${f.glow} transition-all duration-500`}>
-                  {/* Gradient overlay on hover */}
-                  <div className={`absolute inset-0 bg-gradient-to-br ${f.color} opacity-0 group-hover:opacity-[0.04] transition-opacity duration-500`} />
-
-                  <CardContent className="p-6 md:p-8 flex flex-col gap-5 h-full relative z-10">
-                    <div className="flex items-start gap-4">
-                      <motion.div
-                        whileHover={{ scale: 1.1, rotate: -5 }}
-                        className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${f.color} flex items-center justify-center shadow-lg shrink-0`}
-                      >
-                        <f.icon className="h-6 w-6 text-white" />
-                      </motion.div>
-                      <div className="flex-1 min-w-0">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
-                          <Sparkles className="h-3 w-3" />
-                          {f.badge}
-                        </span>
-                        <h3 className="text-lg font-black text-slate-900 leading-tight">{f.title}</h3>
-                      </div>
-                    </div>
-                    <p className="text-sm text-slate-500 leading-relaxed flex-1">{f.desc}</p>
-                    <button
-                      onClick={() => handleNav(f.tab)}
-                      className={`group/btn relative w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-gradient-to-r ${f.color} text-white font-black text-xs rounded-2xl shadow-md hover:shadow-lg active:scale-[0.98] transition-all overflow-hidden`}
-                    >
-                      <span className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-700" />
-                      {f.btn}
-                      <ArrowRight className="h-3.5 w-3.5 group-hover/btn:translate-x-1 transition-transform" />
-                    </button>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+/* ═══ 8. FOOTER ═══ */
+function SiteFooter({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  return (
+    <footer className="px-4 md:px-6 pt-12 pb-8 mt-8" style={{ background: 'linear-gradient(135deg, var(--navy-1), var(--navy-2), var(--navy-3))' }}>
+      <div className="mx-auto" style={{ maxWidth: 1360 }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+          {/* Col 1 — Logo + desc */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
+                <Scale className="text-white" style={{ width: 18, height: 18 }} />
+              </div>
+              <span className="text-base font-bold" style={{ color: 'var(--on-navy)', fontFamily: SERIF }}>FanFaster</span>
+            </div>
+            <p className="text-xs leading-relaxed max-w-[240px]" style={{ color: 'var(--on-navy-muted)' }}>
+              O&rsquo;zbek tilidagi yuridik ta&rsquo;lim platformasi. AI+Human metodi yordamida bilimni chuqur tushuning va amalda qo&rsquo;llang.
+            </p>
           </div>
-        </motion.div>
-      </section>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          VALUES — Mission & Vision cards
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          className="space-y-6"
-        >
-          <motion.div variants={fadeUp} className="text-center space-y-2">
-            <p className="text-xs font-black text-sky-600 uppercase tracking-[0.35em]">Qadriyatlar</p>
-            <h2 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900">Bizga nima yoqadi?</h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {values.map((v, i) => (
-              <motion.div key={i} variants={fadeUp}>
-                <Card className="group border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm rounded-2xl h-full hover:shadow-lg transition-all duration-300 overflow-hidden">
-                  <CardContent className="p-6 flex flex-col gap-3 items-start">
-                    <motion.div
-                      whileHover={{ scale: 1.15, y: -2 }}
-                      className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-100 to-blue-100 flex items-center justify-center"
-                    >
-                      <v.icon className="h-5 w-5 text-blue-600" />
-                    </motion.div>
-                    <h3 className="font-black text-slate-900 text-sm">{v.title}</h3>
-                    <p className="text-xs text-slate-500 leading-relaxed">{v.desc}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          QUOTE BANNER
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div
-          variants={scaleIn}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-        >
-          <Card className="relative border-none bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden rounded-3xl">
-            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(56,189,248,0.3), transparent 50%), radial-gradient(circle at 80% 50%, rgba(14,165,233,0.3), transparent 50%)' }} />
-            <CardContent className="p-8 md:p-12 relative z-10 text-center max-w-2xl mx-auto">
-              <motion.div
-                initial={{ scale: 0, rotate: -180 }}
-                whileInView={{ scale: 1, rotate: 0 }}
-                viewport={{ once: true }}
-                transition={{ type: 'spring', stiffness: 150, damping: 12 }}
-                className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg mx-auto mb-6"
-              >
-                <Quote className="h-7 w-7 text-white" />
-              </motion.div>
-              <p className="text-lg md:text-2xl font-bold leading-relaxed mb-4">
-                "Bilim — bu qudrat. Lekin <span className="text-cyan-400">qo'llash</span> — bu haqiqiy kuch."
-              </p>
-              <p className="text-sm text-slate-400">
-                FanFaster sizga bilim beradi, qo'llashni esa o'zingiz o'rganasiz
-              </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          AUTHORS — Team cards with animated avatars
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} className="space-y-6">
-          <motion.div variants={fadeUp} className="flex items-center gap-4">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-            <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.4em]">Jamoa</h2>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {[
-              { icon: Award, color: 'from-blue-500 to-cyan-500', role: t('about.author1_role'), name: t('about.author1_name'), desc: t('about.author1_desc') },
-              { icon: Code2, color: 'from-slate-700 to-slate-900', role: t('about.author2_role'), name: t('about.author2_name'), desc: t('about.author2_desc') }
-            ].map((a, i) => (
-              <motion.div key={i} variants={i === 0 ? slideInLeft : slideInRight}>
-                <TiltCard intensity={4} className="h-full">
-                  <Card className="group border border-white/60 bg-white/80 backdrop-blur-xl shadow-sm rounded-3xl hover:shadow-xl transition-all duration-300 overflow-hidden h-full">
-                    <div className={`h-1.5 bg-gradient-to-r ${a.color}`} />
-                    <CardContent className="p-6 md:p-8">
-                      <div className="flex items-center gap-5">
-                        <motion.div
-                          whileHover={{ scale: 1.1, rotate: 3 }}
-                          className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${a.color} flex items-center justify-center shadow-lg shrink-0`}
-                        >
-                          <a.icon className="h-8 w-8 text-white" />
-                        </motion.div>
-                        <div>
-                          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{a.role}</p>
-                          <h3 className="text-lg font-black text-slate-900 leading-tight">{a.name}</h3>
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide mt-0.5">{a.desc}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TiltCard>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          CTA BANNER — Dark with animated globe
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }}>
-          <Card className="border-none bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white overflow-hidden rounded-3xl relative">
-            <div className="absolute inset-0">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.15),transparent_50%)]" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.1),transparent_50%)]" />
-            </div>
-            <CardContent className="p-8 md:p-14 relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-              <div className="space-y-5 md:max-w-xl">
-                <div className="flex items-center gap-3 text-cyan-400 text-[10px] font-black uppercase tracking-[0.5em]">
-                  <div className="w-8 h-px bg-cyan-400" />Platforma
-                </div>
-                <h2 className="text-3xl md:text-4xl font-black leading-tight tracking-tighter">
-                  Bilim{' '}
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">ummoni</span>
-                  {' '}sizni kutmoqda
-                </h2>
-                <p className="text-slate-400 text-base leading-relaxed">
-                  Hozir qo'shiling — bepul. Modulli kurslar, AI-baholash, testlar va kazuslar siz uchun tayyor.
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <MagneticButton
-                    onClick={() => handleNav('kurslar')}
-                    className="group flex items-center gap-2 px-7 py-3.5 bg-white text-slate-950 hover:bg-cyan-400 hover:text-white font-black text-sm rounded-xl transition-all active:scale-[0.98] shadow-lg"
-                  >
-                    Boshlash<ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </MagneticButton>
-                  <MagneticButton
-                    onClick={() => handleNav('mavjud_testlar')}
-                    className="flex items-center gap-2 px-7 py-3.5 bg-white/10 border border-white/20 text-white font-bold text-sm rounded-xl hover:bg-white/20 active:scale-[0.98] transition-all backdrop-blur-sm"
-                  >
-                    Testlarni ko'rish
-                  </MagneticButton>
-                </div>
-              </div>
-
-              {/* Animated Globe */}
-              <div className="relative flex-shrink-0 flex items-center justify-center w-48 h-48 md:w-60 md:h-60">
-                <motion.div
-                  className="absolute inset-0 rounded-full border border-cyan-400/20"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                >
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50" />
-                </motion.div>
-                <motion.div
-                  className="absolute inset-6 rounded-full border border-blue-400/30"
-                  animate={{ rotate: -360 }}
-                  transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
-                >
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-blue-400 shadow-lg shadow-blue-400/50" />
-                </motion.div>
-                <motion.div
-                  className="absolute inset-12 rounded-full border border-cyan-300/20"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
-                />
-                <motion.div
-                  animate={{ scale: [1, 1.05, 1] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  <Compass className="relative z-10 h-20 w-20 md:h-28 md:w-28 text-cyan-400/70" />
-                </motion.div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          FAQ — Animated accordion
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12" id="faq">
-        <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} className="space-y-5">
-          <motion.div variants={fadeUp} className="flex items-center gap-3">
-            <motion.div
-              initial={{ scale: 0, rotate: -90 }}
-              whileInView={{ scale: 1, rotate: 0 }}
-              viewport={{ once: true }}
-              transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-              className="bg-gradient-to-br from-blue-500 to-cyan-500 p-2.5 rounded-xl shadow-lg"
-            >
-              <HelpCircle className="h-5 w-5 text-white" />
-            </motion.div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900">Ko'p so'raladigan savollar</h2>
-              <p className="text-xs text-slate-500">Eng ko'p beriladigan savollarga javoblar</p>
-            </div>
-          </motion.div>
-
-          <motion.div variants={fadeUp} className="space-y-2.5">
-            {FAQ_ITEMS.map((item, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <div
-                  className={`group bg-white border rounded-2xl overflow-hidden transition-all duration-300 ${
-                    openFaqIndex === i ? 'border-blue-300 shadow-md' : 'border-slate-200 hover:border-blue-200'
-                  }`}
-                >
-                  <button
-                    onClick={() => setOpenFaqIndex(openFaqIndex === i ? null : i)}
-                    className="w-full flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors text-left"
-                  >
-                    <span className="text-sm font-bold text-slate-800 pr-4 flex items-center gap-3">
-                      <span className={`text-[10px] font-black tabular-nums transition-colors ${openFaqIndex === i ? 'text-blue-500' : 'text-slate-300'}`}>
-                        {String(i + 1).padStart(2, '0')}
-                      </span>
-                      {item.q}
-                    </span>
-                    <motion.div
-                      animate={{ rotate: openFaqIndex === i ? 180 : 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="flex-shrink-0"
-                    >
-                      <ChevronDown className={`h-4 w-4 transition-colors ${openFaqIndex === i ? 'text-blue-500' : 'text-slate-400'}`} />
-                    </motion.div>
-                  </button>
-                  <AnimatePresence initial={false}>
-                    {openFaqIndex === i && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3, ease: 'easeInOut' }}
-                        className="overflow-hidden"
-                      >
-                        <div className="px-5 pb-4 pt-1 border-t border-slate-100">
-                          <p className="text-sm text-slate-600 leading-relaxed pl-6">{item.a}</p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-
-          <motion.div variants={fadeUp} className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-4 flex items-center gap-3">
-            <Phone className="h-5 w-5 text-blue-600 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-bold text-blue-900">Savolingiz topilmadimi?</p>
-              <p className="text-xs text-blue-700">
-                Yordam bo'limiga yozing yoki qo'ng'iroq qiling:{' '}
-                <a href="tel:+998902686363" className="font-black underline hover:no-underline">+998 90 268-63-63</a>
-              </p>
-            </div>
-          </motion.div>
-        </motion.div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          PRIVACY + TERMS
-          ═══════════════════════════════════════════════════════════════════ */}
-      <section className="mb-12">
-        <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }}>
-          <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-md transition-shadow">
-              <button
-                onClick={() => setActiveLegal(activeLegal === 'maxfiylik' ? 'none' : 'maxfiylik')}
-                className="w-full flex items-center justify-between p-5 hover:bg-slate-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="bg-slate-100 p-2 rounded-xl"><Lock className="h-5 w-5 text-slate-600" /></div>
-                  <div className="text-left">
-                    <p className="font-bold text-slate-900 text-sm">Maxfiylik siyosati</p>
-                    <p className="text-xs text-slate-500">Ma'lumotlaringiz qanday saqlanadi</p>
-                  </div>
-                </div>
-                <motion.div animate={{ rotate: activeLegal === 'maxfiylik' ? 180 : 0 }} transition={{ duration: 0.3 }}>
-                  <ChevronDown className="h-4 w-4 text-slate-400" />
-                </motion.div>
-              </button>
-              <AnimatePresence initial={false}>
-                {activeLegal === 'maxfiylik' && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-5 pb-5 pt-2 border-t border-slate-100"><FormatMatn text={MAXFIYLIK_MATN} /></div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-md transition-shadow">
-              <button
-                onClick={() => setActiveLegal(activeLegal === 'shartlar' ? 'none' : 'shartlar')}
-                className="w-full flex items-center justify-between p-5 hover:bg-slate-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-50 p-2 rounded-xl"><FileText className="h-5 w-5 text-blue-600" /></div>
-                  <div className="text-left">
-                    <p className="font-bold text-slate-900 text-sm">Foydalanish shartlari</p>
-                    <p className="text-xs text-slate-500">Platformadan foydalanish qoidalari</p>
-                  </div>
-                </div>
-                <motion.div animate={{ rotate: activeLegal === 'shartlar' ? 180 : 0 }} transition={{ duration: 0.3 }}>
-                  <ChevronDown className="h-4 w-4 text-slate-400" />
-                </motion.div>
-              </button>
-              <AnimatePresence initial={false}>
-                {activeLegal === 'shartlar' && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-5 pb-5 pt-2 border-t border-slate-100"><FormatMatn text={SHARTLAR_MATN} /></div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        </motion.div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          FOOTER
-          ═══════════════════════════════════════════════════════════════════ */}
-      <footer className="rounded-3xl bg-white/80 backdrop-blur-xl border border-white/60 shadow-sm mb-28 md:mb-8 overflow-hidden">
-        <div className="p-8 md:p-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-            <div className="col-span-2 md:col-span-1 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-                  <GraduationCap className="h-4 w-4 text-white" />
-                </div>
-                <span className="font-black text-lg text-slate-900">FanFaster</span>
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">O'zbekistondagi o'quvchilar uchun AI-yordamida o'qish platformasi.</p>
-              <div className="flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5 text-slate-400" />
-                <a href="mailto:info@fanfaster.uz" className="text-xs text-slate-500 hover:text-blue-600 transition-colors">info@fanfaster.uz</a>
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone className="h-3.5 w-3.5 text-slate-400" />
-                <a href="tel:+998902686363" className="text-xs text-slate-500 hover:text-blue-600 transition-colors font-semibold">+998 90 268-63-63</a>
-              </div>
-            </div>
-            <nav>
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Platforma</h3>
-              <ul className="space-y-2">
-                {[
-                  { label: 'Kurslar', tab: 'kurslar' },
-                  { label: 'Testlar', tab: 'mavjud_testlar' },
-                  { label: 'Kazuslar', tab: 'mavjud_kazuslar' },
-                  { label: "O'quv materiallari", tab: 'oqmatlar' },
-                  { label: 'Savol-Javoblar', tab: 'savol_javob' }
-                ].map(l => (
-                  <li key={l.tab}>
-                    <button onClick={() => handleNav(l.tab)} className="text-xs text-slate-500 hover:text-blue-600 transition-colors font-medium text-left">{l.label}</button>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-            <nav>
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Yordam</h3>
-              <ul className="space-y-2">
-                <li><button onClick={() => document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' })} className="text-xs text-slate-500 hover:text-blue-600 transition-colors font-medium text-left">Ko'p so'raladigan savollar</button></li>
-                <li><button onClick={() => handleNav('yordam')} className="text-xs text-slate-500 hover:text-blue-600 transition-colors font-medium text-left">Yordam markazi</button></li>
-                <li><button onClick={() => setActiveLegal('maxfiylik')} className="text-xs text-slate-500 hover:text-blue-600 transition-colors font-medium text-left">Maxfiylik siyosati</button></li>
-                <li><button onClick={() => setActiveLegal('shartlar')} className="text-xs text-slate-500 hover:text-blue-600 transition-colors font-medium text-left">Foydalanish shartlari</button></li>
-              </ul>
-            </nav>
-            <nav>
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Aloqa</h3>
-              <ul className="space-y-2">
-                <li className="flex items-center gap-2">
-                  <Phone className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                  <a href="tel:+998902686363" className="text-xs text-slate-700 font-bold hover:text-blue-600 transition-colors">+998 90 268-63-63</a>
+          {/* Col 2 — Platforma */}
+          <nav>
+            <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--on-navy)' }}>Platforma</h3>
+            <ul className="space-y-2">
+              {[
+                { label: 'Dastur haqida', tab: 'haqida' },
+                { label: 'Kurslar', tab: 'kurslar' },
+                { label: "O'quv materiallari", tab: 'oqmatlar' },
+                { label: 'Blog', tab: 'blog' },
+                { label: 'Reyting', tab: 'reyting' },
+              ].map(l => (
+                <li key={l.tab}>
+                  <button onClick={() => onNavigate(l.tab)} className="text-xs transition-colors font-medium text-left" style={{ color: 'var(--on-navy-muted)' }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--sky-on-navy)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--on-navy-muted)'}>{l.label}</button>
                 </li>
-                <li className="flex items-center gap-2">
-                  <Mail className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                  <a href="mailto:info@fanfaster.uz" className="text-xs text-slate-500 hover:text-blue-600 transition-colors">info@fanfaster.uz</a>
+              ))}
+            </ul>
+          </nav>
+
+          {/* Col 3 — Funksiyalar */}
+          <nav>
+            <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--on-navy)' }}>Funksiyalar</h3>
+            <ul className="space-y-2">
+              {[
+                { label: 'Mavjud testlar', tab: 'mavjud_testlar' },
+                { label: 'Mavjud kazuslar', tab: 'mavjud_kazuslar' },
+                { label: 'Moot Court', tab: 'moot_court' },
+                { label: 'Savol–javoblar', tab: 'savol_javob' },
+                { label: 'Yordam', tab: 'yordam' },
+              ].map(l => (
+                <li key={l.tab}>
+                  <button onClick={() => onNavigate(l.tab)} className="text-xs transition-colors font-medium text-left" style={{ color: 'var(--on-navy-muted)' }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--sky-on-navy)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--on-navy-muted)'}>{l.label}</button>
                 </li>
-                <li className="pt-2">
-                  <button onClick={() => handleNav('yordam')} className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg transition-colors">Yordam so'rash</button>
-                </li>
-              </ul>
-            </nav>
-          </div>
-          <div className="pt-6 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-slate-400 font-medium">© {new Date().getFullYear()} FanFaster.uz — Barcha huquqlar himoyalangan</p>
-            <div className="flex items-center gap-4">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">v2.0</span>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-emerald-600">Tizim ishlayapti</span>
-              </div>
-            </div>
-          </div>
+              ))}
+            </ul>
+          </nav>
         </div>
-      </footer>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          MOBILE NAVIGATION
-          ═══════════════════════════════════════════════════════════════════ */}
-      <nav
-        className="md:hidden fixed inset-x-4 z-50 rounded-[28px] border border-white/50 bg-white/70 px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl"
-        style={{ bottom: 'calc(12px + env(safe-area-inset-bottom))' }}
-      >
-        <div className="flex items-center justify-around gap-1">
-          {[
-            { tab: 'haqida', icon: Info, label: 'Asosiy' },
-            { tab: 'kurslar', icon: BookOpen, label: 'Kurslar' },
-            { tab: 'oqmatlar', icon: Library, label: 'Materiallar' },
-            { tab: 'yordam', icon: HelpCircle, label: 'Yordam' },
-            { tab: 'profil', icon: User, label: 'Profil' }
-          ].map(item => {
-            const active = activeBottomTab === item.tab;
-            return (
-              <button
-                key={item.tab}
-                onClick={() => handleNav(item.tab)}
-                className={`flex flex-col items-center gap-1 min-w-[44px] min-h-[44px] justify-center rounded-xl px-2 transition-all relative ${active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                {active && (
-                  <motion.div
-                    layoutId="mobileNavHighlight"
-                    className="absolute inset-0 bg-blue-50 rounded-xl"
-                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                  />
-                )}
-                <item.icon className="h-5 w-5 relative z-10" />
-                <span className="text-[9px] font-bold relative z-10">{item.label}</span>
-              </button>
-            );
-          })}
+        <div className="pt-6 border-t" style={{ borderColor: 'rgba(141,183,255,.15)' }}>
+          <p className="text-xs font-medium text-center" style={{ color: 'var(--on-navy-muted)' }}>&copy; 2026 FanFaster. Barcha huquqlar himoyalangan.</p>
         </div>
-      </nav>
+      </div>
+    </footer>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═════════════════════════════════════════════════════════════════ */
+export default function SaytHaqida({ onNavigate }: SaytHaqidaProps) {
+  const handleNav = (tab: string) => onNavigate(tab);
+
+  return (
+    <div className="w-full" style={{ minHeight: '100%', color: 'var(--ink)' }}>
+      <style>{`
+        .ff-spotlight::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(300px circle at var(--sx, 50%) var(--sy, 50%), rgba(47,104,232,0.06), transparent 60%);
+          opacity: 0;
+          transition: opacity 0.4s;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .ff-spotlight:hover::before { opacity: 1; }
+        @media (hover: none) { .ff-spotlight::before { display: none; } }
+        @media (prefers-reduced-motion: reduce) {
+          .ff-spotlight::before { display: none; }
+        }
+      `}</style>
+
+      <HeroSection onNavigate={handleNav} />
+      <StatsStrip />
+      <FeatureGrid onNavigate={handleNav} />
+      <ProcessSteps />
+      <CtaBand onNavigate={handleNav} />
+      <FaqSection />
+      <SiteFooter onNavigate={handleNav} />
     </div>
   );
 }

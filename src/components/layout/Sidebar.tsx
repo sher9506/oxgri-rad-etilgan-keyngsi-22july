@@ -5,7 +5,7 @@ import {
   Scale, Users, Shield, Database, Bell, Search, BookOpen,
   ScanFace, X, User as UserIcon, FileText, GraduationCap,
   Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
-  Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain,
+  Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain, LogOut,
   BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper, Activity, Server
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -167,7 +167,7 @@ export default function Sidebar({
     return new Set(found ? [found.id] : ['boshqaruv']);
   });
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { t } = useLang();
 
   // ── Ustoz bot ruxsatini tekshirish ──────────────────────────────────────────
@@ -455,9 +455,19 @@ export default function Sidebar({
       </nav>
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <div className={`border-t border-white/5 p-2 flex ${isCollapsed ? 'justify-center' : 'justify-center items-center'}`}>
-        <div className="bg-white/5 rounded-full px-3 py-1.5">
-          <p className="text-[9px] text-gray-600 font-black uppercase tracking-[2px]">v 1.0</p>
+      <div className="border-t border-white/5 p-2 space-y-2">
+        <button
+          onClick={logout}
+          title={isCollapsed ? 'Chiqish' : undefined}
+          className={`w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all ${isCollapsed ? 'justify-center' : ''}`}
+        >
+          <LogOut className="h-4 w-4 flex-shrink-0" />
+          {!isCollapsed && <span className="text-xs font-semibold">Chiqish</span>}
+        </button>
+        <div className="flex justify-center">
+          <div className="bg-white/5 rounded-full px-3 py-1.5">
+            <p className="text-[9px] text-gray-600 font-black uppercase tracking-[2px]">v 1.0</p>
+          </div>
         </div>
       </div>
 
@@ -614,7 +624,14 @@ export default function Sidebar({
               )}
             </nav>
 
-            <div className="border-t border-white/5 p-3">
+            <div className="border-t border-white/5 p-3 space-y-2">
+              <button
+                onClick={logout}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="text-xs font-semibold">Chiqish</span>
+              </button>
               <p className="text-[9px] text-gray-600 font-black uppercase tracking-[2px] text-center">v 1.0</p>
             </div>
           </div>
