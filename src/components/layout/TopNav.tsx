@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Scale, ChevronDown, Menu, X, Bell, LogIn, LogOut, User as UserIcon,
+  Scale, ChevronDown, Bell, LogIn, LogOut, User as UserIcon,
   Play, FileText, GraduationCap, BookOpen, Library, Newspaper,
   Layers, TrendingUp, HelpCircle, UserCircle, BookMarked,
-  MessageCircle, ArrowRight,
+  MessageCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang, Lang } from '@/contexts/LangContext';
@@ -14,6 +14,7 @@ import { lazy, Suspense } from 'react';
 const NotificationBell = lazy(() => import('@/components/features/NotificationBell'));
 const OquvchiBildirishnomaBell = lazy(() => import('@/components/features/OquvchiBildirishnomaBell'));
 const MentorChatBot = lazy(() => import('@/components/features/MentorChatBot'));
+import MobileNav from './MobileNav';
 
 interface TopNavProps {
   activeTab: string;
@@ -335,7 +336,6 @@ export default function TopNav({ activeTab, onTabChange, onOpenLogin, onLogout }
   const [ustozBotRuxsat, setUstozBotRuxsat] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
   const { main, groups, kabinetGroup } = buildNavGroups(
@@ -368,16 +368,9 @@ export default function TopNav({ activeTab, onTabChange, onOpenLogin, onLogout }
 
   const handleNavigate = useCallback((tab: string) => {
     onTabChange(tab);
-    setIsMobileOpen(false);
   }, [onTabChange]);
 
   const oquvchiStorageKey = user?.rol === 'oquvchi' ? `oquvchi_${user.ism}_${user.familiya}` : null;
-
-  const allNavItems: NavItem[] = [
-    ...main,
-    ...groups.flatMap(g => g.items),
-    ...(kabinetGroup?.items || []),
-  ];
 
   return (
     <>
@@ -392,7 +385,7 @@ export default function TopNav({ activeTab, onTabChange, onOpenLogin, onLogout }
       `}</style>
 
       <header
-        className={`sticky top-0 z-40 transition-all duration-300 ${
+        className={`hidden lg:block sticky top-0 z-40 transition-all duration-300 ${
           scrolled
             ? 'border-b border-ff-line'
             : 'border-b border-ff-line/60'
@@ -554,84 +547,18 @@ export default function TopNav({ activeTab, onTabChange, onOpenLogin, onLogout }
               </button>
             )}
 
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setIsMobileOpen(true)}
-              className="lg:hidden p-2 rounded-lg transition-all ff-focus"
-              style={{ color: 'var(--ink-body)' }}
-              aria-label="Menyuni ochish"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
+
           </div>
         </div>
       </header>
 
-      {/* ── Mobile drawer ── */}
-      {isMobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 backdrop-blur-sm" style={{ background: 'rgba(13,27,66,.35)' }} onClick={() => setIsMobileOpen(false)} />
-          <div
-            className="absolute left-0 top-0 h-full w-[300px] bg-white shadow-2xl flex flex-col"
-            style={{ animation: 'ff-slide-in-left 250ms cubic-bezier(0.22,1,0.36,1) both' }}
-          >
-            {/* Drawer header */}
-            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'var(--line)' }}>
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
-                  <Scale className="text-white" style={{ width: 18, height: 18 }} />
-                </div>
-                <span className="text-base font-bold" style={{ color: 'var(--ink)', fontFamily: "'Source Serif 4 Variable', 'Source Serif 4', 'Iowan Old Style', Georgia, serif" }}>FanFaster</span>
-              </div>
-              <button onClick={() => setIsMobileOpen(false)} className="p-1.5 rounded-lg" style={{ color: 'var(--ink-muted)' }}>
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Drawer nav */}
-            <nav className="flex-1 overflow-y-auto p-3 space-y-1" aria-label="Mobil navigatsiya">
-              {allNavItems.map(item => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleNavigate(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                      isActive
-                        ? item.accent
-                          ? 'text-white shadow-md'
-                          : ''
-                        : 'hover:bg-ff-bg2'
-                    }`}
-                    style={isActive && !item.accent ? { background: 'var(--cobalt-tint)', color: 'var(--cobalt-2)' } : isActive && item.accent ? { background: 'linear-gradient(135deg, var(--gold), #B8862E)' } : { color: 'var(--ink-body)' }}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span>{item.label}</span>
-                    {item.accent && <ArrowRight className="h-3.5 w-3.5 ml-auto" />}
-                  </button>
-                );
-              })}
-            </nav>
-
-            {/* Drawer footer */}
-            <div className="p-3 border-t" style={{ borderColor: 'var(--line)' }}>
-              <button
-                onClick={() => { onOpenLogin(); setIsMobileOpen(false); }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold"
-              >
-                <LogIn className="h-4 w-4" /> {t('header.login')}
-              </button>
-            </div>
-          </div>
-          <style>{`
-            @keyframes ff-slide-in-left {
-              from { transform: translateX(-100%); }
-              to   { transform: translateX(0); }
-            }
-          `}</style>
-        </div>
-      )}
+      {/* Mobile navigation (≤1023px) — top bar + bottom nav + sheets */}
+      <MobileNav
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+        onOpenLogin={onOpenLogin}
+        onLogout={onLogout}
+      />
 
       {/* MentorChatBot — hidden mount, opens via event */}
       <Suspense fallback={null}>

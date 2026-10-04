@@ -329,7 +329,7 @@ function AppContent() {
               onOpenLogin={() => setIsLoginModalOpen(true)}
               onLogout={logout}
             />
-            <main className="flex-1 overflow-auto">
+            <main className="flex-1 overflow-auto lg:pb-0" style={{ paddingBottom: 'calc(88px + env(safe-area-inset-bottom))' }}>
               <div className="w-full">
                 <AnimatePresence mode="wait">
                   <motion.div

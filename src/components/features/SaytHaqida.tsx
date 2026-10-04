@@ -559,7 +559,8 @@ function CourtCard({ onNavigate, story }: { onNavigate: (tab: string) => void; s
       className="rounded-[24px] flex flex-col"
       style={{
         width: 'min(480px, 100%)',
-        height: 510,
+        height: 'auto',
+        minHeight: 510,
         background: `linear-gradient(160deg, ${C.navy1} 0%, ${C.navy2} 70%, ${C.navy3} 100%)`,
         boxShadow: `0 50px 90px -35px ${C.shadow}, inset 0 1px 0 ${C.rimLight}`,
         border: '1px solid rgba(141,183,255,.28)',
@@ -596,8 +597,8 @@ function CourtCard({ onNavigate, story }: { onNavigate: (tab: string) => void; s
       <div className="px-4 pb-4 pt-1">
         <button
           onClick={() => onNavigate('moot_court')}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 font-semibold text-sm rounded-xl transition-all ff-focus"
-          style={{ background: 'var(--ff-card)', color: 'var(--cobalt-2)' }}
+          className="w-full flex items-center justify-center gap-2 px-4 font-semibold text-sm rounded-xl transition-all ff-focus"
+          style={{ background: 'var(--ff-card)', color: 'var(--cobalt-2)', minHeight: 48, paddingBlock: 14 }}
         >
           <Scale className="h-3.5 w-3.5" />
           Bahsni boshlash
@@ -753,6 +754,7 @@ function StageScene({ onNavigate, blogTitle }: { onNavigate: (tab: string) => vo
    ═════════════════════════════════════════════════════════════════ */
 function HeroSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const [blogTitle, setBlogTitle] = useState<string | null>(null);
+  const mobileStory = useStoryLoop();
 
   useEffect(() => {
     supabase
@@ -816,8 +818,8 @@ function HeroSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
       `}</style>
 
       <section className="ff-hero-sec">
-        <div className="mx-auto lg:h-full" style={{ maxWidth: 1280, padding: '0 40px' }}>
-          <div className="grid lg:grid-cols-[48fr_52fr] lg:h-full gap-6 items-center">
+        <div className="mx-auto lg:h-full ff-hero-container">
+          <div className="grid lg:grid-cols-[48fr_52fr] lg:h-full gap-6 items-center" style={{ padding: '12px 0 24px' } as React.CSSProperties}>
             {/* LEFT — Copy */}
             <div className="relative z-10">
               <HeroCopy onNavigate={onNavigate} />
@@ -834,28 +836,32 @@ function HeroSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
 
             {/* Mobile — simplified stage */}
             <div className="lg:hidden relative z-10 pb-6">
-              <CourtCard onNavigate={onNavigate} story={useStoryLoop()} />
-              <div className="flex gap-3 mt-4">
+              <CourtCard onNavigate={onNavigate} story={mobileStory} />
+              <div className="grid grid-cols-2 gap-3 mt-4">
                 <button
                   onClick={() => onNavigate('mavjud_testlar')}
-                  className="flex items-center gap-2 px-3 py-2 text-left"
-                  style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 16 }}
+                  className="flex items-center gap-2 px-3 text-left ff-focus"
+                  style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 16, minHeight: 56 }}
                 >
-                  <FileText className="h-4 w-4" style={{ color: 'var(--cobalt-2)' }} />
-                  <div>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
+                    <FileText className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="min-w-0">
                     <p className="text-xs font-bold" style={{ color: 'var(--ink)' }}>Mavjud testlar</p>
-                    <p className="text-[10px]" style={{ color: 'var(--ink-body)' }}>Bilim sinovi</p>
+                    <p className="text-[10px] truncate" style={{ color: 'var(--ink-body)' }}>Bilim sinovi</p>
                   </div>
                 </button>
                 <button
                   onClick={() => onNavigate('blog')}
-                  className="flex items-center gap-2 px-3 py-2 text-left"
-                  style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 16 }}
+                  className="flex items-center gap-2 px-3 text-left ff-focus"
+                  style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 16, minHeight: 56 }}
                 >
-                  <Newspaper className="h-4 w-4" style={{ color: 'var(--gold-ink)' }} />
-                  <div>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--gold-tint)' }}>
+                    <Newspaper className="h-4 w-4" style={{ color: 'var(--gold-ink)' }} />
+                  </div>
+                  <div className="min-w-0">
                     <p className="text-xs font-bold" style={{ color: 'var(--ink)' }}>Blog</p>
-                    <p className="text-[10px]" style={{ color: 'var(--ink-body)' }}>{blogTitle || 'So\'nggi maqolalar'}</p>
+                    <p className="text-[10px] truncate" style={{ color: 'var(--ink-body)' }}>{blogTitle || 'So\'nggi maqolalar'}</p>
                   </div>
                 </button>
               </div>
@@ -914,7 +920,7 @@ function StatsStrip() {
           {stats.map((s, i) => (
             <motion.div key={i} variants={fadeUp} className="text-center">
               <p className="text-3xl md:text-4xl font-bold tabular-nums" style={{ color: 'var(--ink)' }}>
-                <AnimatedNumber target={s.value} start={inView} />
+                <AnimatedNumber target={[100, 30, 3][i] ?? s.value} start={inView} />+
               </p>
               <p className="text-xs font-semibold mt-1" style={{ color: 'var(--ink-muted)' }}>{s.label}</p>
             </motion.div>
@@ -971,7 +977,7 @@ function FeatureGrid({ onNavigate }: { onNavigate: (tab: string) => void }) {
     <section className="px-4 md:px-6 py-12">
       <div className="mx-auto" style={{ maxWidth: 1360 }}>
         <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} className="text-center mb-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] mb-2" style={{ color: 'var(--cobalt-2)' }}>Biz taqdim etamiz</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] mb-2" style={{ color: 'var(--cobalt-2)' }}>Biz taqdim etadigan</p>
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight ff-serif" style={{ color: 'var(--ink)' }}>Funksiyalar</h2>
         </motion.div>
 
