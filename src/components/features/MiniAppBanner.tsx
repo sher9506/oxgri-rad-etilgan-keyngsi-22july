@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Monitor, X, ExternalLink, RefreshCw } from 'lucide-react';
+import { Monitor, X, ExternalLink } from 'lucide-react';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
-import { toast } from '@/hooks/use-toast';
 
 // Telegram WebApp global type
 declare global {
@@ -14,27 +13,11 @@ declare global {
         ready?: () => void;
         expand?: () => void;
         openLink?: (url: string) => void;
-        openTelegramLink?: (url: string) => void;
         close?: () => void;
         onEvent?: (event: string, cb: () => void) => void;
         offEvent?: (event: string, cb: () => void) => void;
       };
     };
-  }
-}
-
-// Bot username ni olish (LoginModal bilan bir xil manba)
-async function getBotUsername(): Promise<string> {
-  try {
-    const { supabase } = await import('@/lib/supabase');
-    const { data } = await supabase
-      .from('settings')
-      .select('text_value')
-      .eq('key', 'TELEGRAM_LOGIN_BOT_USERNAME')
-      .maybeSingle();
-    return data?.text_value || '';
-  } catch {
-    return '';
   }
 }
 
@@ -142,15 +125,15 @@ export default function MiniAppBanner() {
   );
 }
 
-// Mini app avtomatik kirish hook — HAR ochilishda ishlaydi
-// didRunRef faqat bir vaqtda ikki marta chaqirilishni to'sadi (Strict Mode),
-// keyingi ochilishlarni to'smaydi.
+// Mini app avtomatik kirish hook
 export function useMiniAppAutoLogin(login: (user: any) => void) {
   const loginRef = useRef(login);
   loginRef.current = login;
   const didRunRef = useRef(false);
 
   useEffect(() => {
+    if (didRunRef.current) return;
+
     const tryGetInitData = (): string => {
       try {
         window.Telegram?.WebApp?.ready?.();
@@ -160,32 +143,28 @@ export function useMiniAppAutoLogin(login: (user: any) => void) {
       }
     };
 
-    const run = () => {
-      if (didRunRef.current) return;
-      const initData = tryGetInitData();
-      if (initData) {
-        didRunRef.current = true;
-        window.dispatchEvent(new CustomEvent('miniapp-autologin-loading'));
-        performAutoLogin(initData, loginRef);
-      }
-    };
+    let initData = tryGetInitData();
+    if (initData) {
+      didRunRef.current = true;
+      performAutoLogin(initData, loginRef);
+      return;
+    }
 
-    run();
-
+    // initData hali bo'sh — skript kech yuklangan bo'lishi mumkin
+    // 3 bosqichli retry: 500ms, 1.5s, 3s
     const delays = [500, 1500, 3000];
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     delays.forEach((delay, i) => {
       const t = setTimeout(() => {
-        if (i === delays.length - 1) {
-          const d = tryGetInitData();
-          if (!d) {
-            console.warn('[miniapp-autologin] initData topilmadi (3 urnishdan keyin)');
-            return;
-          }
-          run();
-        } else {
-          run();
+        if (didRunRef.current) return;
+        const retryData = tryGetInitData();
+        if (retryData) {
+          didRunRef.current = true;
+          performAutoLogin(retryData, loginRef);
+        } else if (i === delays.length - 1) {
+          // Oxirgi urinish ham bo'sh — mini app emas yoki script yuklanmadi
+          console.warn('[miniapp-autologin] initData topilmadi (3 urinishdan keyin)');
         }
       }, delay);
       timers.push(t);
@@ -196,11 +175,15 @@ export function useMiniAppAutoLogin(login: (user: any) => void) {
 }
 
 async function performAutoLogin(initData: string, loginRef: React.MutableRefObject<(user: any) => void>) {
+  const sessionKey = 'miniapp_autologin_done';
+  try {
+    if (sessionStorage.getItem(sessionKey)) return;
+  } catch {
+    return;
+  }
+
   let errCode = '';
   let errMsg = '';
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/telegram-miniapp-auth`, {
       method: 'POST',
@@ -209,68 +192,49 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
         Authorization: `Bearer ${supabaseAnonKey}`,
       },
       body: JSON.stringify({ initData }),
-      signal: controller.signal,
     });
-    clearTimeout(timeout);
 
-    const data = await res.json().catch(() => ({}));
-    const code = data?.error || '';
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && data?.talaba) {
+        const t = data.talaba;
+        loginRef.current({
+          ism: t.ism,
+          familiya: t.familiya,
+          rol: 'oquvchi',
+          guruh: t.guruh,
+          kurs: t.kurs,
+          login: t.login,
+          talaba_id: t.id,
+          tasdiqlangan: t.tasdiqlangan,
+        });
+        try {
+          sessionStorage.setItem(sessionKey, '1');
+        } catch {
+          // storage yo'q bo'lsa — e'tibor bermaymiz
+        }
+        return;
+      }
 
-    if (res.ok && data?.success && data?.talaba) {
-      const t = data.talaba;
-      loginRef.current({
-        ism: t.ism,
-        familiya: t.familiya,
-        rol: 'oquvchi',
-        guruh: t.guruh,
-        kurs: t.kurs,
-        login: t.login,
-        talaba_id: t.id,
-        tasdiqlangan: t.tasdiqlangan,
-        google_linked: t.google_linked,
-        telegram_linked: true,
-      });
-      window.dispatchEvent(new CustomEvent('miniapp-autologin-done'));
-      return;
-    }
-
-    // E_NOT_FOUND — foydalanuvchiga qisqa ko'rsatma + botga o'tish tugmasi
-    if (code === 'E_NOT_FOUND') {
-      errCode = 'E_NOT_FOUND';
-      errMsg = 'Avval botda START bosib, telefon raqamingizni ulashing.';
-    } else if (code === 'E_NOT_MEMBER') {
-      errCode = 'E_NOT_MEMBER';
-      errMsg = 'Kanalga a\'zo bo\'ling va qayta urinib ko\'ring.';
-    } else if (code === 'E_AMBIGUOUS') {
-      errCode = 'E_AMBIGUOUS';
-      errMsg = 'Bir nechta profil topildi. Admin bilan bog\'laning.';
-    } else if (code === 'E_HASH') {
-      errCode = 'E_HASH';
+      if (data?.status === 'not_found') {
+        errCode = 'not_registered';
+        errMsg = data?.message || 'Talaba topilmadi. Saytda ro\'yxatdan o\'ting.';
+      }
+    } else if (res.status === 401) {
+      errCode = 'bad_signature';
       errMsg = 'Telegram imzo noto\'g\'ri. Iltimos saytdan kiring.';
-    } else if (code === 'E_EXPIRED') {
-      errCode = 'E_EXPIRED';
-      errMsg = 'Tasdiqlash muddati tugagan. Qaytadan urinib ko\'ring.';
-    } else if (code === 'E_NO_INITDATA') {
-      errCode = 'E_NO_INITDATA';
-      errMsg = 'Telegram ma\'lumotlari topilmadi.';
     } else {
-      errCode = 'E_SCRIPT';
-      errMsg = 'Kirim amalga oshmadi.';
+      errCode = 'server_' + res.status;
+      errMsg = 'Server xatosi (' + res.status + ')';
     }
-  } catch (e: any) {
-    clearTimeout(timeout);
-    if (e?.name === 'AbortError') {
-      errCode = 'E_NET';
-      errMsg = 'Tarmoq xatosi — javob kelmadi (8 soniya).';
-    } else {
-      errCode = 'E_NET';
-      errMsg = 'Tarmoq xatosi.';
-    }
+  } catch {
+    errCode = 'network';
+    errMsg = 'Tarmoq xatosi';
   }
 
   if (errCode) {
     console.warn('[miniapp-autologin] muvaffaqiyatsiz:', errCode);
-    window.dispatchEvent(new CustomEvent('miniapp-autologin-done'));
+    // Foydalanuvchiga ko'rinadigan xabar
     window.dispatchEvent(new CustomEvent('miniapp-autologin-failed', {
       detail: { code: errCode, message: errMsg }
     }));

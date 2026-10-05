@@ -53,39 +53,6 @@ const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi
 import MiniAppBanner, { useMiniAppAutoLogin } from '@/components/features/MiniAppBanner';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        initData?: string;
-        initDataUnsafe?: any;
-        platform?: string;
-        ready?: () => void;
-        expand?: () => void;
-        openLink?: (url: string) => void;
-        openTelegramLink?: (url: string) => void;
-        close?: () => void;
-        onEvent?: (event: string, cb: () => void) => void;
-        offEvent?: (event: string, cb: () => void) => void;
-      };
-    };
-  }
-}
-
-async function getBotUsernameForToast(): Promise<string> {
-  try {
-    const { supabase } = await import('@/lib/supabase');
-    const { data } = await supabase
-      .from('settings')
-      .select('text_value')
-      .eq('key', 'TELEGRAM_LOGIN_BOT_USERNAME')
-      .maybeSingle();
-    return data?.text_value || '';
-  } catch {
-    return '';
-  }
-}
-
 // Admin Context
 interface AdminContextType {
   isAdmin: boolean;
@@ -121,19 +88,6 @@ function AppContent() {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [miniappLoading, setMiniappLoading] = useState(false);
-
-  // Mini app avto-kirish loading holati
-  useEffect(() => {
-    const onLoading = () => setMiniappLoading(true);
-    const onDone = () => setMiniappLoading(false);
-    window.addEventListener('miniapp-autologin-loading', onLoading);
-    window.addEventListener('miniapp-autologin-done', onDone);
-    return () => {
-      window.removeEventListener('miniapp-autologin-loading', onLoading);
-      window.removeEventListener('miniapp-autologin-done', onDone);
-    };
-  }, []);
 
   useEffect(() => {
     const handler = () => setIsLoginModalOpen(true);
@@ -143,49 +97,15 @@ function AppContent() {
 
   // Mini app avtokirish xatosi — foydalanuvchiga ko'rsatish
   useEffect(() => {
-    const handler = async (e: Event) => {
+    const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      const code = detail?.code || '';
-      const msg = detail?.message || 'Kirim amalga oshmadi';
-
-      if (code === 'E_NOT_FOUND') {
-        // Botga o'tish tugmasi bilan toast
-        const botUsername = await getBotUsernameForToast();
-        toast.warning('Profil topilmadi', {
-          description: msg,
-          action: botUsername
-            ? { label: 'Botga o\'tish', onClick: () => {
-                try {
-                  window.Telegram?.WebApp?.openTelegramLink?.(`https://t.me/${botUsername}`);
-                } catch {
-                  window.open(`https://t.me/${botUsername}`, '_blank');
-                }
-              }}
-            : undefined,
+      if (detail?.code === 'not_registered') {
+        toast.warning('Telegram akkauntingiz topilmadi', {
+          description: 'Iltimos, saytda ro\'yxatdan o\'ting yoki Telegramni ulang.',
         });
-      } else if (code === 'E_NOT_MEMBER') {
-        toast.warning('Kanalga a\'zo bo\'ling', {
-          description: msg,
-          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
-        });
-      } else if (code === 'E_HASH') {
-        toast.error('Telegram imzo noto\'g\'ri', { description: msg });
-      } else if (code === 'E_EXPIRED') {
-        toast.error('Muddat tugagan', {
-          description: msg,
-          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
-        });
-      } else if (code === 'E_AMBIGUOUS') {
-        toast.error('Profil noaniq', { description: msg });
-      } else if (code === 'E_NET') {
-        toast.error('Tarmoq xatosi', {
-          description: msg,
-          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
-        });
-      } else {
-        toast.error('Kirim amalga oshmadi', {
-          description: msg,
-          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
+      } else if (detail?.code === 'bad_signature') {
+        toast.error('Telegram imzo noto\'g\'ri', {
+          description: 'Iltimos, saytdan qaytadan kiring.',
         });
       }
     };
@@ -370,14 +290,6 @@ function AppContent() {
   return (
     <>
       <MiniAppBanner />
-      {miniappLoading && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: 'var(--bg, #f8fafc)' }}>
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 rounded-full animate-spin" style={{ border: '3px solid var(--cobalt-1, #2563eb)', borderTopColor: 'transparent' }} />
-            <p className="text-sm font-medium" style={{ color: 'var(--text-muted, #64748b)' }}>Kirilmoqda...</p>
-          </div>
-        </div>
-      )}
       <Suspense fallback={null}><LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} /></Suspense>
       
       <AdminContext.Provider value={{ isAdmin, adminView, loginAdmin, logoutAdmin, setAdminView }}>
