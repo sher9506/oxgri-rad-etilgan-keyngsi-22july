@@ -912,12 +912,47 @@ Deno.serve(async (req: Request) => {
       await deleteSession(chatId);
 
       // Bot sessionga session_token ni login_id sifatida saqlaymiz
+      // device ni sessiondan meros qilamiz
       await updateSession(chatId, {
         telegram_id: telegramId,
         state: 'login_waiting_phone',
-        login_id: sessionToken, // session token ni saqlaymiz
+        login_id: sessionToken,
+        device: loginSession?.device || null,
       });
 
+      // Tasdiqlangan foydalanuvchi tekshiruvi — telegram_chat_id bo'yicha
+      const { data: mavjudTalaba } = await supabaseAdmin
+        .from('talabalar')
+        .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id, merged_into')
+        .eq('telegram_chat_id', String(telegramId))
+        .is('merged_into', null)
+        .maybeSingle();
+
+      if (mavjudTalaba) {
+        // Tasdiqlangan foydalanuvchi — raqam so'ralmaydi, kanal tekshiruvi
+        if (cfg.channels.length > 0) {
+          const notMember = await checkAllChannels(cfg.token, telegramId, cfg.channels);
+          if (notMember.length > 0) {
+            await supabaseAdmin
+              .from('bot_sessions')
+              .update({ state: 'login_waiting_channel', updated_at: new Date().toISOString() })
+              .eq('chat_id', chatId);
+            await sendMessage(cfg.token, chatId,
+              `⛔ <b>Kirish uchun quyidagi kanallarga a'zo bo'ling:</b>\n\n` +
+              notMember.map((c) => `👉 <b>${c}</b>`).join('\n') +
+              `\n\nA'zo bo'lgach, <b>✅ A'zolikni tekshirish</b> tugmasini bosing.`,
+              { reply_markup: { inline_keyboard: buildChannelButtons(notMember) } }
+            );
+            return new Response('ok', { status: 200 });
+          }
+        }
+        // Kanal a'zo — to'g'ridan-to'g'ri continueLogin
+        const updatedSession = { ...await getSession(chatId), phone: mavjudTalaba.login_id };
+        await continueLogin(chatId, telegramId, updatedSession, cfg);
+        return new Response('ok', { status: 200 });
+      }
+
+      // Tasdiqlanmagan — telefon raqami so'raladi
       await sendMessage(cfg.token, chatId,
         `🔐 <b>FanFaster — Kirish</b>\n\n` +
         `Saytga kirish uchun telefon raqamingizni yuboring.\n\n` +
@@ -939,6 +974,21 @@ Deno.serve(async (req: Request) => {
 
     // ── TELEFON QABUL QILISH ───────────────────────────────────────────────
     if (state === 'login_waiting_phone' && contact?.phone_number) {
+      // Boshqa odamning kontaktini yuborishni rad etish
+      if (contact.user_id && contact.user_id !== telegramId) {
+        await sendMessage(cfg.token, chatId,
+          '❌ <b>Faqat o\'z raqamingizni yuboring.</b>\n\nPastdagi tugmani bosing:',
+          {
+            reply_markup: {
+              keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
+            },
+          }
+        );
+        return new Response('ok', { status: 200 });
+      }
+
       const phone = contact.phone_number.startsWith('+')
         ? contact.phone_number.replace(/\D/g, '')
         : contact.phone_number.replace(/\D/g, '');

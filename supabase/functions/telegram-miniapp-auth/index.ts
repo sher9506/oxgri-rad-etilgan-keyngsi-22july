@@ -1,4 +1,4 @@
-// telegram-miniapp-auth — Telegram Mini App initData HMAC validation v2
+// telegram-miniapp-auth — Telegram Mini App initData HMAC validation v3
 // Frontend Telegram.WebApp.initData ni yuboradi, server bot tokeni bilan
 // HMAC orqali tekshiradi va talaba ma'lumotlarini qaytaradi.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -25,6 +25,40 @@ async function getLoginBotToken(): Promise<string> {
     .eq('key', 'TELEGRAM_LOGIN_BOT_TOKEN')
     .maybeSingle();
   return data?.text_value || '';
+}
+
+async function getChannelIds(): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('settings')
+    .select('text_value')
+    .eq('key', 'TELEGRAM_LOGIN_CHANNEL_IDS')
+    .maybeSingle();
+  const raw = data?.text_value || '';
+  return raw.split(',').map((c: string) => c.trim()).filter(Boolean);
+}
+
+// Kanal a'zoligini tekshirish — getChatMember orqali
+async function checkChannelMembership(token: string, userId: number, channelId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getChatMember`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: channelId, user_id: userId }),
+    });
+    const data = await res.json();
+    return data.ok && ['member', 'administrator', 'creator'].includes(data.result?.status);
+  } catch {
+    return false;
+  }
+}
+
+// Barcha kanallarga a'zolikni tekshirish — true agar hammasiga a'zo
+async function checkAllChannels(token: string, userId: number, channels: string[]): Promise<boolean> {
+  if (channels.length === 0) return true;
+  const results = await Promise.all(
+    channels.map(async (ch) => ({ ch, ok: await checkChannelMembership(token, userId, ch) }))
+  );
+  return results.every((r) => r.ok);
 }
 
 // Constant-time string comparison
@@ -133,11 +167,15 @@ Deno.serve(async (req: Request) => {
     }
 
     // Avval login bot tokeni, keyin asosiy bot tokeni bilan tekshiramiz
-    const [loginBotToken, mainBotToken] = await Promise.all([getLoginBotToken(), getBotToken()]);
+    const [loginBotToken, mainBotToken, channels] = await Promise.all([
+      getLoginBotToken(), getBotToken(), getChannelIds(),
+    ]);
 
     let result = await validateInitData(initData, loginBotToken);
+    let usedToken = loginBotToken;
     if (!result.valid && mainBotToken) {
       result = await validateInitData(initData, mainBotToken);
+      usedToken = mainBotToken;
     }
 
     if (!result.valid) {
@@ -190,6 +228,14 @@ Deno.serve(async (req: Request) => {
             .eq('id', asosiyId)
             .maybeSingle();
           if (asosiy) {
+            // Kanal a'zoligi tekshiruvi
+            const isMember = await checkAllChannels(usedToken, telegramId, channels);
+            if (!isMember) {
+              return new Response(
+                JSON.stringify({ error: 'E_NOT_MEMBER', message: 'Kanalga a\'zo bo\'ling' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
             return new Response(
               JSON.stringify({
                 success: true,
@@ -232,6 +278,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const talaba = talabalar[0];
+
+    // Kanal a'zoligi tekshiruvi
+    const isMember = await checkAllChannels(usedToken, telegramId, channels);
+    if (!isMember) {
+      return new Response(
+        JSON.stringify({ error: 'E_NOT_MEMBER', message: 'Kanalga a\'zo bo\'ling' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const tasdiqlangan = !!(talaba.google_user_id && talaba.telegram_chat_id);
     return new Response(
       JSON.stringify({

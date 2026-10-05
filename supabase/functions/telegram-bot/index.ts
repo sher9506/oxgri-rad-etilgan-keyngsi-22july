@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// telegram-bot v3
 import { corsHeaders } from '../_shared/cors.ts';
 
 const supabaseAdmin = createClient(
@@ -216,6 +217,23 @@ async function handleCallbackQuery(callbackQuery: any, cfg: BotConfig): Promise<
 
     if (notMember.length === 0) {
       await answerCb('✅ Tasdiqlandi!');
+
+      // Qaytib kelgan tasdiqlangan foydalanuvchi — Mini App tugmasi
+      if (session?.state === 'waiting_channel_returning') {
+        await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
+        await sendMessage(cfg.token, chatId,
+          `✅ <b>Rahmat!</b> Endi mini app'ni ochishingiz mumkin:`,
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
+              ]],
+            },
+          }
+        );
+        return;
+      }
+
       if (session?.phone) {
         await supabaseAdmin
           .from('bot_sessions')
@@ -296,19 +314,53 @@ Deno.serve(async (req: Request) => {
         return new Response('ok', { status: 200 });
       }
 
-      // Oddiy /start (payload'siz) — Mini App tugmasi
+      // Oddiy /start (payload'siz) — tasdiqlangan yoki tasdiqlanmagan oqim
       await setChatMenuButton(cfg.token, cfg.siteUrl);
-      await sendMessage(cfg.token, chatId,
-        `👋 <b>FanFaster'ga xush kelibsiz!</b>\n\n` +
-        `Quyidagi tugmani bosing — profilga avtomatik kiriladi:`,
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
-            ]],
-          },
+
+      // 1. Telegram ID bo'yicha mavjud tasdiqlangan qatorni topish
+      const { data: mavjudTalaba } = await supabaseAdmin
+        .from('talabalar')
+        .select('id, ism, familiya, telegram_chat_id, merged_into')
+        .eq('telegram_chat_id', String(telegramId))
+        .is('merged_into', null)
+        .maybeSingle();
+
+      if (mavjudTalaba) {
+        // 2. Tasdiqlangan foydalanuvchi — kanal a'zoligini tekshirish
+        if (cfg.channels.length > 0) {
+          const notMember = await checkAllChannels(cfg.token, telegramId, cfg.channels);
+          if (notMember.length > 0) {
+            await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
+            await updateSession(chatId, { telegram_id: telegramId, state: 'waiting_channel_returning' });
+            await sendMessage(cfg.token, chatId,
+              `⛔ <b>Kirish uchun quyidagi kanallarga a'zo bo'ling:</b>\n\n` +
+              notMember.map((c) => `👉 <b>${c}</b>`).join('\n') +
+              `\n\nA'zo bo'lgach, <b>✅ Tekshirish</b> tugmasini bosing.`,
+              { reply_markup: { inline_keyboard: buildChannelButtons(notMember) } }
+            );
+            return new Response('ok', { status: 200 });
+          }
         }
-      );
+        // 3. Kanal a'zo — Mini App tugmasi
+        await sendMessage(cfg.token, chatId,
+          `👋 <b>FanFaster'ga xush kelibsiz!</b>\n\n` +
+          `👤 ${mavjudTalaba.ism} ${mavjudTalaba.familiya}\n\n` +
+          `Quyidagi tugmani bosing — profilga avtomatik kiriladi:`,
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
+              ]],
+            },
+          }
+        );
+        return new Response('ok', { status: 200 });
+      }
+
+      // 4. Tasdiqlanmagan — telefon ulashish oqimiga yuborish
+      await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
+      await updateSession(chatId, { telegram_id: telegramId, state: 'waiting_phone' });
+      await sendWelcome(chatId, cfg);
       return new Response('ok', { status: 200 });
     }
 

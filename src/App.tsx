@@ -53,6 +53,30 @@ const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi
 import MiniAppBanner, { useMiniAppAutoLogin } from '@/components/features/MiniAppBanner';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        openTelegramLink?: (url: string) => void;
+      };
+    };
+  }
+}
+
+async function getBotUsernameForToast(): Promise<string> {
+  try {
+    const { supabase } = await import('@/lib/supabase');
+    const { data } = await supabase
+      .from('settings')
+      .select('text_value')
+      .eq('key', 'TELEGRAM_LOGIN_BOT_USERNAME')
+      .maybeSingle();
+    return data?.text_value || '';
+  } catch {
+    return '';
+  }
+}
+
 // Admin Context
 interface AdminContextType {
   isAdmin: boolean;
@@ -97,22 +121,50 @@ function AppContent() {
 
   // Mini app avtokirish xatosi — foydalanuvchiga ko'rsatish
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const detail = (e as CustomEvent).detail;
       const code = detail?.code || '';
       const msg = detail?.message || 'Kirim amalga oshmadi';
+
       if (code === 'E_NOT_FOUND') {
-        toast.warning('Profil topilmadi', { description: msg });
+        // Botga o'tish tugmasi bilan toast
+        const botUsername = await getBotUsernameForToast();
+        toast.warning('Profil topilmadi', {
+          description: msg,
+          action: botUsername
+            ? { label: 'Botga o\'tish', onClick: () => {
+                try {
+                  window.Telegram?.WebApp?.openTelegramLink?.(`https://t.me/${botUsername}`);
+                } catch {
+                  window.open(`https://t.me/${botUsername}`, '_blank');
+                }
+              }}
+            : undefined,
+        });
+      } else if (code === 'E_NOT_MEMBER') {
+        toast.warning('Kanalga a\'zo bo\'ling', {
+          description: msg,
+          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
+        });
       } else if (code === 'E_HASH') {
         toast.error('Telegram imzo noto\'g\'ri', { description: msg });
       } else if (code === 'E_EXPIRED') {
-        toast.error('Muddat tugagan', { description: msg });
+        toast.error('Muddat tugagan', {
+          description: msg,
+          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
+        });
       } else if (code === 'E_AMBIGUOUS') {
         toast.error('Profil noaniq', { description: msg });
       } else if (code === 'E_NET') {
-        toast.error('Tarmoq xatosi', { description: msg });
+        toast.error('Tarmoq xatosi', {
+          description: msg,
+          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
+        });
       } else {
-        toast.error('Kirim amalga oshmadi', { description: msg });
+        toast.error('Kirim amalga oshmadi', {
+          description: msg,
+          action: { label: 'Qayta urinish', onClick: () => window.location.reload() },
+        });
       }
     };
     window.addEventListener('miniapp-autologin-failed', handler);
