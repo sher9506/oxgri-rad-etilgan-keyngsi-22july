@@ -281,7 +281,11 @@ async function handleLinkToken(
   linkToken: string,
   cfg: BotConfig
 ): Promise<void> {
-  // Tokenni tekshirish
+  // Tokenni tekshirish — payload uzunligini log qilamiz
+  const payloadLen = linkToken.length;
+  const tokenPrefix = linkToken.slice(0, Math.min(6, linkToken.length));
+  console.log(`[link-token] /start link_ keldi: payload_uzunlik=${payloadLen}, prefix=${tokenPrefix}…`);
+
   const { data: linkRow } = await supabaseAdmin
     .from('telegram_link_tokens')
     .select('token, talaba_id, platform, expires_at, used_at')
@@ -289,6 +293,7 @@ async function handleLinkToken(
     .maybeSingle();
 
   if (!linkRow) {
+    console.log(`[link-token] token topilmadi: prefix=${tokenPrefix}…, uzunlik=${payloadLen}`);
     await sendMessage(cfg.token, chatId,
       '❌ <b>Havola noto\'g\'ri.</b>\n\nSaytdan yangi havola oling.'
     );
@@ -296,6 +301,7 @@ async function handleLinkToken(
   }
 
   if (linkRow.used_at) {
+    console.log(`[link-token] token allaqachon ishlatilgan: prefix=${tokenPrefix}…`);
     await sendMessage(cfg.token, chatId,
       '⚠️ <b>Bu havola allaqachon ishlatilgan.</b>\n\nSaytdan yangi havola oling.'
     );
@@ -303,11 +309,14 @@ async function handleLinkToken(
   }
 
   if (new Date(linkRow.expires_at) < new Date()) {
+    console.log(`[link-token] token muddati o'tgan: prefix=${tokenPrefix}…`);
     await sendMessage(cfg.token, chatId,
       '⏰ <b>Havola eskirgan.</b>\n\nSaytdan yangi havola oling (10 daqiqa amal qiladi).'
     );
     return;
   }
+
+  console.log(`[link-token] token topildi, talaba_id=${linkRow.talaba_id}`);
 
   // Telegram chat_id boshqa talabaga bog'langanmi?
   const { data: existingTalaba } = await supabaseAdmin

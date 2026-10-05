@@ -70,10 +70,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 32 bayt tasodifiy token
-    const tokenBytes = new Uint8Array(32);
+    // 16 bayt tasodifiy token = 32 hex belgi + "link_" = jami 37 belgi
+    // Telegram /start parametri maksimal 64 belgi qabul qiladi
+    const tokenBytes = new Uint8Array(16);
     crypto.getRandomValues(tokenBytes);
     const token = 'link_' + Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    if (token.length > 64) {
+      console.error('[link-telegram-start] HAVOLA JUDA UZUN:', token.length, 'belgi — Telegram tashlab yuboradi!');
+      return new Response(
+        JSON.stringify({ error: 'Havola uzunligi xato (telegram cheklovidan oshdi)' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Eski ishlatilmagan tokenlarni tozalash
     await supabaseAdmin
@@ -103,6 +112,8 @@ Deno.serve(async (req: Request) => {
     // Deep link: https://t.me/<bot>?start=link_<token>
     const botLinkClean = botLink.endsWith('/') ? botLink.slice(0, -1) : botLink;
     const deepLink = `${botLinkClean}?start=${token}`;
+
+    console.log(`[link-telegram-start] havola yaratildi: uzunlik=${token.length} (start parametri=${deepLink.length - deepLink.indexOf('?start=') - 7})`);
 
     return new Response(
       JSON.stringify({ deepLink, token }),
