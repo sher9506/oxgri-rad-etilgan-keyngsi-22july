@@ -36,7 +36,7 @@ export default function TelegramCallback() {
   }, []);
 
   const doLogin = useCallback(
-    (sessionData: { ism: string; familiya: string; guruh: string; kurs: string; login_id: string }) => {
+    (sessionData: { ism: string; familiya: string; guruh: string; kurs: string; login_id: string; talaba_id?: string }) => {
       clearTimer();
       const user = {
         ism: sessionData.ism || 'Foydalanuvchi',
@@ -45,6 +45,7 @@ export default function TelegramCallback() {
         guruh: sessionData.guruh || '',
         kurs: sessionData.kurs || '',
         login: sessionData.login_id || sessionData.ism,
+        talaba_id: sessionData.talaba_id,
       };
       login(user);
       setUserName(`${user.familiya} ${user.ism}`.trim());

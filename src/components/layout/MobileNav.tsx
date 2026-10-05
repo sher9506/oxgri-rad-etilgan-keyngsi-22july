@@ -9,6 +9,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang, Lang } from '@/contexts/LangContext';
 import { lazy, Suspense } from 'react';
+import Avatar from '@/components/ui/avatar-profile';
+import TasdiqlanganBelgi from '@/components/features/TasdiqlanganBelgi';
 
 const NotificationBell = lazy(() => import('@/components/features/NotificationBell'));
 const OquvchiBildirishnomaBell = lazy(() => import('@/components/features/OquvchiBildirishnomaBell'));
@@ -416,11 +418,18 @@ function MobileTopBar({
           {isAuthenticated && user ? (
             <button
               onClick={onOpenYana}
-              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 ff-focus"
-              style={{ background: 'var(--cobalt-tint)', border: '1px solid var(--cobalt-line)' }}
+              className="rounded-full flex items-center justify-center shrink-0 ff-focus overflow-hidden"
+              style={{ width: 36, height: 36 }}
               aria-label="Profil va menyu"
             >
-              <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--cobalt-2)' }}>{user.ism[0]}{user.familiya[0]}</span>
+              <Avatar
+                src={user.avatar_url}
+                alt={`${user.ism} ${user.familiya}`}
+                initials={`${user.ism[0] ?? ''}${user.familiya[0] ?? ''}`.toUpperCase()}
+                shape="circle"
+                size={36}
+                fallbackGradient="from-[hsl(221,83%,53%)] to-[hsl(221,83%,43%)]"
+              />
             </button>
           ) : (
             <button
@@ -554,11 +563,19 @@ export default function MobileNav({ activeTab, onTabChange, onOpenLogin, onLogou
         <div className="px-3 py-3 mb-1" style={{ background: 'var(--bg)', borderRadius: 16 }}>
           {user ? (
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: 'var(--cobalt-tint)', border: '1px solid var(--cobalt-line)' }}>
-                <span className="text-xs font-bold uppercase" style={{ color: 'var(--cobalt-2)' }}>{user.ism[0]}{user.familiya[0]}</span>
-              </div>
+              <Avatar
+                src={user.avatar_url}
+                alt={`${user.ism} ${user.familiya}`}
+                initials={`${user.ism[0] ?? ''}${user.familiya[0] ?? ''}`.toUpperCase()}
+                shape="circle"
+                size={40}
+                fallbackGradient="from-[hsl(221,83%,53%)] to-[hsl(221,83%,43%)]"
+              />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate" style={{ color: 'var(--ink)' }}>{user.ism} {user.familiya}</p>
+                <p className="text-sm font-bold truncate flex items-center gap-1" style={{ color: 'var(--ink)' }}>
+                  {user.ism} {user.familiya}
+                  {user.tasdiqlangan && <TasdiqlanganBelgi size={16} />}
+                </p>
                 <p className="text-xs capitalize" style={{ color: 'var(--ink-muted)' }}>{user.rol === 'ustoz' ? 'Ustoz' : "O'quvchi"}{user.kurs ? ` • ${user.kurs}-kurs` : ''}</p>
               </div>
             </div>

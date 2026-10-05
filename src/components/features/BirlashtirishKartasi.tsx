@@ -6,6 +6,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { detectPlatform } from '@/lib/platform';
 import { startGoogleLink } from '@/lib/googleAuth';
 import TasdiqlanganBelgi from './TasdiqlanganBelgi';
+import Avatar from '@/components/ui/avatar-profile';
 
 export default function BirlashtirishKartasi() {
   const { user, login } = useAuth();
@@ -59,6 +60,7 @@ export default function BirlashtirishKartasi() {
             .select('id, google_user_id, google_email_masked, telegram_chat_id, telegram_username, telegram_ism, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
             .eq('ism', user.ism)
             .eq('familiya', user.familiya)
+            .is('merged_into', null)
             .maybeSingle();
           talaba = byName;
         }
@@ -297,7 +299,9 @@ export default function BirlashtirishKartasi() {
         return;
       }
       if (data?.avatarUrl) {
-        setAvatarUrl(data.avatarUrl);
+        const cacheBustUrl = `${data.avatarUrl}?v=${Date.now()}`;
+        setAvatarUrl(cacheBustUrl);
+        window.dispatchEvent(new CustomEvent('avatar-updated', { detail: { avatarUrl: cacheBustUrl } }));
         toast({ title: 'Rasm yangilandi', description: 'Profil rasmingiz saqlandi' });
       }
     } catch (e: any) {
@@ -323,6 +327,7 @@ export default function BirlashtirishKartasi() {
       await supabase.storage.from('avatars').remove(paths);
 
       setAvatarUrl(null);
+      window.dispatchEvent(new CustomEvent('avatar-updated', { detail: { avatarUrl: null } }));
       toast({ title: 'Rasm o\'chirildi' });
     } catch (e: any) {
       toast({ title: 'Xato', description: e.message, variant: 'destructive' });
@@ -471,13 +476,15 @@ export default function BirlashtirishKartasi() {
           {tasdiqlangan ? (
             <div className="flex items-center gap-4">
               <div className="relative w-16 h-16 flex-shrink-0">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="Avatar" className="w-16 h-16 rounded-2xl border-2 border-gray-200 shadow-sm object-cover" />
-                ) : (
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xl font-black">
-                    {avatarInitials}
-                  </div>
-                )}
+                <Avatar
+                  src={avatarUrl}
+                  alt="Profil rasmi"
+                  initials={avatarInitials}
+                  shape="square"
+                  size={64}
+                  borderClasses="border-2 border-gray-200 shadow-sm"
+                  fallbackGradient="from-blue-500 to-indigo-600"
+                />
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={avatarUploading}

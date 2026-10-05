@@ -10,6 +10,8 @@ import { useLang, Lang } from '@/contexts/LangContext';
 import { supabase } from '@/lib/supabase';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { lazy, Suspense } from 'react';
+import Avatar from '@/components/ui/avatar-profile';
+import TasdiqlanganBelgi from '@/components/features/TasdiqlanganBelgi';
 
 const NotificationBell = lazy(() => import('@/components/features/NotificationBell'));
 const OquvchiBildirishnomaBell = lazy(() => import('@/components/features/OquvchiBildirishnomaBell'));
@@ -500,9 +502,14 @@ export default function TopNav({ activeTab, onTabChange, onOpenLogin, onLogout }
                   aria-label="Profil menyusi"
                   aria-expanded={showProfileDropdown}
                 >
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: 'var(--cobalt-tint)', border: '1px solid var(--cobalt-line)' }}>
-                    <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--cobalt-2)' }}>{user.ism[0]}{user.familiya[0]}</span>
-                  </div>
+                  <Avatar
+                    src={user.avatar_url}
+                    alt={`${user.ism} ${user.familiya}`}
+                    initials={`${user.ism[0] ?? ''}${user.familiya[0] ?? ''}`.toUpperCase()}
+                    shape="circle"
+                    size={32}
+                    fallbackGradient="from-[hsl(221,83%,53%)] to-[hsl(221,83%,43%)]"
+                  />
                   <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showProfileDropdown ? 'rotate-180' : ''}`} style={{ color: 'var(--ink-muted)' }} />
                 </button>
                 {showProfileDropdown && (
@@ -510,7 +517,10 @@ export default function TopNav({ activeTab, onTabChange, onOpenLogin, onLogout }
                     <div className="fixed inset-0 z-40" onClick={() => setShowProfileDropdown(false)} />
                     <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-2xl z-50 border border-ff-line overflow-hidden" style={{ animation: 'ff-dropdown-in 180ms cubic-bezier(0.22,1,0.36,1) both' }}>
                       <div className="px-3 py-2.5 border-b" style={{ borderColor: 'var(--line)', background: 'var(--bg)' }}>
-                        <p className="text-xs font-bold truncate" style={{ color: 'var(--ink)' }}>{user.ism} {user.familiya}</p>
+                        <p className="text-xs font-bold truncate flex items-center gap-1" style={{ color: 'var(--ink)' }}>
+                          {user.ism} {user.familiya}
+                          {user.tasdiqlangan && <TasdiqlanganBelgi size={16} />}
+                        </p>
                         <p className="text-[10px] font-medium capitalize" style={{ color: 'var(--ink-muted)' }}>{user.rol === 'ustoz' ? 'Ustoz' : "O'quvchi"}{user.kurs ? ` • ${user.kurs}-kurs` : ''}</p>
                       </div>
                       <div className="p-1">

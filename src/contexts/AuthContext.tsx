@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export interface User {
   ism: string;
@@ -42,8 +43,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const persistentUser = localStorage.getItem(PERSISTENT_KEY);
     if (persistentUser) {
       try {
-        const userData = JSON.parse(persistentUser);
-        setUser(userData);
+        const userData = JSON.parse(persistentUser) as User;
+        // talaba_id merged_into zanjiri bo'yicha asosiy qatorga normallashtirish
+        if (userData.talaba_id && userData.rol === 'oquvchi') {
+          supabase
+            .from('talabalar')
+            .select('id, ism, familiya, guruh, kurs, login_id, merged_into, google_user_id, telegram_chat_id')
+            .eq('id', userData.talaba_id)
+            .maybeSingle()
+            .then(({ data: talaba }) => {
+              if (talaba?.merged_into) {
+                // Asosiy qatorga o'tish
+                supabase
+                  .from('talabalar')
+                  .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id, avatar_url')
+                  .eq('id', talaba.merged_into)
+                  .maybeSingle()
+                  .then(({ data: asosiy }) => {
+                    if (asosiy) {
+                      const normalized: User = {
+                        ...userData,
+                        talaba_id: asosiy.id,
+                        ism: asosiy.ism || userData.ism,
+                        familiya: asosiy.familiya || userData.familiya,
+                        guruh: asosiy.guruh || userData.guruh,
+                        kurs: asosiy.kurs || userData.kurs,
+                        login: asosiy.login_id || userData.login,
+                        google_linked: !!asosiy.google_user_id,
+                        telegram_linked: !!asosiy.telegram_chat_id,
+                        tasdiqlangan: !!asosiy.google_user_id && !!asosiy.telegram_chat_id,
+                        avatar_url: asosiy.avatar_url || null,
+                      };
+                      setUser(normalized);
+                      const json = JSON.stringify(normalized);
+                      localStorage.setItem(PERSISTENT_KEY, json);
+                      localStorage.setItem(STORAGE_KEY, json);
+                    } else {
+                      setUser(userData);
+                    }
+                  });
+              } else {
+                // Asosiy qator — avatar_url ni yangilash
+                supabase
+                  .from('talabalar')
+                  .select('avatar_url')
+                  .eq('id', userData.talaba_id)
+                  .maybeSingle()
+                  .then(({ data: t }) => {
+                    if (t?.avatar_url !== undefined) {
+                      const normalized = { ...userData, avatar_url: t.avatar_url };
+                      setUser(normalized);
+                      localStorage.setItem(PERSISTENT_KEY, JSON.stringify(normalized));
+                      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+                    } else {
+                      setUser(userData);
+                    }
+                  });
+              }
+            });
+        } else {
+          setUser(userData);
+        }
         sessionStorage.setItem(SESSION_FLAG, 'true');
         localStorage.setItem(STORAGE_KEY, persistentUser);
         console.log('✅ Doimiy foydalanuvchi yuklandi:', userData);
@@ -86,11 +146,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ O\'quvchi profili avtomatik yaratildi:', userData);
       }
     };
+    // Avatar yangilanganda — butun ilovada sinxronlash
+    const handleAvatarUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.avatarUrl !== undefined) {
+        setUser(prev => {
+          if (!prev) return prev;
+          const updated = { ...prev, avatar_url: detail.avatarUrl };
+          const json = JSON.stringify(updated);
+          localStorage.setItem(PERSISTENT_KEY, json);
+          localStorage.setItem(STORAGE_KEY, json);
+          return updated;
+        });
+      }
+    };
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('oquvchi-profil-yaratildi', handleOquvchiProfil);
+    window.addEventListener('avatar-updated', handleAvatarUpdated);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('oquvchi-profil-yaratildi', handleOquvchiProfil);
+      window.removeEventListener('avatar-updated', handleAvatarUpdated);
     };
   }, []);
 
@@ -110,8 +186,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(PERSISTENT_KEY);
     sessionStorage.removeItem(SESSION_FLAG);
     localStorage.removeItem('baholash_toplam_kod');
-    // O'quvchi ism/familiyasini sinov_oquvchi dan ham tozalaymiz
     localStorage.removeItem('sinov_oquvchi');
+    localStorage.removeItem('fanfaster_demo_used');
     console.log('✅ Foydalanuvchi tizimdan chiqdi');
   };
 

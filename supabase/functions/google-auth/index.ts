@@ -174,9 +174,19 @@ Deno.serve(async (req: Request) => {
     // ── Oddiy kirish: google_user_id bo'yicha talabani topish ──
     let { data: talaba } = await supabaseAdmin
       .from('talabalar')
-      .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
+      .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id, merged_into')
       .eq('google_user_id', googleUserId)
       .maybeSingle();
+
+    // merged_into zanjirini kuzatib, asosiy qatorga o'tish
+    if (talaba?.merged_into) {
+      const { data: asosiy } = await supabaseAdmin
+        .from('talabalar')
+        .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
+        .eq('id', talaba.merged_into)
+        .maybeSingle();
+      if (asosiy) talaba = asosiy;
+    }
 
     // ── Yangi talaba — Google ma'lumotlari bilan avtomatik yaratish ──
     if (!talaba) {

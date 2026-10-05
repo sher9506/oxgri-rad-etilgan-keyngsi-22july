@@ -4,7 +4,7 @@ interface TasdiqlanganBelgiProps {
 }
 
 export default function TasdiqlanganBelgi({ size, className }: TasdiqlanganBelgiProps) {
-  const dimension = size || 16;
+  const dimension = size || 22;
   return (
     <svg
       width={dimension}
@@ -14,27 +14,41 @@ export default function TasdiqlanganBelgi({ size, className }: TasdiqlanganBelgi
       className={className}
       role="img"
       aria-label="Tasdiqlangan profil"
-      style={{ display: 'inline-block', verticalAlign: 'text-top' }}
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'text-top',
+        animation: 'ff-verified-pop 500ms cubic-bezier(0.22,1,0.36,1) both',
+        flexShrink: 0,
+      }}
     >
-      <title>Google va Telegram ulangan profil</title>
-      {/* Scalloped rosette */}
+      <title>Tasdiqlangan</title>
+      {/* Scalloped rosette — Instagram-style 12-point wave */}
       <path
-        d="M12 2L13.8 3.8L16.3 3.2L16.9 5.7L19.2 6.8L18.4 9.2L19.9 11.3L18.2 13.3L18.7 15.9L16.2 16.3L14.8 18.5L12.5 17.4L10 18.2L8.8 15.9L6.3 15.7L6.9 13.2L5.2 11.3L6.7 9.2L5.9 6.8L8.2 5.7L8.8 3.2L11.2 3.8L12 2Z"
-        fill="#C99A3B"
-        stroke="#A67E2A"
-        strokeWidth="0.5"
+        d="M12 1.5L13.6 3.3L16 2.5L16.8 4.9L19.3 5.5L18.6 8L20.3 9.9L18.8 11.8L19.7 14.3L17.3 15.1L16.7 17.6L14.2 17.2L12.5 19L10.3 17.6L7.8 18.1L7 15.6L4.6 14.9L5.3 12.3L3.6 10.4L5.2 8.4L4.4 5.9L6.8 5.2L7.5 2.7L10 3.4L12 1.5Z"
+        fill="#0095F6"
       />
       {/* Inner circle */}
-      <circle cx="12" cy="11" r="6.5" fill="#FBF1D9" />
+      <circle cx="12" cy="10.5" r="6.8" fill="#0095F6" />
       {/* Checkmark */}
       <path
-        d="M9 11L11.2 13.2L15 9.5"
-        stroke="#8A5F0A"
+        d="M8.5 10.5L11 13L15.5 8.5"
+        stroke="white"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
       />
+      <style>{`
+        @keyframes ff-verified-pop {
+          0% { transform: scale(0.6); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [style*="ff-verified-pop"] {
+            animation: none !important;
+          }
+        }
+      `}</style>
     </svg>
   );
 }

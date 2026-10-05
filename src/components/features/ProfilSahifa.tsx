@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
 import BirlashtirishKartasi from './BirlashtirishKartasi';
 import TasdiqlanganBelgi from './TasdiqlanganBelgi';
+import Avatar from '@/components/ui/avatar-profile';
 
 const KURSLAR = ['1-kurs', '2-kurs', '3-kurs', '4-kurs', 'Boshqa'];
 const GURUHLAR = ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'p-1', 'p-2', 'p-rus', 'p-3', 'Boshqa'];
@@ -304,6 +305,7 @@ export default function ProfilSahifa() {
         .map((oldExt) => `${user.ustoz_id}/avatar.${oldExt}`);
       await supabase.storage.from('profile-photos').remove(oldPaths);
       setProfilRasm(`${publicUrl}?t=${Date.now()}`);
+      window.dispatchEvent(new CustomEvent('avatar-updated', { detail: { avatarUrl: `${publicUrl}?t=${Date.now()}` } }));
       toast({ title: 'Rasm yangilandi', description: 'Profil rasmingiz saqlandi' });
     } catch (e: any) {
       toast({ title: 'Xato', description: e.message || 'Rasm yuklanmadi', variant: 'destructive' });
@@ -325,6 +327,7 @@ export default function ProfilSahifa() {
         .eq('id', user.ustoz_id);
       if (dbErr) throw dbErr;
       setProfilRasm(null);
+      window.dispatchEvent(new CustomEvent('avatar-updated', { detail: { avatarUrl: null } }));
       toast({ title: 'Rasm o‘chirildi', description: 'Profil rasmi olib tashlandi' });
     } catch (e: any) {
       toast({ title: 'Xato', description: e.message || 'Rasm o‘chirilmadi', variant: 'destructive' });
@@ -354,13 +357,15 @@ export default function ProfilSahifa() {
         <div className="bg-white px-5 pb-5">
           <div className="flex items-end gap-4 -mt-8 mb-3">
             <div className="relative w-16 h-16 flex-shrink-0">
-              {isUstoz && profilRasm ? (
-                <img src={toDisplayUrl(profilRasm)} alt="Profil" className="w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg object-cover" />
-              ) : (
-                <div className={`w-16 h-16 rounded-2xl border-[3px] border-white shadow-lg flex items-center justify-center text-white text-xl font-black ${isUstoz ? 'bg-gradient-to-br from-[hsl(221,83%,53%)] to-indigo-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
-                  {avatarInitials}
-                </div>
-              )}
+              <Avatar
+                src={isUstoz ? profilRasm : user.avatar_url}
+                alt={`${user.familiya} ${user.ism}`}
+                initials={avatarInitials}
+                shape="square"
+                size={64}
+                borderClasses="border-[3px] border-white shadow-lg"
+                fallbackGradient={isUstoz ? 'from-[hsl(221,83%,53%)] to-indigo-600' : 'from-emerald-500 to-teal-600'}
+              />
               {isUstoz && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -400,7 +405,8 @@ export default function ProfilSahifa() {
               )}
               <h1 className="text-lg font-black text-gray-900 leading-tight flex items-center gap-1.5">
                 {user.familiya} {user.ism}
-                {!isUstoz && user.tasdiqlangan && <TasdiqlanganBelgi size={16} />}
+                {!isUstoz && user.tasdiqlangan && <TasdiqlanganBelgi size={22} className="sm:hidden" />}
+                {!isUstoz && user.tasdiqlangan && <TasdiqlanganBelgi size={24} className="hidden sm:inline-flex" />}
               </h1>
               <div className="flex flex-wrap gap-1.5 mt-1">
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${isUstoz ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
