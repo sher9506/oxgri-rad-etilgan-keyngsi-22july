@@ -330,7 +330,7 @@ function AppContent() {
               onOpenLogin={() => setIsLoginModalOpen(true)}
               onLogout={logout}
             />
-            <main className="flex-1 overflow-auto lg:pb-0" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(64px + 8px + env(safe-area-inset-bottom) + 24px)' } as CSSProperties}>
+            <main className="flex-1 overflow-auto pb-[calc(64px+8px+env(safe-area-inset-bottom)+24px)] lg:pb-0" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as CSSProperties}>
               <div className="w-full">
                 <AnimatePresence mode="wait">
                   <motion.div

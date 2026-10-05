@@ -174,14 +174,12 @@ function MobileSheet({
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.1}
             onDragEnd={(_, info) => { if (info.offset.y > 80) onClose(); }}
-            className="fixed left-0 right-0 bottom-0 z-[61] lg:hidden"
+            className="fixed left-0 right-0 bottom-0 z-[61] lg:hidden flex flex-col"
             style={{
               maxHeight: '78svh',
               background: 'var(--ff-card)',
               borderRadius: '28px 28px 0 0',
               boxShadow: '0 -8px 40px -12px rgba(13,27,66,.25)',
-              display: 'flex',
-              flexDirection: 'column',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}
           >
@@ -331,7 +329,7 @@ function MobileBottomNav({
   return (
     <nav
       aria-label="Asosiy navigatsiya"
-      className="fixed left-3 right-3 z-50 lg:hidden"
+      className="fixed left-3 right-3 z-50 lg:hidden flex items-center"
       style={{
         bottom: 'calc(8px + env(safe-area-inset-bottom))',
         height: 64,
@@ -341,8 +339,6 @@ function MobileBottomNav({
         WebkitBackdropFilter: 'blur(16px)',
         border: '1px solid var(--line)',
         boxShadow: '0 18px 40px -18px rgba(13,27,66,.28), inset 0 1px 0 rgba(255,255,255,.9)',
-        display: 'flex',
-        alignItems: 'center',
         padding: '0 4px',
       }}
     >
