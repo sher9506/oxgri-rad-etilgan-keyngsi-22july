@@ -9,6 +9,18 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
 
+// Email ni niqoblash: local qismning birinchi 2 va oxirgi 2 belgisi ochiq, o'rtasi yulduzcha
+// masalan: sherzod.abdurashidov@gmail.com → sh****************ov@gmail.com
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return '';
+  const [local, domain] = email.split('@');
+  if (local.length <= 4) return `${local[0] || ''}**${local[local.length - 1] || ''}@${domain}`;
+  const prefix = local.slice(0, 2);
+  const suffix = local.slice(-2);
+  const stars = '*'.repeat(Math.max(4, local.length - 4));
+  return `${prefix}${stars}${suffix}@${domain}`;
+}
+
 interface GoogleUserInfo {
   sub: string;
   email: string;
@@ -132,7 +144,7 @@ Deno.serve(async (req: Request) => {
       // Boglash
       const { error: linkErr } = await supabaseAdmin
         .from('talabalar')
-        .update({ google_user_id: googleUserId })
+        .update({ google_user_id: googleUserId, google_email_masked: maskEmail(googleEmail) })
         .eq('id', linkTalabaId);
 
       if (linkErr) {
@@ -189,7 +201,7 @@ Deno.serve(async (req: Request) => {
           // google_user_id ni bog'lab qaytaramiz (avtomatik ulash)
           await supabaseAdmin
             .from('talabalar')
-            .update({ google_user_id: googleUserId })
+            .update({ google_user_id: googleUserId, google_email_masked: maskEmail(googleEmail) })
             .eq('id', existingByName.id);
 
           const tasdiqlangan = !!(existingByName.telegram_chat_id);
@@ -240,6 +252,7 @@ Deno.serve(async (req: Request) => {
             kurs: null,
             guruh: null,
             google_user_id: googleUserId,
+            google_email_masked: maskEmail(googleEmail),
           })
           .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
           .maybeSingle();

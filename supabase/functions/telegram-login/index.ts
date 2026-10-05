@@ -1,4 +1,4 @@
-// Telegram Login Bot webhook v2026-10-06e — fix confirmLoginSession 0-row false positive + merged_into filter
+// Telegram Login Bot webhook v2026-10-06f — save telegram_username + telegram_ism to talabalar
 // verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -195,6 +195,7 @@ async function findOrCreateTalaba(
       login_id: phone,
       phone,
       telegram_chat_id: chatId,
+      telegram_ism: ism,
     })
     .select('id, ism, familiya, guruh, kurs, login_id')
     .single();
@@ -634,12 +635,14 @@ async function handleLinkToken(
     return;
   }
 
-  // Telegramni bog'lash
+  // Telegramni bog'lash — telegram_username va telegram_ism ni ham saqlaymiz
   const { error: updateErr } = await supabaseAdmin
     .from('talabalar')
     .update({
       telegram_chat_id: String(chatId),
       phone: talaba.phone || String(telegramId),
+      telegram_username: telegramUsername || null,
+      telegram_ism: userInfo?.first_name || null,
     })
     .eq('id', talaba.id);
 
@@ -754,6 +757,17 @@ async function continueLogin(
     );
     await deleteSession(chatId);
     return;
+  }
+
+  // Talaba qatoriga telegram_username va telegram_ism ni yangilash
+  if (telegramUsername || tgFirstName) {
+    await supabaseAdmin
+      .from('talabalar')
+      .update({
+        telegram_username: telegramUsername || null,
+        telegram_ism: tgFirstName || null,
+      })
+      .eq('id', talaba.id);
   }
 
   // Session token bilan login sessionini tasdiqlash

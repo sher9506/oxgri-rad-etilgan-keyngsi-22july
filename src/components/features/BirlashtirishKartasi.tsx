@@ -13,7 +13,9 @@ export default function BirlashtirishKartasi() {
 
   const [talabaId, setTalabaId] = useState<string | null>(null);
   const [googleLinked, setGoogleLinked] = useState(false);
+  const [googleEmailMasked, setGoogleEmailMasked] = useState('');
   const [telegramLinked, setTelegramLinked] = useState(false);
+  const [telegramDisplay, setTelegramDisplay] = useState('');
   const [tasdiqlangan, setTasdiqlangan] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [bonusUrinish, setBonusUrinish] = useState(0);
@@ -46,7 +48,7 @@ export default function BirlashtirishKartasi() {
         if (user.talaba_id) {
           const { data: byId } = await supabase
             .from('talabalar')
-            .select('id, google_user_id, telegram_chat_id, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
+            .select('id, google_user_id, google_email_masked, telegram_chat_id, telegram_username, telegram_ism, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
             .eq('id', user.talaba_id)
             .maybeSingle();
           talaba = byId;
@@ -54,7 +56,7 @@ export default function BirlashtirishKartasi() {
         if (!talaba) {
           const { data: byName } = await supabase
             .from('talabalar')
-            .select('id, google_user_id, telegram_chat_id, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
+            .select('id, google_user_id, google_email_masked, telegram_chat_id, telegram_username, telegram_ism, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
             .eq('ism', user.ism)
             .eq('familiya', user.familiya)
             .maybeSingle();
@@ -64,7 +66,9 @@ export default function BirlashtirishKartasi() {
         if (talaba) {
           setTalabaId(talaba.id);
           setGoogleLinked(!!talaba.google_user_id);
+          setGoogleEmailMasked(talaba.google_email_masked || '');
           setTelegramLinked(!!talaba.telegram_chat_id);
+          setTelegramDisplay(talaba.telegram_username || talaba.telegram_ism || '');
           setTasdiqlangan(!!talaba.google_user_id && !!talaba.telegram_chat_id);
           setAvatarUrl(talaba.avatar_url);
           setBonusUrinish(talaba.bonus_urinish || 0);
@@ -144,6 +148,16 @@ export default function BirlashtirishKartasi() {
               if (statusData.talaba.id && statusData.talaba.id !== talabaId) {
                 setTalabaId(statusData.talaba.id);
               }
+              // Yangi talaba ma'lumotlarini o'qib telegram display ni yangilash
+              const { data: freshTalaba } = await supabase
+                .from('talabalar')
+                .select('telegram_username, telegram_ism, google_email_masked')
+                .eq('id', statusData.talaba.id)
+                .maybeSingle();
+              if (freshTalaba) {
+                setTelegramDisplay(freshTalaba.telegram_username || freshTalaba.telegram_ism || '');
+                setGoogleEmailMasked(freshTalaba.google_email_masked || '');
+              }
               if (googleLinked && !tasdiqlangan) {
                 toast({ title: 'Tabriklaymiz!', description: `Telegram ulandi. +${bonusCount} Moot Court urinishi berildi!` });
               } else {
@@ -161,6 +175,16 @@ export default function BirlashtirishKartasi() {
               setTelegramLinked(true);
               setGoogleLinked(true);
               setTasdiqlangan(true);
+              // Yangi talaba ma'lumotlarini o'qib display larni yangilash
+              const { data: freshTalaba } = await supabase
+                .from('talabalar')
+                .select('telegram_username, telegram_ism, google_email_masked')
+                .eq('id', statusData.talaba.id)
+                .maybeSingle();
+              if (freshTalaba) {
+                setTelegramDisplay(freshTalaba.telegram_username || freshTalaba.telegram_ism || '');
+                setGoogleEmailMasked(freshTalaba.google_email_masked || '');
+              }
               // Auth sessiyani yangilash
               login({
                 ...user!,
@@ -388,9 +412,14 @@ export default function BirlashtirishKartasi() {
               <span className="text-sm font-semibold text-gray-700">Google</span>
             </div>
             {googleLinked ? (
-              <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Ulangan
-              </span>
+              <div className="flex items-center gap-2">
+                {googleEmailMasked && (
+                  <span className="text-xs text-gray-500 font-medium">{googleEmailMasked}</span>
+                )}
+                <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Ulangan
+                </span>
+              </div>
             ) : (
               <button onClick={handleLinkGoogle} className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
                 <Link2 className="h-3 w-3" /> Ulash
@@ -409,9 +438,14 @@ export default function BirlashtirishKartasi() {
               <span className="text-sm font-semibold text-gray-700">Telegram</span>
             </div>
             {telegramLinked ? (
-              <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Ulangan
-              </span>
+              <div className="flex items-center gap-2">
+                {telegramDisplay && (
+                  <span className="text-xs text-gray-500 font-medium">{telegramDisplay}</span>
+                )}
+                <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Ulangan
+                </span>
+              </div>
             ) : linkPolling ? (
               <span className="flex items-center gap-1 text-xs font-bold text-blue-600">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Kutmoqda...
