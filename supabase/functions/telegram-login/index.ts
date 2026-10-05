@@ -274,6 +274,162 @@ async function handleCallback(callbackQuery: any, cfg: BotConfig): Promise<void>
   }
 }
 
+// ── Telegramni bog'lash (link_ token) ──────────────────────────────────────
+async function handleLinkToken(
+  chatId: number,
+  telegramId: number,
+  linkToken: string,
+  cfg: BotConfig
+): Promise<void> {
+  // Tokenni tekshirish
+  const { data: linkRow } = await supabaseAdmin
+    .from('telegram_link_tokens')
+    .select('token, talaba_id, platform, expires_at, used_at')
+    .eq('token', linkToken)
+    .maybeSingle();
+
+  if (!linkRow) {
+    await sendMessage(cfg.token, chatId,
+      '❌ <b>Havola noto\'g\'ri.</b>\n\nSaytdan yangi havola oling.'
+    );
+    return;
+  }
+
+  if (linkRow.used_at) {
+    await sendMessage(cfg.token, chatId,
+      '⚠️ <b>Bu havola allaqachon ishlatilgan.</b>\n\nSaytdan yangi havola oling.'
+    );
+    return;
+  }
+
+  if (new Date(linkRow.expires_at) < new Date()) {
+    await sendMessage(cfg.token, chatId,
+      '⏰ <b>Havola eskirgan.</b>\n\nSaytdan yangi havola oling (10 daqiqa amal qiladi).'
+    );
+    return;
+  }
+
+  // Telegram chat_id boshqa talabaga bog'langanmi?
+  const { data: existingTalaba } = await supabaseAdmin
+    .from('talabalar')
+    .select('id, ism, familiya')
+    .eq('telegram_chat_id', String(chatId))
+    .neq('id', linkRow.talaba_id)
+    .maybeSingle();
+
+  if (existingTalaba) {
+    await sendMessage(cfg.token, chatId,
+      '⚠️ <b>Bu Telegram akkaunt boshqa talabaga bog\'langan.</b>\n\n' +
+      'Iltimos, boshqa Telegram akkaunt ishlating yoki admin bilan bog\'laning.'
+    );
+    return;
+  }
+
+  // Telegram username olish
+  let telegramUsername = '';
+  try {
+    const userInfo = await getTelegramUserInfo(cfg.token, chatId);
+    if (userInfo?.username) telegramUsername = '@' + userInfo.username;
+  } catch {}
+
+  // Talabani topish
+  const { data: talaba } = await supabaseAdmin
+    .from('talabalar')
+    .select('id, ism, familiya, google_user_id, telegram_chat_id, birlashtirish_bonus_berildi')
+    .eq('id', linkRow.talaba_id)
+    .maybeSingle();
+
+  if (!talaba) {
+    await sendMessage(cfg.token, chatId,
+      '❌ <b>Talaba topilmadi.</b>\n\nSaytda qaytadan urinib ko\'ring.'
+    );
+    return;
+  }
+
+  // Telegramni bog'lash
+  const { error: updateErr } = await supabaseAdmin
+    .from('talabalar')
+    .update({
+      telegram_chat_id: String(chatId),
+      phone: talaba.phone || String(telegramId),
+    })
+    .eq('id', talaba.id);
+
+  if (updateErr) {
+    console.error('[link-token] talaba update xato:', updateErr);
+    await sendMessage(cfg.token, chatId,
+      '❌ <b>Bog\'lashda xatolik.</b>\n\nQaytadan urinib ko\'ring.'
+    );
+    return;
+  }
+
+  // Tokenni yopish
+  await supabaseAdmin
+    .from('telegram_link_tokens')
+    .update({ used_at: new Date().toISOString() })
+    .eq('token', linkToken);
+
+  // Bonus berish (agar ikkalasi ulangan va hali berilmagan bo'lsa)
+  const birlashtirilgan = talaba.google_user_id !== null;
+  let bonusBerildi = false;
+  if (birlashtirilgan && !talaba.birlashtirish_bonus_berildi) {
+    const { data: bonusResult } = await supabaseAdmin
+      .rpc('berilish_birlashtirish_bonusi', { p_talaba_id: talaba.id });
+    bonusBerildi = !!bonusResult;
+  }
+
+  // Tasdiq xabari
+  let msg = `✅ <b>Telegram ulandi!</b>\n\n👤 ${talaba.ism} ${talaba.familiya}\n`;
+  if (bonusBerildi) {
+    const { data: bonusCountData } = await supabaseAdmin
+      .from('settings')
+      .select('text_value')
+      .eq('key', 'LINK_BONUS_ATTEMPTS')
+      .maybeSingle();
+    const bonusCount = bonusCountData?.text_value || '3';
+    msg += `\n🎁 <b>Bonus:</b> +${bonusCount} qo'shimcha Moot Court urinishi!\n`;
+  }
+
+  const replyMarkup: any = {};
+
+  // Desktop: "Profilga qaytish" tugmasi (bir martalik kirish havolasi)
+  if (linkRow.platform === 'desktop') {
+    // Bir martalik kirish sessiyasi yaratish
+    const tokenArray = new Uint8Array(16);
+    crypto.getRandomValues(tokenArray);
+    const loginToken = Array.from(tokenArray).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    await supabaseAdmin
+      .from('telegram_login_sessions')
+      .insert({
+        session_token: loginToken,
+        status: 'confirmed',
+        talaba_id: talaba.id,
+        ism: talaba.ism,
+        familiya: talaba.familiya,
+        guruh: '',
+        kurs: '',
+        login_id: talaba.ism + '_' + talaba.familiya,
+        telegram_id: telegramId,
+        telegram_ism: talaba.ism,
+        telegram_familiya: talaba.familiya,
+        telegram_username: telegramUsername,
+        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      });
+
+    const callbackUrl = `${cfg.siteUrl}/telegram-callback?token=${loginToken}`;
+    msg += `\nQuyidagi tugma bilan profilga qaytishingiz mumkin:`;
+    replyMarkup.reply_markup = {
+      inline_keyboard: [[{ text: '🌐 Profilga qaytish', url: callbackUrl }]],
+    };
+  } else {
+    // Mobile: saytga havola yubormaydi
+    msg += `\nBrauzerga qaytib, profil sahifasini yangilang.`;
+  }
+
+  await sendMessage(cfg.token, chatId, msg, replyMarkup);
+}
+
 // ── Login ni yakunlash ──────────────────────────────────────────────────────
 async function continueLogin(
   chatId: number,
@@ -377,6 +533,12 @@ Deno.serve(async (req: Request) => {
           'Bu bot faqat sayt orqali ishlatiladi.\n' +
           'Kirish uchun saytda <b>Telegram orqali kirish</b> tugmasini bosing.'
         );
+        return new Response('ok', { status: 200 });
+      }
+
+      // ── link_ token: Telegramni bog'lash (login emas) ──
+      if (sessionToken.startsWith('link_')) {
+        await handleLinkToken(chatId, telegramId, sessionToken, cfg);
         return new Response('ok', { status: 200 });
       }
 

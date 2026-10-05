@@ -8,6 +8,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useLang } from '@/contexts/LangContext';
 import { supabase } from '@/lib/supabase';
 import FaceCapture from './FaceCapture';
+import { detectPlatform } from '@/lib/platform';
+import { startGoogleLogin } from '@/lib/googleAuth';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -52,6 +54,16 @@ function formatPhone(value: string): string {
 const TelegramIcon = ({ size = 20, color = 'white' }: { size?: number; color?: string }) => (
   <svg viewBox="0 0 24 24" fill={color} width={size} height={size}>
     <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+  </svg>
+);
+
+// Google "G" SVG icon
+const GoogleIcon = ({ size = 20 }: { size?: number }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size}>
+    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
   </svg>
 );
 
@@ -147,9 +159,25 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [ustozFaceMode] = useState<'login'>('login');
 
   const [yuklanyapti, setYuklanyapti] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [platform, setPlatform] = useState<'mobile' | 'desktop' | 'webview'>('desktop');
+  const [showTgFallback, setShowTgFallback] = useState(false);
 
   const { login: authLogin } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (isOpen) setPlatform(detectPlatform());
+  }, [isOpen]);
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    const { error } = await startGoogleLogin();
+    if (error) {
+      toast({ title: 'Google xatosi', description: error, variant: 'destructive' });
+      setGoogleLoading(false);
+    }
+  };
 
   const stopPolling = () => {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
@@ -457,37 +485,87 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
               <div className="space-y-6">
                 {/* Sarlavha */}
                 <div className="text-center space-y-1.5">
-                  <h2 className="text-xl font-black text-gray-900">Telegram orqali tezkor kirish</h2>
-                  <p className="text-sm text-gray-400">Tizimga kirish uchun quyidagi tugmani bosing.</p>
+                  <h2 className="text-xl font-black text-gray-900">Tizimga kirish</h2>
+                  <p className="text-sm text-gray-400">O'quvchi sifatida kiring — Google yoki Telegram orqali.</p>
                 </div>
 
                 {/* Idle holat */}
                 {tgLoginStatus === 'idle' && (
-                  <button
-                    onClick={startTgLogin}
-                    disabled={tgLoginLoading}
-                    className="group relative w-full flex items-center justify-center gap-3 text-white font-bold text-base transition-all active:scale-95 disabled:opacity-60"
-                    style={{
-                      height: 56,
-                      borderRadius: 16,
-                      background: 'linear-gradient(135deg, #229ED9, #24A1DE)',
-                      boxShadow: '0 4px 20px rgba(36,161,222,0.35)',
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.025)';
-                      (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 32px rgba(36,161,222,0.45)';
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
-                      (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(36,161,222,0.35)';
-                    }}
-                  >
-                    {tgLoginLoading ? (
-                      <><Loader2 className="h-5 w-5 animate-spin" />Tayyorlanmoqda...</>
-                    ) : (
-                      <><TelegramIcon size={22} />Telegram orqali kirish</>
+                  <div className="space-y-3">
+                    {/* WEBVIEW: faqat Telegram, Google yashirin */}
+                    {platform === 'webview' && (
+                      <>
+                        <button
+                          onClick={startTgLogin}
+                          disabled={tgLoginLoading}
+                          className="group relative w-full flex items-center justify-center gap-3 text-white font-bold text-base transition-all active:scale-95 disabled:opacity-60"
+                          style={{ height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #229ED9, #24A1DE)', boxShadow: '0 4px 20px rgba(36,161,222,0.35)' }}
+                        >
+                          {tgLoginLoading ? <><Loader2 className="h-5 w-5 animate-spin" />Tayyorlanmoqda...</> : <><TelegramIcon size={22} />Telegram bilan kirish</>}
+                        </button>
+                        <div className="rounded-xl p-3 text-center" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+                          <p className="text-xs text-amber-700">Google uchun Chrome yoki Safari'da oching</p>
+                        </div>
+                      </>
                     )}
-                  </button>
+
+                    {/* DESKTOP: faqat Google, pastda Telegram havolasi */}
+                    {platform === 'desktop' && (
+                      <>
+                        <button
+                          onClick={handleGoogleLogin}
+                          disabled={googleLoading}
+                          className="group relative w-full flex items-center justify-center gap-3 font-bold text-base transition-all active:scale-95 disabled:opacity-60"
+                          style={{ height: 48, borderRadius: 14, background: '#fff', border: '1.5px solid #ddd', color: '#3c4043', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                        >
+                          {googleLoading ? <Loader2 className="h-5 w-5 animate-spin text-gray-600" /> : <GoogleIcon size={20} />}
+                          Google bilan kirish
+                        </button>
+                        {!showTgFallback ? (
+                          <button onClick={() => setShowTgFallback(true)} className="w-full text-xs text-gray-400 hover:text-gray-600 py-1 transition-colors">
+                            Akkauntim Telegram orqali ochilgan
+                          </button>
+                        ) : (
+                          <button
+                            onClick={startTgLogin}
+                            disabled={tgLoginLoading}
+                            className="group relative w-full flex items-center justify-center gap-3 text-white font-bold text-sm transition-all active:scale-95 disabled:opacity-60"
+                            style={{ height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #229ED9, #24A1DE)' }}
+                          >
+                            {tgLoginLoading ? <><Loader2 className="h-4 w-4 animate-spin" />...</> : <><TelegramIcon size={18} />Telegram orqali kirish</>}
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {/* MOBILE: ikkala tugma teng */}
+                    {platform === 'mobile' && (
+                      <>
+                        <button
+                          onClick={startTgLogin}
+                          disabled={tgLoginLoading}
+                          className="group relative w-full flex items-center justify-center gap-3 text-white font-bold text-base transition-all active:scale-95 disabled:opacity-60"
+                          style={{ height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #229ED9, #24A1DE)', boxShadow: '0 4px 20px rgba(36,161,222,0.35)' }}
+                        >
+                          {tgLoginLoading ? <><Loader2 className="h-5 w-5 animate-spin" />Tayyorlanmoqda...</> : <><TelegramIcon size={22} />Telegram bilan kirish</>}
+                        </button>
+                        <div className="flex items-center gap-3 py-1">
+                          <div className="flex-1 h-px bg-gray-200" />
+                          <span className="text-xs text-gray-400 font-medium">yoki</span>
+                          <div className="flex-1 h-px bg-gray-200" />
+                        </div>
+                        <button
+                          onClick={handleGoogleLogin}
+                          disabled={googleLoading}
+                          className="group relative w-full flex items-center justify-center gap-3 font-bold text-base transition-all active:scale-95 disabled:opacity-60"
+                          style={{ height: 48, borderRadius: 14, background: '#fff', border: '1.5px solid #ddd', color: '#3c4043', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                        >
+                          {googleLoading ? <Loader2 className="h-5 w-5 animate-spin text-gray-600" /> : <GoogleIcon size={20} />}
+                          Google bilan kirish
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
 
                 {/* Waiting holat */}

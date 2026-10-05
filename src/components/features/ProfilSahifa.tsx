@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
+import BirlashtirishKartasi from './BirlashtirishKartasi';
+import TasdiqlanganBelgi from './TasdiqlanganBelgi';
 
 const KURSLAR = ['1-kurs', '2-kurs', '3-kurs', '4-kurs', 'Boshqa'];
 const GURUHLAR = ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'p-1', 'p-2', 'p-rus', 'p-3', 'Boshqa'];
@@ -470,6 +472,11 @@ export default function ProfilSahifa() {
           </div>
         </div>
       </div>
+
+      {/* ── BIRLASHTIRISH KARTASI (o'quvchi) ────────────────────── */}
+      {!isUstoz && (
+        <BirlashtirishKartasi />
+      )}
 
       {/* ── KURS/GURUH TAHRIRLASH (o'quvchi, ixtiyoriy) ────────────── */}
       {!isUstoz && (

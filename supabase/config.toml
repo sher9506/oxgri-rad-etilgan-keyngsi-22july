@@ -78,3 +78,9 @@ verify_jwt = false
 
 [functions.case-library-delete]
 verify_jwt = false
+
+[functions.link-telegram-start]
+verify_jwt = false
+
+[functions.upload-avatar]
+verify_jwt = false

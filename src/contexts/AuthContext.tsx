@@ -5,12 +5,18 @@ export interface User {
   familiya: string;
   rol: 'oquvchi' | 'ustoz';
   guruh?: string;
-  kurs?: string; // O'quvchi uchun kurs: 1-kurs, 2-kurs, 3-kurs, 4-kurs
+  kurs?: string;
   login?: string;
-  ustoz_id?: string; // Tasdiqlangan ustoz uchun ID
-  faceIdTasdiqlangan?: boolean; // Face ID orqali ro'yxatdan o'tgan
-  blog_huquqi?: boolean; // Blog huquqi bilan tasdiqlangan
-  ustoz_huquqi?: boolean; // Ustoz huquqi bilan tasdiqlangan
+  ustoz_id?: string;
+  faceIdTasdiqlangan?: boolean;
+  blog_huquqi?: boolean;
+  ustoz_huquqi?: boolean;
+  talaba_id?: string;
+  google_linked?: boolean;
+  telegram_linked?: boolean;
+  tasdiqlangan?: boolean;
+  avatar_url?: string | null;
+  bonus_urinish?: number;
 }
 
 interface AuthContextType {
