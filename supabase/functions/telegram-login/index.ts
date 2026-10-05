@@ -476,6 +476,22 @@ async function handleCallback(callbackQuery: any, cfg: BotConfig): Promise<void>
 
     if (notMember.length === 0) {
       await answerCb('✅ Tasdiqlandi!');
+
+      if (session?.state === 'simple_waiting_channel') {
+        await deleteSession(chatId);
+        await sendMessage(cfg.token, chatId,
+          `✅ <b>Kanal a'zoligi tasdiqlandi!</b>\n\nProfilingizni ochish uchun tugmani bosing:`,
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
+              ]],
+            },
+          }
+        );
+        return;
+      }
+
       if (session?.state === 'login_waiting_channel' && session?.login_id) {
         await supabaseAdmin
           .from('bot_sessions')
@@ -853,15 +869,20 @@ Deno.serve(async (req: Request) => {
       const sessionToken = parts[1] || '';
 
       if (!sessionToken) {
-        // Oddiy START (payload'siz) — Mini App tugmasi
+        await deleteSession(chatId);
+        await updateSession(chatId, {
+          telegram_id: telegramId,
+          state: 'simple_waiting_phone',
+          device: 'mobile',
+        });
         await sendMessage(cfg.token, chatId,
           '👋 <b>FanFaster Kirish Boti</b>\n\n' +
-          'Profilga kirish uchun quyidagi tugmani bosing:',
+          'Avval telefon raqamingizni yuboring:',
           {
             reply_markup: {
-              inline_keyboard: [[
-                { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
-              ]],
+              keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
             },
           }
         );
@@ -971,6 +992,105 @@ Deno.serve(async (req: Request) => {
     // Session yuklash
     const session = await getSession(chatId);
     const state: string = session?.state || '';
+
+    // ── ODDIY /start UCHUN TELEFON QABUL QILISH ───────────────────────────────
+    if (state === 'simple_waiting_phone') {
+      if (!contact?.phone_number) {
+        await sendMessage(cfg.token, chatId,
+          '📱 Iltimos, pastdagi tugmani bosib o\'z telefon raqamingizni yuboring.',
+          {
+            reply_markup: {
+              keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
+            },
+          }
+        );
+        return new Response('ok', { status: 200 });
+      }
+
+      if (contact.user_id && contact.user_id !== telegramId) {
+        await sendMessage(cfg.token, chatId,
+          '❌ <b>Faqat o\'z telefon raqamingizni yuboring.</b>',
+          {
+            reply_markup: {
+              keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
+            },
+          }
+        );
+        return new Response('ok', { status: 200 });
+      }
+
+      const phone = contact.phone_number.replace(/\D/g, '');
+      const phoneVariants = [phone, `+${phone}`];
+      const [{ data: byLogin }, { data: byPhone }] = await Promise.all([
+        supabaseAdmin
+          .from('talabalar')
+          .select('id, ism, familiya, guruh, kurs, login_id, telegram_chat_id')
+          .in('login_id', phoneVariants)
+          .is('merged_into', null)
+          .maybeSingle(),
+        supabaseAdmin
+          .from('talabalar')
+          .select('id, ism, familiya, guruh, kurs, login_id, telegram_chat_id')
+          .in('phone', phoneVariants)
+          .is('merged_into', null)
+          .maybeSingle(),
+      ]);
+      const talaba = byLogin || byPhone;
+
+      if (!talaba) {
+        await sendMessage(cfg.token, chatId,
+          '❌ <b>Bu telefon raqami bo\'yicha profil topilmadi.</b>\n\n' +
+          'Avval ro\'yxatdan o\'ting yoki admin bilan bog\'laning.'
+        );
+        await deleteSession(chatId);
+        return new Response('ok', { status: 200 });
+      }
+
+      await supabaseAdmin
+        .from('talabalar')
+        .update({ telegram_chat_id: String(chatId), phone: contact.phone_number })
+        .eq('id', talaba.id);
+
+      await sendMessage(cfg.token, chatId, '✅ <b>Telefon raqam qabul qilindi.</b>', {
+        reply_markup: { remove_keyboard: true },
+      });
+
+      if (cfg.channels.length > 0) {
+        const notMember = await checkAllChannels(cfg.token, telegramId, cfg.channels);
+        if (notMember.length > 0) {
+          await updateSession(chatId, {
+            telegram_id: telegramId,
+            state: 'simple_waiting_channel',
+            talaba_id: talaba.id,
+            phone: contact.phone_number,
+          });
+          await sendMessage(cfg.token, chatId,
+            `⛔ <b>Avval quyidagi kanallarga a'zo bo'ling:</b>\n\n` +
+            notMember.map((ch) => `👉 <b>${ch}</b>`).join('\n') +
+            `\n\nA'zo bo'lgach, <b>✅ A'zolikni tekshirish</b> tugmasini bosing.`,
+            { reply_markup: { inline_keyboard: buildChannelButtons(notMember) } }
+          );
+          return new Response('ok', { status: 200 });
+        }
+      }
+
+      await deleteSession(chatId);
+      await sendMessage(cfg.token, chatId,
+        `✅ <b>Tasdiqlandi!</b>\n\n👤 ${talaba.ism} ${talaba.familiya}\n\nProfilingizni ochish uchun tugmani bosing:`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
+            ]],
+          },
+        }
+      );
+      return new Response('ok', { status: 200 });
+    }
 
     // ── TELEFON QABUL QILISH ───────────────────────────────────────────────
     if (state === 'login_waiting_phone' && contact?.phone_number) {
