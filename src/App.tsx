@@ -57,7 +57,16 @@ declare global {
   interface Window {
     Telegram?: {
       WebApp?: {
+        initData?: string;
+        initDataUnsafe?: any;
+        platform?: string;
+        ready?: () => void;
+        expand?: () => void;
+        openLink?: (url: string) => void;
         openTelegramLink?: (url: string) => void;
+        close?: () => void;
+        onEvent?: (event: string, cb: () => void) => void;
+        offEvent?: (event: string, cb: () => void) => void;
       };
     };
   }

@@ -218,11 +218,11 @@ async function handleCallbackQuery(callbackQuery: any, cfg: BotConfig): Promise<
     if (notMember.length === 0) {
       await answerCb('✅ Tasdiqlandi!');
 
-      // Qaytib kelgan tasdiqlangan foydalanuvchi — Mini App tugmasi
-      if (session?.state === 'waiting_channel_returning') {
+      // Qaytib kelgan tasdiqlangan foydalanuvchi (returning_waiting_channel) — Mini App tugmasi
+      if (session?.state === 'returning_waiting_channel' || session?.state === 'waiting_channel_returning') {
         await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
         await sendMessage(cfg.token, chatId,
-          `✅ <b>Rahmat!</b> Endi mini app'ni ochishingiz mumkin:`,
+          `✅ <b>Rahmat!</b> Profilga avtomatik kirishingiz mumkin:`,
           {
             reply_markup: {
               inline_keyboard: [[
@@ -326,32 +326,25 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (mavjudTalaba) {
-        // 2. Tasdiqlangan foydalanuvchi — kanal a'zoligini tekshirish
-        if (cfg.channels.length > 0) {
-          const notMember = await checkAllChannels(cfg.token, telegramId, cfg.channels);
-          if (notMember.length > 0) {
-            await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
-            await updateSession(chatId, { telegram_id: telegramId, state: 'waiting_channel_returning' });
-            await sendMessage(cfg.token, chatId,
-              `⛔ <b>Kirish uchun quyidagi kanallarga a'zo bo'ling:</b>\n\n` +
-              notMember.map((c) => `👉 <b>${c}</b>`).join('\n') +
-              `\n\nA'zo bo'lgach, <b>✅ Tekshirish</b> tugmasini bosing.`,
-              { reply_markup: { inline_keyboard: buildChannelButtons(notMember) } }
-            );
-            return new Response('ok', { status: 200 });
-          }
-        }
-        // 3. Kanal a'zo — Mini App tugmasi
+        // Mavjud foydalanuvchi — telefon raqamini so'raymiz
+        await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
+        await updateSession(chatId, {
+          telegram_id: telegramId,
+          state: 'returning_waiting_phone',
+          ism: mavjudTalaba.ism,
+          familiya: mavjudTalaba.familiya,
+          talaba_id: mavjudTalaba.id,
+        });
         await sendMessage(cfg.token, chatId,
           `👋 <b>FanFaster'ga xush kelibsiz!</b>\n\n` +
           `👤 ${mavjudTalaba.ism} ${mavjudTalaba.familiya}\n\n` +
-          `Quyidagi tugmani bosing — profilga avtomatik kiriladi:`,
+          `Profilga kirish uchun telefon raqamingizni yuboring:`,
           {
             reply_markup: {
-              inline_keyboard: [[
-                { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
-              ]],
-            },
+              keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
+            }
           }
         );
         return new Response('ok', { status: 200 });
@@ -614,6 +607,58 @@ Deno.serve(async (req: Request) => {
       } else {
         await sendWelcome(chatId, cfg);
       }
+      return new Response('ok', { status: 200 });
+    }
+
+    // RETURNING_WAITING_PHONE — mavjud foydalanuvchi telefon qayta so'ralmoqda
+    if (state === 'returning_waiting_phone') {
+      if (contact?.phone_number) {
+        const phone = contact.phone_number;
+        await sendMessage(cfg.token, chatId, '✅ <b>Telefon qabul qilindi!</b>', {
+          reply_markup: { remove_keyboard: true }
+        });
+
+        // Kanal a'zoligini tekshirish
+        if (cfg.channels.length > 0) {
+          const notMember = await checkAllChannels(cfg.token, telegramId, cfg.channels);
+          if (notMember.length > 0) {
+            await updateSession(chatId, { phone, state: 'returning_waiting_channel' });
+            await sendChannelCheck(chatId, notMember, cfg);
+            return new Response('ok', { status: 200 });
+          }
+        }
+
+        // Kanal a'zo — Mini App tugmasi
+        await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
+        await sendMessage(cfg.token, chatId,
+          `✅ <b>Rahmat!</b> Profilga avtomatik kirishingiz mumkin:`,
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
+              ]],
+            },
+          }
+        );
+        return new Response('ok', { status: 200 });
+      } else {
+        await sendMessage(cfg.token, chatId,
+          `📱 Iltimos, pastdagi tugmani bosib telefon raqamingizni yuboring.`,
+          {
+            reply_markup: {
+              keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
+            }
+          }
+        );
+        return new Response('ok', { status: 200 });
+      }
+    }
+
+    // RETURNING_WAITING_CHANNEL — mavjud foydalanuvchi kanal kutmoqda
+    if (state === 'returning_waiting_channel') {
+      await sendMessage(cfg.token, chatId, cfg.msgs.channelWait);
       return new Response('ok', { status: 200 });
     }
 
