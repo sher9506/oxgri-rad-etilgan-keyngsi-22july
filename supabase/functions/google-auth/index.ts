@@ -198,9 +198,12 @@ Deno.serve(async (req: Request) => {
         }
 
         if (!talaba) {
-          console.error('[google-auth] talaba yaratilmadi:', createError?.message || 'noma\'lum xato');
+          const code = (createError as any)?.code || 'noma_lum';
+          const details = (createError as any)?.details || '';
+          const hint = (createError as any)?.hint || '';
+          console.error('[google-auth] talaba yaratilmadi:', JSON.stringify({ message: createError?.message, code, details, hint }));
           return new Response(
-            JSON.stringify({ error: 'Talaba profili yaratilmadi' }),
+            JSON.stringify({ error: 'Talaba profili yaratilmadi', db_error: createError?.message || '', code, details, hint }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
