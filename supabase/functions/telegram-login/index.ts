@@ -1,4 +1,4 @@
-// Telegram Login Bot webhook v2026-10-06d — hash tokens + raw fallback + inline URL + used_at + in-bot merge
+// Telegram Login Bot webhook v2026-10-06e — fix confirmLoginSession 0-row false positive + merged_into filter
 // verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -143,11 +143,12 @@ async function findOrCreateTalaba(
   familiya: string,
   chatId: number
 ): Promise<{ id: string; ism: string; familiya: string; guruh: string; kurs: string; login_id: string } | null> {
-  // 1. Telegram ID bo'yicha topish
+  // 1. Telegram ID bo'yicha topish (birlashtirilgan emas)
   const { data: byTg } = await supabaseAdmin
     .from('talabalar')
     .select('id, ism, familiya, guruh, kurs, login_id')
     .eq('telegram_chat_id', chatId)
+    .is('merged_into', null)
     .maybeSingle();
   if (byTg) return byTg;
 
@@ -216,50 +217,47 @@ async function confirmLoginSession(
   const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionToken));
   const tokenHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-  const { error } = await supabaseAdmin
+  const updateFields = {
+    status: 'confirmed',
+    telegram_id: telegramId,
+    telegram_ism: talaba.ism,
+    telegram_familiya: talaba.familiya,
+    telegram_username: telegramUsername,
+    talaba_id: talaba.id,
+    login_id: talaba.login_id,
+    ism: talaba.ism,
+    familiya: talaba.familiya,
+    guruh: talaba.guruh || '',
+    kurs: talaba.kurs || '',
+  };
+
+  // Hash bo'yicha — .select() bilan, 0 qator bo'lsa data=null
+  const { data: hashedData, error: hashErr } = await supabaseAdmin
     .from('telegram_login_sessions')
-    .update({
-      status: 'confirmed',
-      telegram_id: telegramId,
-      telegram_ism: talaba.ism,
-      telegram_familiya: talaba.familiya,
-      telegram_username: telegramUsername,
-      talaba_id: talaba.id,
-      login_id: talaba.login_id,
-      ism: talaba.ism,
-      familiya: talaba.familiya,
-      guruh: talaba.guruh || '',
-      kurs: talaba.kurs || '',
-    })
+    .update(updateFields)
     .eq('session_token', tokenHash)
     .eq('status', 'pending')
     .gte('expires_at', new Date().toISOString())
-    .is('used_at', null);
+    .is('used_at', null)
+    .select('id')
+    .maybeSingle();
 
-  if (!error) return true;
+  if (hashErr) console.error('[confirmLoginSession] hash update error:', hashErr.message);
+  if (hashedData) return true;
 
-  // Eski raw tokenlar uchun fallback
-  const { error: rawError } = await supabaseAdmin
+  // Raw token fallback — frontend xom token saqlaydi
+  const { data: rawData, error: rawErr } = await supabaseAdmin
     .from('telegram_login_sessions')
-    .update({
-      status: 'confirmed',
-      telegram_id: telegramId,
-      telegram_ism: talaba.ism,
-      telegram_familiya: talaba.familiya,
-      telegram_username: telegramUsername,
-      talaba_id: talaba.id,
-      login_id: talaba.login_id,
-      ism: talaba.ism,
-      familiya: talaba.familiya,
-      guruh: talaba.guruh || '',
-      kurs: talaba.kurs || '',
-    })
+    .update(updateFields)
     .eq('session_token', sessionToken)
     .eq('status', 'pending')
     .gte('expires_at', new Date().toISOString())
-    .is('used_at', null);
+    .is('used_at', null)
+    .select('id')
+    .maybeSingle();
 
-  return !rawError;
+  if (rawErr) console.error('[confirmLoginSession] raw update error:', rawErr.message);
+  return !!rawData;
 }
 
 // ── Birlashtirish callback handler ──────────────────────────────────────────

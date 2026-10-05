@@ -226,7 +226,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       pollingRef.current = setInterval(async () => {
         const { data } = await supabase
           .from('telegram_login_sessions')
-          .select('status, ism, familiya, guruh, kurs, login_id')
+          .select('status, ism, familiya, guruh, kurs, login_id, talaba_id')
           .eq('session_token', token)
           .maybeSingle();
         // confirmed yoki used — ikkalasida ham kirish mumkin
@@ -242,6 +242,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
               guruh: data.guruh || '',
               kurs: data.kurs || '',
               login: data.login_id || '',
+              talaba_id: data.talaba_id || undefined,
             });
             toast({ title: '✅ Muvaffaqiyatli kirdiniz!', description: `${data.ism} ${data.familiya}` });
             setTimeout(() => onClose(), 1200);
