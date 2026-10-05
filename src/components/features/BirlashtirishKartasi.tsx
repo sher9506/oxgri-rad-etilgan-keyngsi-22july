@@ -23,6 +23,7 @@ export default function BirlashtirishKartasi() {
   // Telegram ulash
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const linkTokenRef = useRef<string | null>(null);
   const [linkPolling, setLinkPolling] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -109,7 +110,9 @@ export default function BirlashtirishKartasi() {
         return;
       }
       if (data?.deepLink) {
-        setLinkToken(data.token);
+        const token = data.token as string;
+        setLinkToken(token);
+        linkTokenRef.current = token;
         window.open(data.deepLink, '_blank');
         // Polling — token ishlatilganmi
         setLinkPolling(true);
@@ -142,11 +145,12 @@ export default function BirlashtirishKartasi() {
           }
 
           // Mojaro tekshirish — token qatoridan conflict_talaba_id ni tekshiramiz
-          if (linkToken) {
+          const currentToken = linkTokenRef.current;
+          if (currentToken) {
             const { data: tokenRow } = await supabase
               .from('telegram_link_tokens')
               .select('conflict_talaba_id')
-              .eq('token', linkToken)
+              .eq('token', currentToken)
               .maybeSingle();
 
             if (tokenRow?.conflict_talaba_id) {
@@ -183,6 +187,11 @@ export default function BirlashtirishKartasi() {
     if (!mergeConflict || !talabaId) return;
     setMergeLoading(true);
     try {
+      const currentToken = linkTokenRef.current;
+      if (!currentToken) {
+        toast({ title: 'Xato', description: 'Ulash tokeni topilmadi. Qaytadan urinib ko\'ring.', variant: 'destructive' });
+        return;
+      }
       const res = await fetch(`${supabaseUrl}/functions/v1/talaba-birlashtirish`, {
         method: 'POST',
         headers: {
@@ -190,8 +199,7 @@ export default function BirlashtirishKartasi() {
           'Authorization': `Bearer ${supabaseAnonKey}`,
         },
         body: JSON.stringify({
-          asosiy_id: talabaId,
-          birlashgan_id: mergeConflict.conflictTalabaId,
+          link_token: currentToken,
           sabab: 'telegram_link',
         }),
       });

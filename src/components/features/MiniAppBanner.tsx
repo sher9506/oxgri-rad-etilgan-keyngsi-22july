@@ -134,35 +134,43 @@ export function useMiniAppAutoLogin(login: (user: any) => void) {
   useEffect(() => {
     if (didRunRef.current) return;
 
-    let initData = '';
-    try {
-      // WebApp.ready() chaqiramiz — Telegram skripti initData ni to'ldiradi
-      window.Telegram?.WebApp?.ready?.();
-      initData = window.Telegram?.WebApp?.initData || '';
-    } catch {
-      // ignore
+    const tryGetInitData = (): string => {
+      try {
+        window.Telegram?.WebApp?.ready?.();
+        return window.Telegram?.WebApp?.initData || '';
+      } catch {
+        return '';
+      }
+    };
+
+    let initData = tryGetInitData();
+    if (initData) {
+      didRunRef.current = true;
+      performAutoLogin(initData, loginRef);
+      return;
     }
 
-    // initData hali bo'sh bo'lsa — skript kech yuklangan bo'lishi mumkin
-    // 500ms dan keyin qayta tekshiramiz
-    if (!initData) {
-      const retryTimer = setTimeout(() => {
-        try {
-          window.Telegram?.WebApp?.ready?.();
-          const retryInitData = window.Telegram?.WebApp?.initData || '';
-          if (retryInitData && !didRunRef.current) {
-            didRunRef.current = true;
-            performAutoLogin(retryInitData, loginRef);
-          }
-        } catch {
-          // ignore
+    // initData hali bo'sh — skript kech yuklangan bo'lishi mumkin
+    // 3 bosqichli retry: 500ms, 1.5s, 3s
+    const delays = [500, 1500, 3000];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    delays.forEach((delay, i) => {
+      const t = setTimeout(() => {
+        if (didRunRef.current) return;
+        const retryData = tryGetInitData();
+        if (retryData) {
+          didRunRef.current = true;
+          performAutoLogin(retryData, loginRef);
+        } else if (i === delays.length - 1) {
+          // Oxirgi urinish ham bo'sh — mini app emas yoki script yuklanmadi
+          console.warn('[miniapp-autologin] initData topilmadi (3 urinishdan keyin)');
         }
-      }, 500);
-      return () => clearTimeout(retryTimer);
-    }
+      }, delay);
+      timers.push(t);
+    });
 
-    didRunRef.current = true;
-    performAutoLogin(initData, loginRef);
+    return () => timers.forEach(t => clearTimeout(t));
   }, []);
 }
 
@@ -175,6 +183,7 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
   }
 
   let errCode = '';
+  let errMsg = '';
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/telegram-miniapp-auth`, {
       method: 'POST',
@@ -207,21 +216,27 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
         return;
       }
 
-      // not_found — talaba topilmadi
       if (data?.status === 'not_found') {
         errCode = 'not_registered';
+        errMsg = data?.message || 'Talaba topilmadi. Saytda ro\'yxatdan o\'ting.';
       }
     } else if (res.status === 401) {
       errCode = 'bad_signature';
+      errMsg = 'Telegram imzo noto\'g\'ri. Iltimos saytdan kiring.';
     } else {
       errCode = 'server_' + res.status;
+      errMsg = 'Server xatosi (' + res.status + ')';
     }
   } catch {
     errCode = 'network';
+    errMsg = 'Tarmoq xatosi';
   }
 
-  // Diagnostika matni — initData chiqmaydi
   if (errCode) {
     console.warn('[miniapp-autologin] muvaffaqiyatsiz:', errCode);
+    // Foydalanuvchiga ko'rinadigan xabar
+    window.dispatchEvent(new CustomEvent('miniapp-autologin-failed', {
+      detail: { code: errCode, message: errMsg }
+    }));
   }
 }

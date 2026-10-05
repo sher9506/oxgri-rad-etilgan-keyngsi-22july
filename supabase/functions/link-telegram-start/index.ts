@@ -1,4 +1,4 @@
-// link-telegram-start v2.2 — token + token_hash saqlaydi
+// link-telegram-start v2026-10-06 — token + token_hash saqlaydi
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 

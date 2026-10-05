@@ -1,4 +1,5 @@
-// talaba-birlashtirish v2.2 — akkaunt birlashtirish edge function
+// talaba-birlashtirish v2026-10-06b — link_token asosida xavfsiz birlashtirish
+// ID juftligini kliyentdan OLMAYDI — token qatoridan server tomonidan o'qiydi.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -8,8 +9,7 @@ const supabaseAdmin = createClient(
 );
 
 interface MergeRequest {
-  asosiy_id?: string;
-  birlashgan_id?: string;
+  link_token?: string;
   sabab?: string;
 }
 
@@ -20,18 +20,56 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body: MergeRequest = await req.json();
-    const { asosiy_id, birlashgan_id, sabab } = body;
+    const { link_token, sabab } = body;
 
-    if (!asosiy_id || !birlashgan_id) {
+    if (!link_token) {
       return new Response(
-        JSON.stringify({ error: 'Ikkala talaba ID kerak' }),
+        JSON.stringify({ error: 'link_token kerak' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // Token hash hisoblash
+    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(link_token));
+    const tokenHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Token qatoridan ID larni o'qish — server tomonidan, kliyent ishonchsiz
+    let { data: tokenRow } = await supabaseAdmin
+      .from('telegram_link_tokens')
+      .select('talaba_id, conflict_talaba_id, used_at, expires_at')
+      .eq('token_hash', tokenHash)
+      .maybeSingle();
+
+    // Eski tokenlar (raw token ustunida)
+    if (!tokenRow) {
+      const { data: legacyRow } = await supabaseAdmin
+        .from('telegram_link_tokens')
+        .select('talaba_id, conflict_talaba_id, used_at, expires_at')
+        .eq('token', link_token)
+        .maybeSingle();
+      tokenRow = legacyRow;
+    }
+
+    if (!tokenRow) {
+      return new Response(
+        JSON.stringify({ error: 'Token topilmadi' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!tokenRow.conflict_talaba_id) {
+      return new Response(
+        JSON.stringify({ error: 'Mojaro topilmadi — birlashtirish kerak emas' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const asosiy_id = tokenRow.talaba_id;
+    const birlashgan_id = tokenRow.conflict_talaba_id;
+
     if (asosiy_id === birlashgan_id) {
       return new Response(
-        JSON.stringify({ error: 'Bir xil ID birlashtirib boilmaydi' }),
+        JSON.stringify({ error: 'Bir xil ID birlashtirib bo\'lmaydi' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -49,8 +87,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Agar frontend noto'g'ri tartibda yuborsa, serverda to'g'rilaymiz:
-    // asosiy = eskisi (created_at bo'yicha, teng bo'lsa total_xp ko'prog'i)
+    // Serverda to'g'rilaymiz: asosiy = eskisi (created_at bo'yicha, teng bo'lsa total_xp ko'prog'i)
     let actualAsosiy = talabalar[0];
     let actualBirlashgan = talabalar[1];
 
@@ -65,7 +102,6 @@ Deno.serve(async (req: Request) => {
         actualAsosiy = t1;
         actualBirlashgan = t0;
       } else {
-        // Teng — total_xp ko'prog'i asosiy
         if ((t1.total_xp || 0) > (t0.total_xp || 0)) {
           actualAsosiy = t1;
           actualBirlashgan = t0;
@@ -92,7 +128,7 @@ Deno.serve(async (req: Request) => {
       .rpc('birlashtirish_talabalari', {
         p_asosiy_id: actualAsosiy.id,
         p_birlashgan_id: actualBirlashgan.id,
-        p_sabab: sabab || 'manual',
+        p_sabab: sabab || 'telegram_link',
       });
 
     if (mergeErr) {
@@ -102,6 +138,13 @@ Deno.serve(async (req: Request) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Tokenni yopish — birlashtirilgan deb belgilash
+    await supabaseAdmin
+      .from('telegram_link_tokens')
+      .update({ used_at: new Date().toISOString() })
+      .eq('token_hash', tokenHash)
+      .is('used_at', null);
 
     // Asosiy qatorning yangilangan holatini qaytarish
     const { data: merged } = await supabaseAdmin

@@ -1,4 +1,5 @@
-// Telegram Login Bot webhook v2.2 — hash tokens + inline URL + used_at
+// Telegram Login Bot webhook v2026-10-06 — hash tokens + inline URL + used_at
+// verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -219,7 +220,6 @@ async function confirmLoginSession(
     .from('telegram_login_sessions')
     .update({
       status: 'confirmed',
-      used_at: new Date().toISOString(),
       telegram_id: telegramId,
       telegram_ism: talaba.ism,
       telegram_familiya: talaba.familiya,
