@@ -398,8 +398,9 @@ export default function ProfilSahifa() {
               {isUstoz && (
                 <p className="text-[11px] text-gray-500 mb-1">Har qanday rasm formati · 10MB gacha</p>
               )}
-              <h1 className="text-lg font-black text-gray-900 leading-tight">
+              <h1 className="text-lg font-black text-gray-900 leading-tight flex items-center gap-1.5">
                 {user.familiya} {user.ism}
+                {!isUstoz && user.tasdiqlangan && <TasdiqlanganBelgi size={16} />}
               </h1>
               <div className="flex flex-wrap gap-1.5 mt-1">
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${isUstoz ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>

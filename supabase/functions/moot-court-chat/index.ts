@@ -148,6 +148,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Retry enforcement ──
+    let bonusUsed = false;
     if (!isGuest && !isIntro && caseData.allow_retry === false && studentName) {
       const { data: existingSessions } = await supabaseAdmin
         .from('moot_court_sessions')
@@ -157,10 +158,32 @@ Deno.serve(async (req: Request) => {
         .eq('status', 'yakunlangan')
         .limit(1);
       if (existingSessions && existingSessions.length > 0) {
-        return new Response(
-          JSON.stringify({ error: 'Siz bu kazusni allaqachon yechgansiz. Qayta yechish ruxsat berilmagan.', alreadyCompleted: true }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        // Bonus urinishni tekshirish
+        const { data: talaba } = await supabaseAdmin
+          .from('talabalar')
+          .select('id, bonus_urinish')
+          .eq('ism', studentName.split(' ')[0] || '')
+          .eq('familiya', studentName.split(' ').slice(1).join(' ') || '')
+          .maybeSingle();
+
+        if (talaba && talaba.bonus_urinish > 0) {
+          // Bonus urinishni atomik ravishda kamaytirish
+          const { data: used } = await supabaseAdmin
+            .rpc('ishlash_bonus_urinish', { p_talaba_id: talaba.id });
+          if (!used) {
+            return new Response(
+              JSON.stringify({ error: 'Siz bu kazusni allaqachon yechgansiz. Qayta yechish ruxsat berilmagan.', alreadyCompleted: true }),
+              { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          // Bonus ishlatildi — davom etishga ruxsat
+          bonusUsed = true;
+        } else {
+          return new Response(
+            JSON.stringify({ error: 'Siz bu kazusni allaqachon yechgansiz. Qayta yechish ruxsat berilmagan.', alreadyCompleted: true }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 
@@ -321,7 +344,7 @@ Bu suhbatning oxirgi almashinuvi. Talaba ${maxExchanges} ta argument yubordi. En
     }
 
     return new Response(
-      JSON.stringify({ reply: aiReply, aiRol, sessionEnded: isFinalExchange, isGuest, hasDisagreement }),
+      JSON.stringify({ reply: aiReply, aiRol, sessionEnded: isFinalExchange, isGuest, hasDisagreement, bonusUsed }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

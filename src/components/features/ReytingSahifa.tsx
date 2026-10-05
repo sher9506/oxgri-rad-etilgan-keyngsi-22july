@@ -3,6 +3,7 @@ import { Trophy, Medal, TrendingUp, Lock, LogIn, Clock, FileText, Users, BarChar
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import TasdiqlanganBelgi from './TasdiqlanganBelgi';
 
 interface ReytigSatri {
   oquvchi_ismi: string;
@@ -26,6 +27,7 @@ export default function ReytingSahifa() {
   const [umumiyReyting, setUmumiyReyting] = useState<ReytigSatri[]>([]);
   const [testReyting, setTestReyting] = useState<TestReyting[]>([]);
   const [aktifTab, setAktifTab] = useState<'umumiy' | 'testlar'>('umumiy');
+  const [talabaMap, setTalabaMap] = useState<Record<string, { tasdiqlangan: boolean; avatar_url: string | null }>>({});
 
   useEffect(() => {
     if (isAuthenticated) yuklash();
@@ -34,6 +36,17 @@ export default function ReytingSahifa() {
   const yuklash = async () => {
     setYuklanyapti(true);
     try {
+      // Talabalar ommaviy ma'lumotlari (tasdiqlangan, avatar_url)
+      const { data: talabalar } = await supabase
+        .from('talabalar_ommaviy')
+        .select('ism, familiya, avatar_url, tasdiqlangan');
+      const tMap: Record<string, { tasdiqlangan: boolean; avatar_url: string | null }> = {};
+      (talabalar || []).forEach((t: any) => {
+        const key = `${t.ism} ${t.familiya}`;
+        tMap[key] = { tasdiqlangan: !!t.tasdiqlangan, avatar_url: t.avatar_url };
+      });
+      setTalabaMap(tMap);
+
       // Umumiy reyting — test_javoblar jadvalidan
       const { data: javoblar } = await supabase
         .from('test_javoblar')
@@ -183,7 +196,21 @@ export default function ReytingSahifa() {
                       {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                     </div>
                     <div>
-                      <p className={`text-sm font-bold truncate ${mening ? 'text-blue-700' : 'text-slate-800'}`}>{satir.oquvchi_ismi}</p>
+                      <div className="flex items-center gap-1.5">
+                        {talabaMap[satir.oquvchi_ismi]?.avatar_url && (
+                          <img
+                            src={talabaMap[satir.oquvchi_ismi].avatar_url!}
+                            alt=""
+                            className="w-7 h-7 rounded-full object-cover border border-gray-200 shrink-0"
+                          />
+                        )}
+                        <p className={`text-sm font-bold truncate ${mening ? 'text-blue-700' : 'text-slate-800'}`}>
+                          {satir.oquvchi_ismi}
+                          {talabaMap[satir.oquvchi_ismi]?.tasdiqlangan && (
+                            <TasdiqlanganBelgi size={14} className="ml-0.5" />
+                          )}
+                        </p>
+                      </div>
                       {mening && <p className="text-[9px] text-blue-500 font-black uppercase">Siz</p>}
                     </div>
                     <div className="text-center">

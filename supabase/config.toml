@@ -84,3 +84,6 @@ verify_jwt = false
 
 [functions.upload-avatar]
 verify_jwt = false
+
+[functions.google-auth]
+verify_jwt = false
