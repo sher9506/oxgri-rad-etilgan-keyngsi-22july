@@ -378,6 +378,7 @@ function MobileTopBar({
       className="sticky top-0 z-40 lg:hidden"
       style={{
         height: 56,
+        paddingTop: 'env(safe-area-inset-top)',
         background: 'rgba(255,255,255,.85)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',

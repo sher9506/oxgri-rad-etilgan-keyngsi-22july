@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useRef, createContext, useContext, useMemo, lazy, Suspense, useCallback } from 'react';
+import type { CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import TelegramCallback from '@/pages/TelegramCallback';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -267,7 +268,7 @@ function AppContent() {
       
       <AdminContext.Provider value={{ isAdmin, adminView, loginAdmin, logoutAdmin, setAdminView }}>
         {isAdmin || user?.rol === 'ustoz' ? (
-          <div className="flex font-sans" style={{ height: '100dvh', minHeight: '-webkit-fill-available', overflow: 'hidden', background: 'var(--bg)' }}>
+          <div className="flex font-sans ff-full-height" style={{ overflow: 'hidden', background: 'var(--bg)' }}>
             <Sidebar
               activeTab={activeTab}
               onTabChange={handleTabChange}
@@ -304,7 +305,7 @@ function AppContent() {
                   <div className="w-8 h-8" />
                 )}
               </div>
-              <main className="flex-1 overflow-auto">
+              <main className="flex-1 overflow-auto" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as CSSProperties}>
                 <div className="w-full">
                   <AnimatePresence mode="wait">
                     <motion.div
@@ -322,14 +323,14 @@ function AppContent() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col font-sans" style={{ height: '100dvh', minHeight: '-webkit-fill-available', overflow: 'hidden', background: 'var(--bg)' }}>
+          <div className="flex flex-col font-sans ff-full-height" style={{ overflow: 'hidden', background: 'var(--bg)' }}>
             <TopNav
               activeTab={activeTab}
               onTabChange={handleTabChange}
               onOpenLogin={() => setIsLoginModalOpen(true)}
               onLogout={logout}
             />
-            <main className="flex-1 overflow-auto lg:pb-0" style={{ paddingBottom: 'calc(88px + env(safe-area-inset-bottom))' }}>
+            <main className="flex-1 overflow-auto lg:pb-0" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(64px + 8px + env(safe-area-inset-bottom) + 24px)' } as CSSProperties}>
               <div className="w-full">
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -367,14 +368,14 @@ function RouterRoot() {
       <LangProvider>
         <AuthProvider>
           <NotificationProvider>
-            <div className="flex flex-col font-sans" style={{ height: '100dvh', minHeight: '-webkit-fill-available', overflow: 'hidden', background: 'var(--bg)' }}>
+            <div className="flex flex-col font-sans ff-full-height" style={{ overflow: 'hidden', background: 'var(--bg)' }}>
               <TopNav
                 activeTab="blog"
                 onTabChange={() => {}}
                 onOpenLogin={() => {}}
                 onLogout={() => {}}
               />
-              <main className="flex-1 overflow-auto p-4 md:p-6">
+              <main className="flex-1 overflow-auto p-4 md:p-6" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as CSSProperties}>
                 <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 rounded-full animate-spin" style={{ border: '2px solid var(--cobalt-1)', borderTopColor: 'transparent' }} /></div>}>
                   <BlogPostDetail slug={blogPostMatch[1]} />
                 </Suspense>
