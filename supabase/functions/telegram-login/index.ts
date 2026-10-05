@@ -1,4 +1,4 @@
-// Telegram Login Bot webhook v2026-10-06c — hash tokens + inline URL + used_at + in-bot merge
+// Telegram Login Bot webhook v2026-10-06d — hash tokens + raw fallback + inline URL + used_at + in-bot merge
 // verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -236,7 +236,30 @@ async function confirmLoginSession(
     .gte('expires_at', new Date().toISOString())
     .is('used_at', null);
 
-  return !error;
+  if (!error) return true;
+
+  // Eski raw tokenlar uchun fallback
+  const { error: rawError } = await supabaseAdmin
+    .from('telegram_login_sessions')
+    .update({
+      status: 'confirmed',
+      telegram_id: telegramId,
+      telegram_ism: talaba.ism,
+      telegram_familiya: talaba.familiya,
+      telegram_username: telegramUsername,
+      talaba_id: talaba.id,
+      login_id: talaba.login_id,
+      ism: talaba.ism,
+      familiya: talaba.familiya,
+      guruh: talaba.guruh || '',
+      kurs: talaba.kurs || '',
+    })
+    .eq('session_token', sessionToken)
+    .eq('status', 'pending')
+    .gte('expires_at', new Date().toISOString())
+    .is('used_at', null);
+
+  return !rawError;
 }
 
 // ── Birlashtirish callback handler ──────────────────────────────────────────
@@ -815,7 +838,7 @@ Deno.serve(async (req: Request) => {
       const loginHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionToken));
       const loginTokenHash = Array.from(new Uint8Array(loginHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const { data: loginSession } = await supabaseAdmin
+      let { data: loginSession } = await supabaseAdmin
         .from('telegram_login_sessions')
         .select('*')
         .eq('session_token', loginTokenHash)
@@ -823,6 +846,19 @@ Deno.serve(async (req: Request) => {
         .gte('expires_at', new Date().toISOString())
         .is('used_at', null)
         .maybeSingle();
+
+      // Eski raw tokenlar (frontend xom token saqlaydi) — raw bo'yicha fallback
+      if (!loginSession) {
+        const { data: rawSession } = await supabaseAdmin
+          .from('telegram_login_sessions')
+          .select('*')
+          .eq('session_token', sessionToken)
+          .eq('status', 'pending')
+          .gte('expires_at', new Date().toISOString())
+          .is('used_at', null)
+          .maybeSingle();
+        loginSession = rawSession;
+      }
 
       if (!loginSession) {
         await sendMessage(cfg.token, chatId,
