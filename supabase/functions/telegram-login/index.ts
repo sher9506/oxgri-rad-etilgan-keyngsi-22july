@@ -614,11 +614,13 @@ async function handleLinkToken(
     return;
   }
 
-  // Telegram username olish
+  // Telegram username va ism olish
   let telegramUsername = '';
+  let tgFirstName: string | null = null;
   try {
     const userInfo = await getTelegramUserInfo(cfg.token, chatId);
     if (userInfo?.username) telegramUsername = '@' + userInfo.username;
+    if (userInfo?.first_name) tgFirstName = userInfo.first_name;
   } catch {}
 
   // Talabani topish
@@ -642,7 +644,7 @@ async function handleLinkToken(
       telegram_chat_id: String(chatId),
       phone: talaba.phone || String(telegramId),
       telegram_username: telegramUsername || null,
-      telegram_ism: userInfo?.first_name || null,
+      telegram_ism: tgFirstName || null,
     })
     .eq('id', talaba.id);
 
