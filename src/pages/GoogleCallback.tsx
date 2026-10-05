@@ -154,6 +154,9 @@ export default function GoogleCallback() {
         kurs: '',
         login: ism.trim() + (familiya.trim() ? '_' + familiya.trim() : ''),
         talaba_id: newTalaba?.id,
+        google_linked: true,
+        telegram_linked: false,
+        tasdiqlangan: false,
       });
       redirectToHome();
     } catch (err: any) {

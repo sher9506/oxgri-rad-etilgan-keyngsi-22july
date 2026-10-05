@@ -37,13 +37,25 @@ export default function BirlashtirishKartasi() {
     const loadTalaba = async () => {
       setLoading(true);
       try {
-        // Talabani topish — ism/familiya orqali
-        const { data: talaba } = await supabase
-          .from('talabalar')
-          .select('id, google_user_id, telegram_chat_id, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
-          .eq('ism', user.ism)
-          .eq('familiya', user.familiya)
-          .maybeSingle();
+        // Talabani topish — avval talaba_id bo'yicha, bo'lmasa ism/familiya bo'yicha
+        let talaba = null;
+        if (user.talaba_id) {
+          const { data: byId } = await supabase
+            .from('talabalar')
+            .select('id, google_user_id, telegram_chat_id, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
+            .eq('id', user.talaba_id)
+            .maybeSingle();
+          talaba = byId;
+        }
+        if (!talaba) {
+          const { data: byName } = await supabase
+            .from('talabalar')
+            .select('id, google_user_id, telegram_chat_id, avatar_url, bonus_urinish, birlashtirish_bonus_berildi')
+            .eq('ism', user.ism)
+            .eq('familiya', user.familiya)
+            .maybeSingle();
+          talaba = byName;
+        }
 
         if (talaba) {
           setTalabaId(talaba.id);
