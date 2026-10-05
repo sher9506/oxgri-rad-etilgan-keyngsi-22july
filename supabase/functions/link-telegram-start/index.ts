@@ -9,8 +9,6 @@ const supabaseAdmin = createClient(
 
 interface LinkStartRequest {
   talaba_id?: string;
-  talaba_ism?: string;
-  talaba_familiya?: string;
   platform?: 'mobile' | 'desktop';
 }
 
@@ -21,38 +19,35 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body: LinkStartRequest = await req.json();
-    const { talaba_id, talaba_ism, talaba_familiya, platform } = body;
+    const { talaba_id, platform } = body;
 
-    if (!talaba_id && (!talaba_ism || !talaba_familiya)) {
+    if (!talaba_id) {
       return new Response(
-        JSON.stringify({ error: 'Talaba aniqlanmadi' }),
+        JSON.stringify({ error: 'Talaba ID kerak' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let talabaUuid: string | null = talaba_id || null;
+    const talabaUuid: string = talaba_id;
 
-    if (!talabaUuid && talaba_ism && talaba_familiya) {
-      const { data: talaba } = await supabaseAdmin
-        .from('talabalar')
-        .select('id, google_user_id, telegram_chat_id')
-        .eq('ism', talaba_ism)
-        .eq('familiya', talaba_familiya)
-        .maybeSingle();
+    // Talaba mavjudligi va Telegram holatini tekshirish
+    const { data: talaba } = await supabaseAdmin
+      .from('talabalar')
+      .select('id, telegram_chat_id')
+      .eq('id', talabaUuid)
+      .maybeSingle();
 
-      if (!talaba) {
-        return new Response(
-          JSON.stringify({ error: 'Talaba topilmadi' }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      talabaUuid = talaba.id;
+    if (!talaba) {
+      return new Response(
+        JSON.stringify({ error: 'Talaba topilmadi' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    if (!talabaUuid) {
+    if (talaba.telegram_chat_id) {
       return new Response(
-        JSON.stringify({ error: 'Talaba ID aniqlanmadi' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Telegram allaqachon ulangan' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
