@@ -92,7 +92,7 @@ export default function OquvchilarRoyhat({ ustozId, mode = 'admin' }: Oquvchilar
           .order('familiya', { ascending: true });
 
         const filtred = (tData || []).filter((t: any) => ismlar.has(`${t.ism} ${t.familiya}`));
-        setTalabalar(filtred);
+        setTalabalar(filtred.map((t: any) => ({ ...t, kurs: t.kurs || '—', guruh: t.guruh || '—' })));
       } else {
         // Admin rejimi: barcha talabalar
         const { data, error } = await supabase
@@ -100,7 +100,7 @@ export default function OquvchilarRoyhat({ ustozId, mode = 'admin' }: Oquvchilar
           .select('id, ism, familiya, guruh, kurs, login_id, phone, parol_hash, fraud_flag, telegram_chat_id')
           .order('familiya', { ascending: true });
         if (error) throw error;
-        setTalabalar(data || []);
+        setTalabalar((data || []).map((t: any) => ({ ...t, kurs: t.kurs || '—', guruh: t.guruh || '—' })));
       }
     } catch (e: any) {
       toast({ title: 'Xato', description: 'Talabalar yuklanmadi', variant: 'destructive' });
@@ -265,8 +265,8 @@ export default function OquvchilarRoyhat({ ustozId, mode = 'admin' }: Oquvchilar
                     {talaba.fraud_flag && <span className="bg-orange-500 text-xs px-2 py-0.5 rounded-full font-bold animate-pulse">⚠️ Shubhali</span>}
                   </h2>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-semibold">{talaba.kurs}</span>
-                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-semibold">{talaba.guruh.toUpperCase()}</span>
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-semibold">{talaba.kurs || '—'}</span>
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-semibold">{(talaba.guruh || '—').toUpperCase()}</span>
                     {talaba.phone && <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{talaba.phone}</span>}
                     {talaba.telegram_chat_id && <span className="bg-green-500/50 px-3 py-1 rounded-full text-sm font-semibold">✈️ Telegram</span>}
                   </div>

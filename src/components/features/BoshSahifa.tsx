@@ -78,7 +78,7 @@ export default function BoshSahifa() {
 
       const talabalarMap = new Map<string, { kurs: string; guruh: string }>();
       talabalar.forEach((talaba: any) => {
-        talabalarMap.set(`${talaba.ism} ${talaba.familiya}`, { kurs: talaba.kurs || '?', guruh: talaba.guruh || '?' });
+        talabalarMap.set(`${talaba.ism} ${talaba.familiya}`, { kurs: talaba.kurs || '—', guruh: talaba.guruh || '—' });
       });
 
       if (!javoblar || javoblar.length === 0) { setReyting([]); setJamiTestlar(0); setYuklanyapti(false); return; }
@@ -99,7 +99,7 @@ export default function BoshSahifa() {
         const umumiyBall = data.balllar.reduce((a, b) => a + b, 0);
         const testlarSoni = data.balllar.length;
         const talabaInfo = talabalarMap.get(ismi);
-        return { ism_familiya: ismi, kurs: talabaInfo?.kurs || '?', guruh: talabaInfo?.guruh || '?', umumiyBall, testlarSoni, ortachaBall: Math.round(umumiyBall / testlarSoni) };
+        return { ism_familiya: ismi, kurs: talabaInfo?.kurs || '—', guruh: talabaInfo?.guruh || '—', umumiyBall, testlarSoni, ortachaBall: Math.round(umumiyBall / testlarSoni) };
       });
 
       reytingMassiv.sort((a, b) => b.umumiyBall - a.umumiyBall);
@@ -219,7 +219,7 @@ export default function BoshSahifa() {
                         )}
                       </div>
                       <div className="flex items-center gap-6 text-sm text-gray-600 flex-wrap">
-                        <span>📚 {oquvchi.kurs}-{t('home.course')}</span>
+                        <span>📚 {oquvchi.kurs === '—' ? '—' : `${oquvchi.kurs}-${t('home.course')}`}</span>
                         <span>👥 {oquvchi.guruh} {t('home.group')}</span>
                         <span>📝 {oquvchi.testlarSoni} {t('home.test_count')}</span>
                       </div>

@@ -158,12 +158,54 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Oddiy kirish: google_user_id bo yicha talabani topish ──
-    const { data: talaba } = await supabaseAdmin
+    // ── Oddiy kirish: google_user_id bo'yicha talabani topish ──
+    let { data: talaba } = await supabaseAdmin
       .from('talabalar')
       .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
       .eq('google_user_id', googleUserId)
       .maybeSingle();
+
+    // ── Yangi talaba — Google ma'lumotlari bilan avtomatik yaratish ──
+    if (!talaba) {
+      const googleIsm = userInfo.given_name?.trim() || '';
+      const googleFamiliya = userInfo.family_name?.trim() || '';
+      const nameParts = (userInfo.name || '').trim().split(/\s+/).filter(Boolean);
+      const ism = googleIsm || nameParts[0] || '';
+      const familiya = googleFamiliya || nameParts.slice(1).join(' ');
+
+      if (ism) {
+        const { data: yangiTalaba, error: createError } = await supabaseAdmin
+          .from('talabalar')
+          .insert({
+            ism,
+            familiya: familiya || null,
+            kurs: null,
+            guruh: null,
+            google_user_id: googleUserId,
+          })
+          .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
+          .maybeSingle();
+
+        if (createError) {
+          const { data: existingTalaba } = await supabaseAdmin
+            .from('talabalar')
+            .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
+            .eq('google_user_id', googleUserId)
+            .maybeSingle();
+          talaba = existingTalaba;
+        } else {
+          talaba = yangiTalaba;
+        }
+
+        if (!talaba) {
+          console.error('[google-auth] talaba yaratilmadi:', createError?.message || 'noma\'lum xato');
+          return new Response(
+            JSON.stringify({ error: 'Talaba profili yaratilmadi' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
 
     if (talaba) {
       const tasdiqlangan = !!(talaba.google_user_id && talaba.telegram_chat_id);
@@ -186,26 +228,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Yangi talaba — forma ko rsatish uchun ma lumotlar ──
-    const name = userInfo.name || '';
-    const parts = name.trim().split(/\s+/);
-    let familiya = '';
-    let ism = '';
-    if (parts.length >= 2) {
-      familiya = parts[0];
-      ism = parts.slice(1).join(' ');
-    } else if (parts.length === 1) {
-      ism = parts[0];
-    }
-
+    // Google ism bermagan juda kam holat uchun qisqa forma
     return new Response(
-      JSON.stringify({
-        mode: 'form',
-        googleUserId,
-        googleEmail,
-        suggestedIsm: ism,
-        suggestedFamiliya: familiya,
-      }),
+      JSON.stringify({ mode: 'form', googleUserId, googleEmail, suggestedIsm: '', suggestedFamiliya: '' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

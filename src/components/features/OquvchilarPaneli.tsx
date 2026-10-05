@@ -59,7 +59,7 @@ export default function OquvchilarPaneli() {
         .select('id, ism, familiya, guruh, kurs, login_id, phone, telegram_chat_id, created_at, fraud_flag, face_descriptor')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setTalabalar(data || []);
+      setTalabalar((data || []).map((t: any) => ({ ...t, kurs: t.kurs || '—', guruh: t.guruh || '—' })));
     } catch (e: any) {
       toast({ title: 'Xato', description: e.message, variant: 'destructive' });
     } finally {
@@ -320,7 +320,7 @@ export default function OquvchilarPaneli() {
                   </div>
                   <div>
                     <p className="text-sm text-white font-bold">{tanlanganTalaba.familiya} {tanlanganTalaba.ism}</p>
-                    <p className="text-[10px] text-gray-600">{tanlanganTalaba.kurs} • {tanlanganTalaba.guruh}</p>
+                    <p className="text-[10px] text-gray-600">{tanlanganTalaba.kurs || '—'} • {tanlanganTalaba.guruh || '—'}</p>
                   </div>
                 </div>
                 <button onClick={() => setTanlanganTalaba(null)} className="text-gray-600 hover:text-white">

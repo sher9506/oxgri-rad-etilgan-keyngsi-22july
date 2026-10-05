@@ -58,8 +58,8 @@ export default function TalabalarRoyhat() {
         id: t.id,
         ism: t.ism,
         familiya: t.familiya,
-        guruh: t.guruh,
-        kurs: t.kurs,
+        guruh: t.guruh || '—',
+        kurs: t.kurs || '—',
         fraud_flag: t.fraud_flag || false,
         phone: t.phone || '',
         login_id: t.login_id || '',
@@ -86,8 +86,8 @@ export default function TalabalarRoyhat() {
   // Guruhlar bo'yicha guruhlash
   const guruhlarMap: Record<string, Record<string, Talaba[]>> = {};
   filtredTalabalar.forEach(t => {
-    if (!guruhlarMap[t.kurs]) guruhlarMap[t.kurs] = {};
-    if (!guruhlarMap[t.kurs][t.guruh]) guruhlarMap[t.kurs][t.guruh] = [];
+    if (!guruhlarMap[t.kurs || '—']) guruhlarMap[t.kurs || '—'] = {};
+    if (!guruhlarMap[t.kurs || '—'][t.guruh || '—']) guruhlarMap[t.kurs || '—'][t.guruh || '—'] = [];
     guruhlarMap[t.kurs][t.guruh].push(t);
   });
 

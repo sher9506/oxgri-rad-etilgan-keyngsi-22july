@@ -118,7 +118,7 @@ export default function GoogleCallback() {
 
   // Forma yuborish
   const handleFormSubmit = async () => {
-    if (!ism.trim() || !familiya.trim()) return;
+    if (!ism.trim()) return;
     if (!googleUserId) return;
 
     setFormYuklanyapti(true);
@@ -143,8 +143,8 @@ export default function GoogleCallback() {
         .insert({
           ism: ism.trim(),
           familiya: familiya.trim(),
-          guruh: guruh || '',
-          kurs: kurs || '',
+          guruh: null,
+          kurs: null,
           google_user_id: googleUserId,
         })
         .select('id')
@@ -160,9 +160,9 @@ export default function GoogleCallback() {
         ism: ism.trim(),
         familiya: familiya.trim(),
         rol: 'oquvchi',
-        guruh: guruh || '',
-        kurs: kurs || '',
-        login: ism.trim() + '_' + familiya.trim(),
+        guruh: '',
+        kurs: '',
+        login: ism.trim() + (familiya.trim() ? '_' + familiya.trim() : ''),
       });
 
       setState('success');
@@ -245,34 +245,40 @@ export default function GoogleCallback() {
           {/* Form */}
           {state === 'form' && (
             <div className="space-y-4 text-left">
-              <p className="text-sm text-blue-100/80 text-center">Yangi hisob uchun ism va familiyangizni kiriting.</p>
+              <p className="text-sm text-blue-100/80 text-center">Google profilingizda ism topilmadi. Ismingizni kiriting.</p>
               <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-blue-200/60 mb-1 block">Familiya</label>
-                  <Input value={familiya} onChange={e => setFamiliya(e.target.value)} placeholder="Familiya" className="h-10 text-sm" />
-                </div>
+                {familiya && (
+                  <div>
+                    <label className="text-xs text-blue-200/60 mb-1 block">Familiya</label>
+                    <Input value={familiya} onChange={e => setFamiliya(e.target.value)} placeholder="Familiya" className="h-10 text-sm" />
+                  </div>
+                )}
                 <div>
                   <label className="text-xs text-blue-200/60 mb-1 block">Ism</label>
                   <Input value={ism} onChange={e => setIsm(e.target.value)} placeholder="Ism" className="h-10 text-sm" />
                 </div>
-                <div>
-                  <label className="text-xs text-blue-200/60 mb-1 block">Kurs (ixtiyoriy)</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {KURS_OPTIONS.map(k => (
-                      <button key={k} onClick={() => setKurs(k)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all ${kurs === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-blue-200/70 border-white/10'}`}>{k}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-blue-200/60 mb-1 block">Guruh (ixtiyoriy)</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {GURUH_OPTIONS.map(g => (
-                      <button key={g} onClick={() => setGuruh(g)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all ${guruh === g ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-blue-200/70 border-white/10'}`}>{g}</button>
-                    ))}
-                  </div>
-                </div>
+                {familiya ? (
+                  <>
+                    <div>
+                      <label className="text-xs text-blue-200/60 mb-1 block">Kurs (ixtiyoriy)</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {KURS_OPTIONS.map(k => (
+                          <button key={k} onClick={() => setKurs(k)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all ${kurs === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-blue-200/70 border-white/10'}`}>{k}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-blue-200/60 mb-1 block">Guruh (ixtiyoriy)</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {GURUH_OPTIONS.map(g => (
+                          <button key={g} onClick={() => setGuruh(g)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all ${guruh === g ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/5 text-blue-200/70 border-white/10'}`}>{g}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </div>
-              <Button onClick={handleFormSubmit} disabled={formYuklanyapti || !ism.trim() || !familiya.trim()} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white">
+              <Button onClick={handleFormSubmit} disabled={formYuklanyapti || !ism.trim()} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white">
                 {formYuklanyapti ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Yaratilmoqda...</> : 'Hisob yaratish'}
               </Button>
             </div>
