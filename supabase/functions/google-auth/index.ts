@@ -23,7 +23,18 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { code, linkTalabaId } = body as { code: string; linkTalabaId?: string };
+    const { code, linkTalabaId, redirectUri } = body as {
+      code: string;
+      linkTalabaId?: string;
+      redirectUri?: string;
+    };
+
+    if (!redirectUri || !redirectUri.endsWith('/google-callback')) {
+      return new Response(
+        JSON.stringify({ error: 'Google redirect manzili noto‘g‘ri' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!code) {
       return new Response(
@@ -55,7 +66,6 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Code ni token ga almashtirish ──
-    const redirectUri = `${new URL(req.url).origin}/google-callback`;
     const tokenRes = await fetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

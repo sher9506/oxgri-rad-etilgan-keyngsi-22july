@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { CheckCircle, Loader2, XCircle, ArrowLeft, User } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -41,114 +41,70 @@ export default function GoogleCallback() {
   const GURUH_OPTIONS = ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'p-1', 'p-2', 'p-rus', 'p-3', 'Boshqa'];
 
   const handleGoogleSession = useCallback(async () => {
+    const code = new URLSearchParams(window.location.search).get('code');
+    if (!code) {
+      setState('error');
+      setMessage('Google kodi olinmadi. Qaytadan urinib ko\'ring.');
+      return;
+    }
+
     try {
-      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr || !sessionData?.session) {
-        setState('error');
-        setMessage('Google akkaunt ma\'lumotlari topilmadi. Qaytadan urinib ko\'ring.');
+      const response = await fetch(`${supabaseUrl}/functions/v1/google-auth`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
+          code,
+          linkTalabaId: linkMode ? linkTalabaId : undefined,
+          redirectUri: `${window.location.origin}/google-callback`,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        setState(result.alreadyLinked ? 'exists' : 'error');
+        setMessage(result.error || 'Google bilan kirishda xatolik.');
         return;
       }
 
-      const googleId = sessionData.session.user?.app_metadata?.provider_id
-        || sessionData.session.user?.user_metadata?.provider_id
-        || sessionData.session.user?.id;
-      const email = sessionData.session.user?.email || '';
-
-      if (!googleId) {
-        setState('error');
-        setMessage('Google ID olinmadi.');
-        return;
-      }
-
-      setGoogleUserId(googleId);
-      setGoogleEmail(email);
-
-      // Bog'lash rejimi
-      if (linkMode && linkTalabaId) {
-        // Boshqa talabaga bog'langanmi?
-        const { data: existing } = await supabase
-          .from('talabalar')
-          .select('id')
-          .eq('google_user_id', googleId)
-          .neq('id', linkTalabaId)
-          .maybeSingle();
-
-        if (existing) {
-          setState('exists');
-          setMessage('Bu Google akkaunt boshqa talabaga bog\'langan.');
-          return;
-        }
-
-        // Bog'lash
-        const { error: linkErr } = await supabase
-          .from('talabalar')
-          .update({ google_user_id: googleId })
-          .eq('id', linkTalabaId);
-
-        if (linkErr) {
-          setState('error');
-          setMessage('Bog\'lashda xatolik: ' + linkErr.message);
-          return;
-        }
-
-        // Bonus berish
-        const { data: talaba } = await supabase
-          .from('talabalar')
-          .select('google_user_id, telegram_chat_id')
-          .eq('id', linkTalabaId)
-          .maybeSingle();
-
-        if (talaba?.google_user_id && talaba?.telegram_chat_id) {
-          await supabase.rpc('berilish_birlashtirish_bonusi', { p_talaba_id: linkTalabaId });
-        }
-
+      if (result.mode === 'linked') {
         setState('linked');
         setMessage('Google akkaunt muvaffaqiyatli ulandi!');
         return;
       }
 
-      // Oddiy kirish: google_user_id bo'yicha talabani topish
-      const { data: talaba, error: talabaErr } = await supabase
-        .from('talabalar')
-        .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
-        .eq('google_user_id', googleId)
-        .maybeSingle();
-
-      if (talabaErr) {
-        setState('error');
-        setMessage('Ma\'lumotlar bazasida xatolik.');
-        return;
-      }
-
-      if (talaba) {
-        // Mavjud talaba sifatida kirish
+      if (result.mode === 'login' && result.talaba) {
         login({
-          ism: talaba.ism || 'Foydalanuvchi',
-          familiya: talaba.familiya || '',
+          ism: result.talaba.ism || 'Foydalanuvchi',
+          familiya: result.talaba.familiya || '',
           rol: 'oquvchi',
-          guruh: talaba.guruh || '',
-          kurs: talaba.kurs || '',
-          login: talaba.login_id || talaba.ism || '',
+          guruh: result.talaba.guruh || '',
+          kurs: result.talaba.kurs || '',
+          login: result.talaba.login || result.talaba.ism || '',
+          tasdiqlangan: result.talaba.tasdiqlangan,
+          google_linked: result.talaba.google_linked,
+          telegram_linked: result.talaba.telegram_linked,
+          talaba_id: result.talaba.id,
         });
         setState('success');
         setMessage('Muvaffaqiyatli kirdingiz!');
-        setTimeout(() => {
-          window.location.replace(window.location.origin);
-        }, 2000);
+        setTimeout(() => window.location.replace(window.location.origin), 2000);
         return;
       }
 
-      // Yangi talaba — forma ko'rsatish
-      // Google'dan ism/familiya olishga harakat
-      const fullName = sessionData.session.user?.user_metadata?.full_name || '';
-      const parts = fullName.trim().split(/\s+/);
-      if (parts.length >= 2) {
-        setFamiliya(parts[0]);
-        setIsm(parts.slice(1).join(' '));
-      } else if (parts.length === 1) {
-        setIsm(parts[0]);
+      if (result.mode === 'form' && result.googleUserId) {
+        setGoogleUserId(result.googleUserId);
+        setGoogleEmail(result.googleEmail || '');
+        setFamiliya(result.suggestedFamiliya || '');
+        setIsm(result.suggestedIsm || '');
+        setState('form');
+        return;
       }
-      setState('form');
+
+      setState('error');
+      setMessage('Google javobi tushunilmadi.');
     } catch (err: any) {
       console.error('[GoogleCallback] xato:', err);
       setState('error');
