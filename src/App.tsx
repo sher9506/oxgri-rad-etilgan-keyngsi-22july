@@ -50,6 +50,7 @@ const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvc
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
 import MiniAppBanner, { useMiniAppAutoLogin } from '@/components/features/MiniAppBanner';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Admin Context
 interface AdminContextType {
@@ -459,5 +460,9 @@ function RouterRoot() {
 }
 
 export default function App() {
-  return <RouterRoot />;
+  return (
+    <ErrorBoundary>
+      <RouterRoot />
+    </ErrorBoundary>
+  );
 }

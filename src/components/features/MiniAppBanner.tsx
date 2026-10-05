@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Monitor, X, ExternalLink } from 'lucide-react';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 
@@ -7,15 +7,15 @@ declare global {
   interface Window {
     Telegram?: {
       WebApp?: {
-        initData: string;
-        initDataUnsafe: any;
-        platform: string;
-        ready: () => void;
-        expand: () => void;
-        openLink: (url: string) => void;
-        close: () => void;
-        onEvent: (event: string, cb: () => void) => void;
-        offEvent: (event: string, cb: () => void) => void;
+        initData?: string;
+        initDataUnsafe?: any;
+        platform?: string;
+        ready?: () => void;
+        expand?: () => void;
+        openLink?: (url: string) => void;
+        close?: () => void;
+        onEvent?: (event: string, cb: () => void) => void;
+        offEvent?: (event: string, cb: () => void) => void;
       };
     };
   }
@@ -24,17 +24,37 @@ declare global {
 // Desktop platformlar — mini app ichida banner ko'rsatamiz
 const DESKTOP_PLATFORMS = ['tdesktop', 'macos', 'weba', 'webk', 'webz', 'web'];
 
-export function isTelegramMiniApp(): boolean {
-  return !!window.Telegram?.WebApp?.initData;
+function safeGetInitData(): string {
+  try {
+    return window.Telegram?.WebApp?.initData || '';
+  } catch {
+    return '';
+  }
 }
 
-export function getTelegramPlatform(): string {
-  return window.Telegram?.WebApp?.platform || 'unknown';
+function safeGetPlatform(): string {
+  try {
+    return window.Telegram?.WebApp?.platform || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+export function isTelegramMiniApp(): boolean {
+  try {
+    return !!safeGetInitData();
+  } catch {
+    return false;
+  }
 }
 
 export function isDesktopPlatform(): boolean {
-  const platform = getTelegramPlatform();
-  return DESKTOP_PLATFORMS.includes(platform);
+  try {
+    const platform = safeGetPlatform();
+    return DESKTOP_PLATFORMS.includes(platform);
+  } catch {
+    return false;
+  }
 }
 
 export default function MiniAppBanner() {
@@ -43,25 +63,30 @@ export default function MiniAppBanner() {
   const [loadingLink, setLoadingLink] = useState(false);
 
   useEffect(() => {
-    // Telegram WebApp mavjudligini tekshirish
-    if (!isTelegramMiniApp()) return;
+    try {
+      if (!isTelegramMiniApp()) return;
 
-    // Platform desktop bo'lsa banner ko'rsatamiz
-    if (isDesktopPlatform()) {
-      setShowBanner(true);
+      if (isDesktopPlatform()) {
+        setShowBanner(true);
+      }
+
+      window.Telegram?.WebApp?.ready?.();
+      window.Telegram?.WebApp?.expand?.();
+    } catch {
+      // Telegram obyekti yo'q yoki xato bo'lsa — jim o'tamiz
     }
-
-    // WebApp ready
-    window.Telegram?.WebApp?.ready();
-    window.Telegram?.WebApp?.expand();
   }, []);
 
-  const handleOpenSite = async () => {
+  const handleOpenSite = () => {
     setLoadingLink(true);
     try {
-      // Edge function orqali bir martalik havola yaratish o'rniga
-      // to'g'ridan-to'g'ri saytga yo'naltiramiz
-      window.Telegram?.WebApp?.openLink('https://fanfaster.uz');
+      if (window.Telegram?.WebApp?.openLink) {
+        window.Telegram.WebApp.openLink('https://fanfaster.uz');
+      } else {
+        window.open('https://fanfaster.uz', '_blank');
+      }
+    } catch {
+      window.open('https://fanfaster.uz', '_blank');
     } finally {
       setLoadingLink(false);
     }
@@ -102,15 +127,29 @@ export default function MiniAppBanner() {
 
 // Mini app avtomatik kirish hook
 export function useMiniAppAutoLogin(login: (user: any) => void) {
-  useEffect(() => {
-    if (!isTelegramMiniApp()) return;
+  const loginRef = useRef(login);
+  loginRef.current = login;
+  const didRunRef = useRef(false);
 
-    const initData = window.Telegram?.WebApp?.initData;
+  useEffect(() => {
+    if (didRunRef.current) return;
+    didRunRef.current = true;
+
+    let initData = '';
+    try {
+      initData = window.Telegram?.WebApp?.initData || '';
+    } catch {
+      return;
+    }
+
     if (!initData) return;
 
-    // Avval lokal storage dan tekshiramiz — bir sessiya davomida bir marta
     const sessionKey = 'miniapp_autologin_done';
-    if (sessionStorage.getItem(sessionKey)) return;
+    try {
+      if (sessionStorage.getItem(sessionKey)) return;
+    } catch {
+      return;
+    }
 
     (async () => {
       try {
@@ -127,7 +166,7 @@ export function useMiniAppAutoLogin(login: (user: any) => void) {
           const data = await res.json();
           if (data?.success && data?.talaba) {
             const t = data.talaba;
-            login({
+            loginRef.current({
               ism: t.ism,
               familiya: t.familiya,
               rol: 'oquvchi',
@@ -137,12 +176,16 @@ export function useMiniAppAutoLogin(login: (user: any) => void) {
               talaba_id: t.id,
               tasdiqlangan: t.tasdiqlangan,
             });
-            sessionStorage.setItem(sessionKey, '1');
+            try {
+              sessionStorage.setItem(sessionKey, '1');
+            } catch {
+              // storage yo'q bo'lsa — e'tibor bermaymiz
+            }
           }
         }
       } catch {
-        // Xavfsizlik: avtomatik kirish amalga oshmasa, jim o'tamiz
+        // Tarmoq xatosi — jim o'tamiz
       }
     })();
-  }, [login]);
+  }, []);
 }
