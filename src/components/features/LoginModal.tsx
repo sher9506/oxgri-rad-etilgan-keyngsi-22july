@@ -217,7 +217,10 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       const tokenArray = new Uint8Array(16);
       crypto.getRandomValues(tokenArray);
       const token = Array.from(tokenArray).map(b => b.toString(16).padStart(2, '0')).join('');
-      const { error } = await supabase.from('telegram_login_sessions').insert({ session_token: token, status: 'pending' });
+      // Qurilma turini aniqlash
+      const plat = detectPlatform();
+      const device = plat === 'mobile' || plat === 'webview' ? 'mobile' : 'desktop';
+      const { error } = await supabase.from('telegram_login_sessions').insert({ session_token: token, status: 'pending', device });
       if (error) throw error;
       setTgLoginSessionToken(token);
       setTgLoginStatus('waiting');

@@ -1,4 +1,4 @@
-// telegram-miniapp-auth — Telegram Mini App initData HMAC validation
+// telegram-miniapp-auth — Telegram Mini App initData HMAC validation v2
 // Frontend Telegram.WebApp.initData ni yuboradi, server bot tokeni bilan
 // HMAC orqali tekshiradi va talaba ma'lumotlarini qaytaradi.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -27,9 +27,17 @@ async function getLoginBotToken(): Promise<string> {
   return data?.text_value || '';
 }
 
+// Constant-time string comparison
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 // Telegram initData HMAC-SHA256 validation
-// initData = "query_id=...&user=...&auth_date=...&hash=..."
-// Validate: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
 async function validateInitData(initData: string, botToken: string): Promise<{ valid: boolean; user?: any }> {
   try {
     const params = new URLSearchParams(initData);
@@ -76,7 +84,8 @@ async function validateInitData(initData: string, botToken: string): Promise<{ v
     const calculatedHashBuf = await crypto.subtle.sign('HMAC', hmacKey, encoder.encode(dataCheckString));
     const calculatedHash = Array.from(new Uint8Array(calculatedHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (calculatedHash !== hash) {
+    // Constant-time comparison
+    if (!constantTimeEqual(calculatedHash, hash)) {
       return { valid: false };
     }
 
@@ -90,6 +99,25 @@ async function validateInitData(initData: string, botToken: string): Promise<{ v
   }
 }
 
+// merged_into zanjirini oxirigacha kuzatish (aylanish himoyasi bilan)
+async function resolveMergedChain(talabaId: string, maxDepth = 10): Promise<string | null> {
+  let currentId = talabaId;
+  const visited = new Set<string>();
+  for (let i = 0; i < maxDepth; i++) {
+    if (visited.has(currentId)) return null; // aylanish aniqlandi
+    visited.add(currentId);
+    const { data } = await supabaseAdmin
+      .from('talabalar')
+      .select('id, merged_into')
+      .eq('id', currentId)
+      .maybeSingle();
+    if (!data) return null;
+    if (!data.merged_into) return currentId; // asosiy qator
+    currentId = data.merged_into;
+  }
+  return null; // zanjir juda uzun
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -99,12 +127,12 @@ Deno.serve(async (req: Request) => {
     const { initData } = await req.json();
     if (!initData) {
       return new Response(
-        JSON.stringify({ error: 'initData kerak' }),
+        JSON.stringify({ error: 'E_NO_INITDATA', message: 'initData kerak' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Avval login bot tokeni, keyil asosiy bot tokeni bilan tekshiramiz
+    // Avval login bot tokeni, keyin asosiy bot tokeni bilan tekshiramiz
     const [loginBotToken, mainBotToken] = await Promise.all([getLoginBotToken(), getBotToken()]);
 
     let result = await validateInitData(initData, loginBotToken);
@@ -113,8 +141,13 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!result.valid) {
+      // auth_date tekshirish — muddati o'tganmi yoki hash noto'g'rimi?
+      const params = new URLSearchParams(initData);
+      const authDate = parseInt(params.get('auth_date') || '0');
+      const isExpired = authDate && (Date.now() / 1000) - authDate > 3600;
+      const code = isExpired ? 'E_EXPIRED' : 'E_HASH';
       return new Response(
-        JSON.stringify({ error: 'initData noto\'g\'ri yoki muddati o\'tgan' }),
+        JSON.stringify({ error: code, message: 'Tekshiruv rad etildi' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -122,62 +155,83 @@ Deno.serve(async (req: Request) => {
     const telegramId = result.user?.id;
     if (!telegramId) {
       return new Response(
-        JSON.stringify({ error: 'Telegram foydalanuvchi aniqlanmadi' }),
+        JSON.stringify({ error: 'E_HASH', message: 'Foydalanuvchi aniqlanmadi' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // telegram_id bo'yicha talabani qidirish (telegram_chat_id string sifatida saqlangan)
-    const { data: talaba } = await supabaseAdmin
+    // telegram_chat_id (string) bo'yicha faol qatorlarni topish
+    const { data: talabalar } = await supabaseAdmin
       .from('talabalar')
       .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id, merged_into')
       .eq('telegram_chat_id', String(telegramId))
-      .is('merged_into', null)
-      .maybeSingle();
+      .is('merged_into', null);
 
-    if (!talaba) {
-      // Talaba topilmadi — avtomatik yangi qator ochmaymiz
-      // Mavjud ro'yxatdan o'tish/ulash oqimiga yuboramiz
+    if (!talabalar || talabalar.length === 0) {
+      // merged_into bo'lgan qatorlarni tekshirish
+      const { data: mergedRows } = await supabaseAdmin
+        .from('talabalar')
+        .select('id, merged_into')
+        .eq('telegram_chat_id', String(telegramId))
+        .not('merged_into', 'is', null);
+
+      if (mergedRows && mergedRows.length > 0) {
+        // Har bir merged qator uchun asosiy qatorni topish
+        const asosiyIds = new Set<string>();
+        for (const row of mergedRows) {
+          const asosiyId = await resolveMergedChain(row.id);
+          if (asosiyId) asosiyIds.add(asosiyId);
+        }
+        if (asosiyIds.size === 1) {
+          const asosiyId = asosiyIds.values().next().value;
+          const { data: asosiy } = await supabaseAdmin
+            .from('talabalar')
+            .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id')
+            .eq('id', asosiyId)
+            .maybeSingle();
+          if (asosiy) {
+            return new Response(
+              JSON.stringify({
+                success: true,
+                talaba: {
+                  id: asosiy.id,
+                  ism: asosiy.ism || 'Foydalanuvchi',
+                  familiya: asosiy.familiya || '',
+                  guruh: asosiy.guruh || '',
+                  kurs: asosiy.kurs || '',
+                  login: asosiy.login_id || asosiy.ism,
+                  google_linked: !!asosiy.google_user_id,
+                  telegram_linked: true,
+                  tasdiqlangan: !!(asosiy.google_user_id && asosiy.telegram_chat_id),
+                },
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+        if (asosiyIds.size > 1) {
+          return new Response(
+            JSON.stringify({ error: 'E_AMBIGUOUS', message: 'Bir nechta asosiy qator topildi' }),
+            { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       return new Response(
-        JSON.stringify({
-          status: 'not_found',
-          message: 'Talaba topilmadi. Iltimos, saytda ro\'yxatdan o\'ting yoki Telegramni ulang.',
-          telegram_id: telegramId,
-          user_name: result.user?.first_name || '',
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'E_NOT_FOUND', message: 'Talaba topilmadi' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // merged_into bo'lsa asosiyga o'tkaz
-    if (talaba.merged_into) {
-      const { data: asosiy } = await supabaseAdmin
-        .from('talabalar')
-        .select('id, ism, familiya, guruh, kurs, login_id')
-        .eq('id', talaba.merged_into)
-        .maybeSingle();
-
-      if (asosiy) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            talaba: {
-              id: asosiy.id,
-              ism: asosiy.ism,
-              familiya: asosiy.familiya,
-              guruh: asosiy.guruh || '',
-              kurs: asosiy.kurs || '',
-              login: asosiy.login_id || asosiy.ism,
-              google_linked: !!asosiy.google_user_id,
-              telegram_linked: true,
-              tasdiqlangan: !!asosiy.google_user_id,
-            },
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    // Bir nechta faol qator — noaniqlik
+    if (talabalar.length > 1) {
+      return new Response(
+        JSON.stringify({ error: 'E_AMBIGUOUS', message: 'Bir nechta asosiy qator topildi' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
+    const talaba = talabalar[0];
     const tasdiqlangan = !!(talaba.google_user_id && talaba.telegram_chat_id);
     return new Response(
       JSON.stringify({
@@ -199,7 +253,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     console.error('[telegram-miniapp-auth] xato:', err);
     return new Response(
-      JSON.stringify({ error: 'Server xatosi' }),
+      JSON.stringify({ error: 'E_NET', message: 'Server xatosi' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

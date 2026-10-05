@@ -99,14 +99,20 @@ function AppContent() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.code === 'not_registered') {
-        toast.warning('Telegram akkauntingiz topilmadi', {
-          description: 'Iltimos, saytda ro\'yxatdan o\'ting yoki Telegramni ulang.',
-        });
-      } else if (detail?.code === 'bad_signature') {
-        toast.error('Telegram imzo noto\'g\'ri', {
-          description: 'Iltimos, saytdan qaytadan kiring.',
-        });
+      const code = detail?.code || '';
+      const msg = detail?.message || 'Kirim amalga oshmadi';
+      if (code === 'E_NOT_FOUND') {
+        toast.warning('Profil topilmadi', { description: msg });
+      } else if (code === 'E_HASH') {
+        toast.error('Telegram imzo noto\'g\'ri', { description: msg });
+      } else if (code === 'E_EXPIRED') {
+        toast.error('Muddat tugagan', { description: msg });
+      } else if (code === 'E_AMBIGUOUS') {
+        toast.error('Profil noaniq', { description: msg });
+      } else if (code === 'E_NET') {
+        toast.error('Tarmoq xatosi', { description: msg });
+      } else {
+        toast.error('Kirim amalga oshmadi', { description: msg });
       }
     };
     window.addEventListener('miniapp-autologin-failed', handler);

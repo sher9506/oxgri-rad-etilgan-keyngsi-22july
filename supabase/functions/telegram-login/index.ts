@@ -773,22 +773,43 @@ async function continueLogin(
   // Session token bilan login sessionini tasdiqlash
   const ok = await confirmLoginSession(sessionToken, talaba, telegramId, telegramUsername);
 
+  // Session device ni o'qish
+  const sessionDevice = session?.device || null;
+
   if (ok) {
     await deleteSession(chatId);
-    // Token bilan qaytish linki — inline URL tugma sifatida
+    // Device ga qarab javob berish
     const callbackUrl = `${cfg.siteUrl}/telegram-callback?token=${sessionToken}`;
-    await sendMessage(cfg.token, chatId,
-      `✅ <b>Muvaffaqiyatli tasdiqlandi!</b>\n\n` +
-      `👤 ${talaba.ism} ${talaba.familiya}\n\n` +
-      `Quyidagi tugmani bosib saytga kirish uchun oching:`,
-      {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🌐 Saytga kirish', url: callbackUrl },
-          ]],
-        },
-      }
-    );
+
+    if (sessionDevice === 'mobile') {
+      // Mobile: faqat Mini App tugmasi (avto-kirish)
+      await sendMessage(cfg.token, chatId,
+        `✅ <b>Tasdiqlandi!</b>\n\n` +
+        `👤 ${talaba.ism} ${talaba.familiya}\n\n` +
+        `Kabinetingizni ochish uchun tugmani bosing:`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '📱 Ochish', web_app: { url: cfg.siteUrl } },
+            ]],
+          },
+        }
+      );
+    } else {
+      // Desktop yoki NULL/noma'lum: faqat saytga qaytish
+      await sendMessage(cfg.token, chatId,
+        `✅ <b>Tasdiqlandi!</b>\n\n` +
+        `👤 ${talaba.ism} ${talaba.familiya}\n\n` +
+        `Kompyuterdagi saytga qayting — u o'zi kiradi.`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🌐 Saytga qaytish', url: callbackUrl },
+            ]],
+          },
+        }
+      );
+    }
   } else {
     await deleteSession(chatId);
     await sendMessage(cfg.token, chatId,
@@ -832,10 +853,17 @@ Deno.serve(async (req: Request) => {
       const sessionToken = parts[1] || '';
 
       if (!sessionToken) {
+        // Oddiy START (payload'siz) — Mini App tugmasi
         await sendMessage(cfg.token, chatId,
           '👋 <b>FanFaster Kirish Boti</b>\n\n' +
-          'Bu bot faqat sayt orqali ishlatiladi.\n' +
-          'Kirish uchun saytda <b>Telegram orqali kirish</b> tugmasini bosing.'
+          'Profilga kirish uchun quyidagi tugmani bosing:',
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
+              ]],
+            },
+          }
         );
         return new Response('ok', { status: 200 });
       }

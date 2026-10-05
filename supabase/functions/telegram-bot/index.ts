@@ -138,6 +138,25 @@ function formatChannelList(channels: string[]): string {
   return channels.map(c => `   • <b>${c}</b>`).join('\n');
 }
 
+// ── Bot menyu tugmasini Mini App ga sozlash (bir marta) ─────────────────────
+async function setChatMenuButton(token: string, siteUrl: string): Promise<void> {
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        menu_button: {
+          type: 'web_app',
+          text: 'FanFaster',
+          web_app: { url: siteUrl },
+        },
+      }),
+    });
+  } catch {
+    // xatolik bo'lsa — e'tibor bermaymiz
+  }
+}
+
 // ── USTOZ BOT SESSIYASI ──────────────────────────────────────────────────────
 // Ustoz uchun alohida sessiya boshqaruvi (bot_sessions da tur: 'ustoz' bilan)
 async function getUstozSession(chatId: number) {
@@ -277,10 +296,19 @@ Deno.serve(async (req: Request) => {
         return new Response('ok', { status: 200 });
       }
 
-      // Oddiy /start — o'quvchi ro'yxatdan o'tish
-      await supabaseAdmin.from('bot_sessions').delete().eq('chat_id', chatId);
-      await updateSession(chatId, { telegram_id: telegramId, state: 'waiting_phone' });
-      await sendWelcome(chatId, cfg);
+      // Oddiy /start (payload'siz) — Mini App tugmasi
+      await setChatMenuButton(cfg.token, cfg.siteUrl);
+      await sendMessage(cfg.token, chatId,
+        `👋 <b>FanFaster'ga xush kelibsiz!</b>\n\n` +
+        `Quyidagi tugmani bosing — profilga avtomatik kiriladi:`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "📱 FanFaster'ni ochish", web_app: { url: cfg.siteUrl } },
+            ]],
+          },
+        }
+      );
       return new Response('ok', { status: 200 });
     }
 

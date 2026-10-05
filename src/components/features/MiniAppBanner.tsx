@@ -184,6 +184,9 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
 
   let errCode = '';
   let errMsg = '';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/telegram-miniapp-auth`, {
       method: 'POST',
@@ -192,7 +195,9 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
         Authorization: `Bearer ${supabaseAnonKey}`,
       },
       body: JSON.stringify({ initData }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
     if (res.ok) {
       const data = await res.json();
@@ -207,6 +212,8 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
           login: t.login,
           talaba_id: t.id,
           tasdiqlangan: t.tasdiqlangan,
+          google_linked: t.google_linked,
+          telegram_linked: true,
         });
         try {
           sessionStorage.setItem(sessionKey, '1');
@@ -216,25 +223,51 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
         return;
       }
 
-      if (data?.status === 'not_found') {
-        errCode = 'not_registered';
-        errMsg = data?.message || 'Talaba topilmadi. Saytda ro\'yxatdan o\'ting.';
+      // not_found — endi aniq error kodi bilan keladi
+      const errCode2 = data?.error || '';
+      if (errCode2 === 'E_NOT_FOUND') {
+        errCode = 'E_NOT_FOUND';
+        errMsg = 'Profil topilmadi. Saytda ro\'yxatdan o\'ting yoki Telegramni ulang.';
+      } else if (errCode2 === 'E_AMBIGUOUS') {
+        errCode = 'E_AMBIGUOUS';
+        errMsg = 'Bir nechta profil topildi. Admin bilan bog\'laning.';
+      } else {
+        errCode = 'E_SCRIPT';
+        errMsg = 'Kirim amalga oshmadi.';
       }
-    } else if (res.status === 401) {
-      errCode = 'bad_signature';
-      errMsg = 'Telegram imzo noto\'g\'ri. Iltimos saytdan kiring.';
     } else {
-      errCode = 'server_' + res.status;
-      errMsg = 'Server xatosi (' + res.status + ')';
+      const data = await res.json().catch(() => ({}));
+      const code = data?.error || '';
+      if (code === 'E_HASH') {
+        errCode = 'E_HASH';
+        errMsg = 'Telegram imzo noto\'g\'ri. Iltimos saytdan kiring.';
+      } else if (code === 'E_EXPIRED') {
+        errCode = 'E_EXPIRED';
+        errMsg = 'Tasdiqlash muddati tugagan. Qaytadan urinib ko\'ring.';
+      } else if (code === 'E_NOT_FOUND') {
+        errCode = 'E_NOT_FOUND';
+        errMsg = 'Profil topilmadi. Saytda ro\'yxatdan o\'ting.';
+      } else if (code === 'E_AMBIGUOUS') {
+        errCode = 'E_AMBIGUOUS';
+        errMsg = 'Bir nechta profil topildi. Admin bilan bog\'laning.';
+      } else {
+        errCode = 'E_SCRIPT';
+        errMsg = 'Server xatosi (' + res.status + ')';
+      }
     }
-  } catch {
-    errCode = 'network';
-    errMsg = 'Tarmoq xatosi';
+  } catch (e: any) {
+    clearTimeout(timeout);
+    if (e?.name === 'AbortError') {
+      errCode = 'E_NET';
+      errMsg = 'Tarmoq xatosi — javob kelmadi (8 soniya).';
+    } else {
+      errCode = 'E_NET';
+      errMsg = 'Tarmoq xatosi.';
+    }
   }
 
   if (errCode) {
     console.warn('[miniapp-autologin] muvaffaqiyatsiz:', errCode);
-    // Foydalanuvchiga ko'rinadigan xabar
     window.dispatchEvent(new CustomEvent('miniapp-autologin-failed', {
       detail: { code: errCode, message: errMsg }
     }));
