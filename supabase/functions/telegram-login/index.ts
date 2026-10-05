@@ -1,5 +1,7 @@
-// Telegram Login Bot webhook — verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// Telegram Login Bot webhook v2 — hash tokens + inline URL + used_at
+// verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
+// v2.1 — npm import + used_at tracking
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 const supabaseAdmin = createClient(
@@ -211,10 +213,15 @@ async function confirmLoginSession(
   telegramId: number,
   telegramUsername: string
 ): Promise<boolean> {
+  // Hash token for lookup
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionToken));
+  const tokenHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
   const { error } = await supabaseAdmin
     .from('telegram_login_sessions')
     .update({
       status: 'confirmed',
+      used_at: new Date().toISOString(),
       telegram_id: telegramId,
       telegram_ism: talaba.ism,
       telegram_familiya: talaba.familiya,
@@ -226,9 +233,10 @@ async function confirmLoginSession(
       guruh: talaba.guruh || '',
       kurs: talaba.kurs || '',
     })
-    .eq('session_token', sessionToken)
+    .eq('session_token', tokenHash)
     .eq('status', 'pending')
-    .gte('expires_at', new Date().toISOString());
+    .gte('expires_at', new Date().toISOString())
+    .is('used_at', null);
 
   return !error;
 }
@@ -286,11 +294,26 @@ async function handleLinkToken(
   const tokenPrefix = linkToken.slice(0, Math.min(6, linkToken.length));
   console.log(`[link-token] /start link_ keldi: payload_uzunlik=${payloadLen}, prefix=${tokenPrefix}…`);
 
-  const { data: linkRow } = await supabaseAdmin
+  // Token hash hisoblash
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(linkToken));
+  const tokenHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  // Avval hash bo'yicha qidiramiz (yangi tokenlar)
+  let { data: linkRow } = await supabaseAdmin
     .from('telegram_link_tokens')
-    .select('token, talaba_id, platform, expires_at, used_at')
-    .eq('token', linkToken)
+    .select('talaba_id, platform, expires_at, used_at')
+    .eq('token_hash', tokenHash)
     .maybeSingle();
+
+  // Eski tokenlar (token ustunida saqlangan) — muddati bilan tugaguncha tanish
+  if (!linkRow) {
+    const { data: legacyRow } = await supabaseAdmin
+      .from('telegram_link_tokens')
+      .select('talaba_id, platform, expires_at, used_at')
+      .eq('token', linkToken)
+      .maybeSingle();
+    linkRow = legacyRow;
+  }
 
   if (!linkRow) {
     console.log(`[link-token] token topilmadi: prefix=${tokenPrefix}…, uzunlik=${payloadLen}`);
@@ -330,11 +353,11 @@ async function handleLinkToken(
   if (existingTalaba) {
     console.log(`[link-token] mojaro: telegram chat_id=${chatId} boshqa talabaga bog'langan. Joriy=${linkRow.talaba_id}, mavjud=${existingTalaba.id}`);
 
-    // Mojaro ma'lumotini token qatoriga yozish — frontend poll qilib topadi
+    // Mojaro ma'lumotini token qatoriga yozish
     await supabaseAdmin
       .from('telegram_link_tokens')
       .update({ conflict_talaba_id: existingTalaba.id })
-      .eq('token', linkToken);
+      .eq('token_hash', tokenHash);
 
     await sendMessage(cfg.token, chatId,
       'ℹ️ <b>Bu Telegram akkaunt boshqa akkauntga bog\'langan.</b>\n\n' +
@@ -386,7 +409,7 @@ async function handleLinkToken(
   await supabaseAdmin
     .from('telegram_link_tokens')
     .update({ used_at: new Date().toISOString() })
-    .eq('token', linkToken);
+    .eq('token_hash', tokenHash);
 
   // Bonus berish (agar ikkalasi ulangan va hali berilmagan bo'lsa)
   const birlashtirilgan = talaba.google_user_id !== null;
@@ -413,15 +436,17 @@ async function handleLinkToken(
 
   // Desktop: "Profilga qaytish" tugmasi (bir martalik kirish havolasi)
   if (linkRow.platform === 'desktop') {
-    // Bir martalik kirish sessiyasi yaratish
+    // Bir martalik kirish sessiyasi — 32 hex token, hash saqlaymiz
     const tokenArray = new Uint8Array(16);
     crypto.getRandomValues(tokenArray);
     const loginToken = Array.from(tokenArray).map(b => b.toString(16).padStart(2, '0')).join('');
+    const loginHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(loginToken));
+    const loginTokenHash = Array.from(new Uint8Array(loginHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
     await supabaseAdmin
       .from('telegram_login_sessions')
       .insert({
-        session_token: loginToken,
+        session_token: loginTokenHash,
         status: 'confirmed',
         talaba_id: talaba.id,
         ism: talaba.ism,
@@ -490,7 +515,7 @@ async function continueLogin(
 
   if (ok) {
     await deleteSession(chatId);
-    // Token bilan qaytish linki — qaysi brauzerda ochilmasin ishlaydi
+    // Token bilan qaytish linki — inline URL tugma sifatida
     const callbackUrl = `${cfg.siteUrl}/telegram-callback?token=${sessionToken}`;
     await sendMessage(cfg.token, chatId,
       `✅ <b>Muvaffaqiyatli tasdiqlandi!</b>\n\n` +
@@ -561,13 +586,17 @@ Deno.serve(async (req: Request) => {
         return new Response('ok', { status: 200 });
       }
 
-      // Session tokenni DB da tekshirish
+      // Session tokenni DB da tekshirish (hash bo'yicha)
+      const loginHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionToken));
+      const loginTokenHash = Array.from(new Uint8Array(loginHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
       const { data: loginSession } = await supabaseAdmin
         .from('telegram_login_sessions')
         .select('*')
-        .eq('session_token', sessionToken)
+        .eq('session_token', loginTokenHash)
         .eq('status', 'pending')
         .gte('expires_at', new Date().toISOString())
+        .is('used_at', null)
         .maybeSingle();
 
       if (!loginSession) {

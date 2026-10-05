@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 const supabaseAdmin = createClient(
@@ -71,18 +71,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // 16 bayt tasodifiy token = 32 hex belgi + "link_" = jami 37 belgi
-    // Telegram /start parametri maksimal 64 belgi qabul qiladi
     const tokenBytes = new Uint8Array(16);
     crypto.getRandomValues(tokenBytes);
     const token = 'link_' + Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (token.length > 64) {
-      console.error('[link-telegram-start] HAVOLA JUDA UZUN:', token.length, 'belgi — Telegram tashlab yuboradi!');
-      return new Response(
-        JSON.stringify({ error: 'Havola uzunligi xato (telegram cheklovidan oshdi)' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // sha256 hash — bazada faqat hash saqlaymiz
+    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+    const tokenHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
     // Eski ishlatilmagan tokenlarni tozalash
     await supabaseAdmin
@@ -91,14 +86,14 @@ Deno.serve(async (req: Request) => {
       .eq('talaba_id', talabaUuid)
       .is('used_at', null);
 
-    // Yangi token yaratish
+    // Yangi token yaratish — hash saqlaymiz, 15 daqiqa muddat
     const { error: insertError } = await supabaseAdmin
       .from('telegram_link_tokens')
       .insert({
-        token,
+        token_hash: tokenHash,
         talaba_id: talabaUuid,
         platform: platform || 'mobile',
-        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       });
 
     if (insertError) {

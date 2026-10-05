@@ -90,3 +90,9 @@ verify_jwt = false
 
 [functions.talaba-birlashtirish]
 verify_jwt = false
+
+[functions.telegram-login-callback]
+verify_jwt = false
+
+[functions.telegram-miniapp-auth]
+verify_jwt = false

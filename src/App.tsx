@@ -49,6 +49,7 @@ const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz')
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
+import MiniAppBanner, { useMiniAppAutoLogin } from '@/components/features/MiniAppBanner';
 
 // Admin Context
 interface AdminContextType {
@@ -92,7 +93,10 @@ function AppContent() {
     return () => window.removeEventListener('open-login-modal', handler);
   }, []);
 
-  const { user, logout } = useAuth();
+  const { user, logout, login } = useAuth();
+
+  // Mini app avtomatik kirish
+  useMiniAppAutoLogin(login);
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminView, setAdminView] = useState('ustoz');
@@ -265,6 +269,7 @@ function AppContent() {
 
   return (
     <>
+      <MiniAppBanner />
       <Suspense fallback={null}><LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} /></Suspense>
       
       <AdminContext.Provider value={{ isAdmin, adminView, loginAdmin, logoutAdmin, setAdminView }}>
