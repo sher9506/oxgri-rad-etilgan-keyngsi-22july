@@ -33,7 +33,7 @@ export async function startGoogleLink(talabaId: string): Promise<{ error?: strin
     if (error) return { error: error.message };
     return {};
   } catch (err: any) {
-    return { error: err.message || 'Google bog'lashda xatolik' };
+    return { error: err.message || "Google bog'lashda xatolik" };
   }
 }
 
