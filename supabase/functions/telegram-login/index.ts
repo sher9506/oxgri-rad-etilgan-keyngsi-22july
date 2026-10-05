@@ -321,16 +321,26 @@ async function handleLinkToken(
   // Telegram chat_id boshqa talabaga bog'langanmi?
   const { data: existingTalaba } = await supabaseAdmin
     .from('talabalar')
-    .select('id, ism, familiya')
+    .select('id, ism, familiya, created_at, merged_into')
     .eq('telegram_chat_id', String(chatId))
     .neq('id', linkRow.talaba_id)
+    .is('merged_into', null)
     .maybeSingle();
 
   if (existingTalaba) {
+    console.log(`[link-token] mojaro: telegram chat_id=${chatId} boshqa talabaga bog'langan. Joriy=${linkRow.talaba_id}, mavjud=${existingTalaba.id}`);
+
+    // Mojaro ma'lumotini token qatoriga yozish — frontend poll qilib topadi
+    await supabaseAdmin
+      .from('telegram_link_tokens')
+      .update({ conflict_talaba_id: existingTalaba.id })
+      .eq('token', linkToken);
+
     await sendMessage(cfg.token, chatId,
-      '⚠️ <b>Bu Telegram akkaunt boshqa talabaga bog\'langan.</b>\n\n' +
-      'Iltimos, boshqa Telegram akkaunt ishlating yoki admin bilan bog\'laning.'
+      'ℹ️ <b>Bu Telegram akkaunt boshqa akkauntga bog\'langan.</b>\n\n' +
+      'Saytda birlashtirish taklifini qabul qiling yoki bekor qiling.'
     );
+
     return;
   }
 

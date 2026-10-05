@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, CheckCircle2, Link2, Camera, Trash2, Lock, Sparkles, Award, Image as ImageIcon } from 'lucide-react';
+import { Loader2, CheckCircle2, Link2, Camera, Trash2, Lock, Sparkles, Award, Image as ImageIcon, AlertTriangle, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
@@ -30,6 +30,10 @@ export default function BirlashtirishKartasi() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Birlashtirish mojarosi
+  const [mergeConflict, setMergeConflict] = useState<{ conflictTalabaId: string; conflictIsm: string; conflictFamiliya: string; conflictCreated: string } | null>(null);
+  const [mergeLoading, setMergeLoading] = useState(false);
 
   // Talaba ma'lumotlarini yuklash
   useEffect(() => {
@@ -117,8 +121,7 @@ export default function BirlashtirishKartasi() {
             toast({ title: 'Vaqt tugadi', description: 'Telegram ulash amalga oshmadi', variant: 'destructive' });
             return;
           }
-          // Token holatini tekshirish (service role bilan anon ola olmaydi)
-          // Buning o'rniga talabalar jadvalidan telegram_chat_id ni tekshiramiz
+          // Talaba telegram_chat_id ni tekshirish
           const { data: talaba } = await supabase
             .from('talabalar')
             .select('telegram_chat_id, bonus_urinish')
@@ -135,6 +138,36 @@ export default function BirlashtirishKartasi() {
             } else {
               toast({ title: 'Telegram ulandi!', description: 'Endi profil rasmi ham qo\'yishingiz mumkin' });
             }
+            return;
+          }
+
+          // Mojaro tekshirish — token qatoridan conflict_talaba_id ni tekshiramiz
+          if (linkToken) {
+            const { data: tokenRow } = await supabase
+              .from('telegram_link_tokens')
+              .select('conflict_talaba_id')
+              .eq('token', linkToken)
+              .maybeSingle();
+
+            if (tokenRow?.conflict_talaba_id) {
+              stopLinkPolling();
+              // Mojaro talabasini ma'lumotlarini olish
+              const { data: conflictTalaba } = await supabase
+                .from('talabalar')
+                .select('id, ism, familiya, created_at')
+                .eq('id', tokenRow.conflict_talaba_id)
+                .maybeSingle();
+
+              if (conflictTalaba) {
+                setMergeConflict({
+                  conflictTalabaId: conflictTalaba.id,
+                  conflictIsm: conflictTalaba.ism || '',
+                  conflictFamiliya: conflictTalaba.familiya || '',
+                  conflictCreated: conflictTalaba.created_at || '',
+                });
+              }
+              return;
+            }
           }
         }, 2000);
       }
@@ -142,6 +175,49 @@ export default function BirlashtirishKartasi() {
       toast({ title: 'Xato', description: e.message, variant: 'destructive' });
     } finally {
       setLinkLoading(false);
+    }
+  };
+
+  // Birlashtirishni tasdiqlash
+  const handleConfirmMerge = async () => {
+    if (!mergeConflict || !talabaId) return;
+    setMergeLoading(true);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/talaba-birlashtirish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
+          asosiy_id: talabaId,
+          birlashgan_id: mergeConflict.conflictTalabaId,
+          sabab: 'telegram_link',
+        }),
+      });
+      const data = await res.json();
+      if (data?.error) {
+        toast({ title: 'Birlashtirish xatosi', description: data.error, variant: 'destructive' });
+        return;
+      }
+      // Asosiy qator yangilangan — telegram_chat_id bog'langan
+      if (data?.talaba) {
+        setTelegramLinked(!!data.talaba.telegram_chat_id);
+        setGoogleLinked(!!data.talaba.google_user_id);
+        setTasdiqlangan(!!data.talaba.google_user_id && !!data.talaba.telegram_chat_id);
+        setBonusUrinish(data.talaba.bonus_urinish || 0);
+        setAvatarUrl(data.talaba.avatar_url || null);
+        // Agar asosiy ID o'zgarsa (server eskini tanlagan bo'lsa)
+        if (data.asosiy_id && data.asosiy_id !== talabaId) {
+          setTalabaId(data.asosiy_id);
+        }
+      }
+      setMergeConflict(null);
+      toast({ title: 'Birlashtirildi!', description: 'Akkauntlar muvaffaqiyatli birlashtirildi' });
+    } catch (e: any) {
+      toast({ title: 'Xato', description: e.message, variant: 'destructive' });
+    } finally {
+      setMergeLoading(false);
     }
   };
 
@@ -416,6 +492,57 @@ export default function BirlashtirishKartasi() {
           )}
         </div>
       </div>
+
+      {/* Birlashtirish tasdiq oynasi */}
+      {mergeConflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 bg-amber-50 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <span className="font-bold text-sm text-gray-800">Akkaunt birlashtirish</span>
+              <button
+                onClick={() => setMergeConflict(null)}
+                className="ml-auto text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-600">
+                Bu Telegram akkaunt quyidagi akkauntga bog'langan:
+              </p>
+              <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 space-y-1">
+                <p className="text-sm font-bold text-gray-800">
+                  {mergeConflict.conflictIsm} {mergeConflict.conflictFamiliya}
+                </p>
+                {mergeConflict.conflictCreated && (
+                  <p className="text-xs text-gray-400">
+                    Yaratilgan: {new Date(mergeConflict.conflictCreated).toLocaleDateString('uz')}
+                  </p>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                Agar bu sizning ikkinchi akkauntingiz bo'lsa, ularni birlashtirishingiz mumkin. Ma'lumotlar saqlanadi.
+              </p>
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setMergeConflict(null)}
+                  className="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  onClick={handleConfirmMerge}
+                  disabled={mergeLoading}
+                  className="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {mergeLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Birlashtirish'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

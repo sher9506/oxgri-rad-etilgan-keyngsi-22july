@@ -87,3 +87,6 @@ verify_jwt = false
 
 [functions.google-auth]
 verify_jwt = false
+
+[functions.talaba-birlashtirish]
+verify_jwt = false

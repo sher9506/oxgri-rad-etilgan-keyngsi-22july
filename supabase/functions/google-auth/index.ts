@@ -173,6 +173,63 @@ Deno.serve(async (req: Request) => {
       const ism = googleIsm || nameParts[0] || '';
       const familiya = googleFamiliya || nameParts.slice(1).join(' ');
 
+      // Mavjud talabani ism+familiya bo'yicha tekshirish — takroriy qator oldini olish
+      if (ism && familiya) {
+        const { data: existingByName } = await supabaseAdmin
+          .from('talabalar')
+          .select('id, ism, familiya, guruh, kurs, login_id, google_user_id, telegram_chat_id, created_at')
+          .ilike('ism', ism)
+          .ilike('familiya', familiya)
+          .is('merged_into', null)
+          .maybeSingle();
+
+        if (existingByName && !existingByName.google_user_id) {
+          // Mavjud talaba topildi — yangi qator ochmaslik
+          // google_user_id ni bog'lab qaytaramiz (avtomatik ulash)
+          await supabaseAdmin
+            .from('talabalar')
+            .update({ google_user_id: googleUserId })
+            .eq('id', existingByName.id);
+
+          const tasdiqlangan = !!(existingByName.telegram_chat_id);
+          return new Response(
+            JSON.stringify({
+              mode: 'login',
+              talaba: {
+                id: existingByName.id,
+                ism: existingByName.ism || ism,
+                familiya: existingByName.familiya || familiya,
+                guruh: existingByName.guruh || '',
+                kurs: existingByName.kurs || '',
+                login: existingByName.login_id || ism || '',
+                tasdiqlangan,
+                google_linked: true,
+                telegram_linked: !!existingByName.telegram_chat_id,
+              },
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (existingByName && existingByName.google_user_id && existingByName.google_user_id !== googleUserId) {
+          // Boshqa Google bilan bog'langan — yangi qator ochmaymiz
+          return new Response(
+            JSON.stringify({
+              mode: 'merge_required',
+              existing_talaba: {
+                id: existingByName.id,
+                ism: existingByName.ism,
+                familiya: existingByName.familiya,
+                created_at: existingByName.created_at,
+              },
+              google_user_id: googleUserId,
+              google_email: googleEmail,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       if (ism) {
         const { data: yangiTalaba, error: createError } = await supabaseAdmin
           .from('talabalar')
