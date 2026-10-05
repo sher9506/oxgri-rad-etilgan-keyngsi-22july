@@ -34,7 +34,6 @@ export default function BirlashtirishKartasi() {
 
   // Birlashtirish mojarosi
   const [mergeConflict, setMergeConflict] = useState<{ conflictTalabaId: string; conflictIsm: string; conflictFamiliya: string; conflictCreated: string } | null>(null);
-  const [mergeLoading, setMergeLoading] = useState(false);
 
   // Talaba ma'lumotlarini yuklash
   useEffect(() => {
@@ -114,64 +113,95 @@ export default function BirlashtirishKartasi() {
         setLinkToken(token);
         linkTokenRef.current = token;
         window.open(data.deepLink, '_blank');
-        // Polling — token ishlatilganmi
+        // Polling — link-telegram-status orqali
         setLinkPolling(true);
         const startTime = Date.now();
         pollingRef.current = setInterval(async () => {
-          // 10 daqiqa timeout
-          if (Date.now() - startTime > 10 * 60 * 1000) {
+          // 15 daqiqa timeout
+          if (Date.now() - startTime > 15 * 60 * 1000) {
             stopLinkPolling();
             toast({ title: 'Vaqt tugadi', description: 'Telegram ulash amalga oshmadi', variant: 'destructive' });
             return;
           }
-          // Talaba telegram_chat_id ni tekshirish
-          const { data: talaba } = await supabase
-            .from('talabalar')
-            .select('telegram_chat_id, bonus_urinish')
-            .eq('id', talabaId)
-            .maybeSingle();
-
-          if (talaba?.telegram_chat_id) {
-            stopLinkPolling();
-            setTelegramLinked(true);
-            setTasdiqlangan(googleLinked && true);
-            setBonusUrinish(talaba.bonus_urinish || 0);
-            if (googleLinked && !tasdiqlangan) {
-              toast({ title: 'Tabriklaymiz!', description: `Telegram ulandi. +${bonusCount} Moot Court urinishi berildi!` });
-            } else {
-              toast({ title: 'Telegram ulandi!', description: 'Endi profil rasmi ham qo\'yishingiz mumkin' });
-            }
-            return;
-          }
-
-          // Mojaro tekshirish — token qatoridan conflict_talaba_id ni tekshiramiz
           const currentToken = linkTokenRef.current;
-          if (currentToken) {
-            const { data: tokenRow } = await supabase
-              .from('telegram_link_tokens')
-              .select('conflict_talaba_id')
-              .eq('token', currentToken)
-              .maybeSingle();
+          if (!currentToken) { stopLinkPolling(); return; }
 
-            if (tokenRow?.conflict_talaba_id) {
+          try {
+            const statusRes = await fetch(`${supabaseUrl}/functions/v1/link-telegram-status`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+              },
+              body: JSON.stringify({ token: currentToken }),
+            });
+            const statusData = await statusRes.json();
+
+            if (statusData?.status === 'linked' && statusData?.talaba) {
               stopLinkPolling();
-              // Mojaro talabasini ma'lumotlarini olish
-              const { data: conflictTalaba } = await supabase
-                .from('talabalar')
-                .select('id, ism, familiya, created_at')
-                .eq('id', tokenRow.conflict_talaba_id)
-                .maybeSingle();
-
-              if (conflictTalaba) {
-                setMergeConflict({
-                  conflictTalabaId: conflictTalaba.id,
-                  conflictIsm: conflictTalaba.ism || '',
-                  conflictFamiliya: conflictTalaba.familiya || '',
-                  conflictCreated: conflictTalaba.created_at || '',
-                });
+              setTelegramLinked(true);
+              setTasdiqlangan(googleLinked && !!statusData.talaba.tasdiqlangan);
+              if (statusData.talaba.id && statusData.talaba.id !== talabaId) {
+                setTalabaId(statusData.talaba.id);
+              }
+              if (googleLinked && !tasdiqlangan) {
+                toast({ title: 'Tabriklaymiz!', description: `Telegram ulandi. +${bonusCount} Moot Court urinishi berildi!` });
+              } else {
+                toast({ title: 'Telegram ulandi!', description: 'Endi profil rasmi ham qo\'yishingiz mumkin' });
               }
               return;
             }
+
+            if (statusData?.status === 'merged' && statusData?.talaba) {
+              stopLinkPolling();
+              // Sessiya asosiy talabaga o'tsin
+              if (statusData.talaba.id && statusData.talaba.id !== talabaId) {
+                setTalabaId(statusData.talaba.id);
+              }
+              setTelegramLinked(true);
+              setGoogleLinked(true);
+              setTasdiqlangan(true);
+              // Auth sessiyani yangilash
+              login({
+                ...user!,
+                talaba_id: statusData.talaba.id,
+                ism: statusData.talaba.ism,
+                familiya: statusData.talaba.familiya,
+                guruh: statusData.talaba.guruh,
+                kurs: statusData.talaba.kurs,
+                tasdiqlangan: true,
+                google_linked: true,
+                telegram_linked: true,
+              });
+              setMergeConflict(null);
+              toast({ title: 'Birlashtirildi!', description: 'Akkauntlar muvaffaqiyatli birlashtirildi' });
+              return;
+            }
+
+            if (statusData?.status === 'conflict') {
+              setMergeConflict({
+                conflictTalabaId: '',
+                conflictIsm: '',
+                conflictFamiliya: '',
+                conflictCreated: '',
+              });
+              return;
+            }
+
+            if (statusData?.status === 'cancelled') {
+              stopLinkPolling();
+              toast({ title: 'Bekor qilindi', description: 'Telegram botda birlashtirish bekor qilindi', variant: 'destructive' });
+              setMergeConflict(null);
+              return;
+            }
+
+            if (statusData?.status === 'expired') {
+              stopLinkPolling();
+              toast({ title: 'Vaqt tugadi', description: 'Havola muddati o\'tdi. Qaytadan urinib ko\'ring.', variant: 'destructive' });
+              return;
+            }
+          } catch {
+            // network error — davom etamiz
           }
         }, 2000);
       }
@@ -179,53 +209,6 @@ export default function BirlashtirishKartasi() {
       toast({ title: 'Xato', description: e.message, variant: 'destructive' });
     } finally {
       setLinkLoading(false);
-    }
-  };
-
-  // Birlashtirishni tasdiqlash
-  const handleConfirmMerge = async () => {
-    if (!mergeConflict || !talabaId) return;
-    setMergeLoading(true);
-    try {
-      const currentToken = linkTokenRef.current;
-      if (!currentToken) {
-        toast({ title: 'Xato', description: 'Ulash tokeni topilmadi. Qaytadan urinib ko\'ring.', variant: 'destructive' });
-        return;
-      }
-      const res = await fetch(`${supabaseUrl}/functions/v1/talaba-birlashtirish`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`,
-        },
-        body: JSON.stringify({
-          link_token: currentToken,
-          sabab: 'telegram_link',
-        }),
-      });
-      const data = await res.json();
-      if (data?.error) {
-        toast({ title: 'Birlashtirish xatosi', description: data.error, variant: 'destructive' });
-        return;
-      }
-      // Asosiy qator yangilangan — telegram_chat_id bog'langan
-      if (data?.talaba) {
-        setTelegramLinked(!!data.talaba.telegram_chat_id);
-        setGoogleLinked(!!data.talaba.google_user_id);
-        setTasdiqlangan(!!data.talaba.google_user_id && !!data.talaba.telegram_chat_id);
-        setBonusUrinish(data.talaba.bonus_urinish || 0);
-        setAvatarUrl(data.talaba.avatar_url || null);
-        // Agar asosiy ID o'zgarsa (server eskini tanlagan bo'lsa)
-        if (data.asosiy_id && data.asosiy_id !== talabaId) {
-          setTalabaId(data.asosiy_id);
-        }
-      }
-      setMergeConflict(null);
-      toast({ title: 'Birlashtirildi!', description: 'Akkauntlar muvaffaqiyatli birlashtirildi' });
-    } catch (e: any) {
-      toast({ title: 'Xato', description: e.message, variant: 'destructive' });
-    } finally {
-      setMergeLoading(false);
     }
   };
 
@@ -501,7 +484,7 @@ export default function BirlashtirishKartasi() {
         </div>
       </div>
 
-      {/* Birlashtirish tasdiq oynasi */}
+      {/* Birlashtirish tasdiq oynasi — endi bot ichida */}
       {mergeConflict && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
@@ -517,36 +500,22 @@ export default function BirlashtirishKartasi() {
             </div>
             <div className="p-5 space-y-3">
               <p className="text-sm text-gray-600">
-                Bu Telegram akkaunt quyidagi akkauntga bog'langan:
+                Bu Telegram akkaunt boshqa akkauntga bog'langan.
               </p>
-              <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 space-y-1">
-                <p className="text-sm font-bold text-gray-800">
-                  {mergeConflict.conflictIsm} {mergeConflict.conflictFamiliya}
+              <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-center">
+                <p className="text-sm font-bold text-blue-700">
+                  Telegram botda tasdiqlang
                 </p>
-                {mergeConflict.conflictCreated && (
-                  <p className="text-xs text-gray-400">
-                    Yaratilgan: {new Date(mergeConflict.conflictCreated).toLocaleDateString('uz')}
-                  </p>
-                )}
+                <p className="text-xs text-blue-600 mt-1">
+                  Bot yuborgan xabardagi tugmalardan birini bosing
+                </p>
               </div>
-              <p className="text-xs text-gray-500">
-                Agar bu sizning ikkinchi akkauntingiz bo'lsa, ularni birlashtirishingiz mumkin. Ma'lumotlar saqlanadi.
-              </p>
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => setMergeConflict(null)}
-                  className="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
-                >
-                  Bekor qilish
-                </button>
-                <button
-                  onClick={handleConfirmMerge}
-                  disabled={mergeLoading}
-                  className="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  {mergeLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Birlashtirish'}
-                </button>
-              </div>
+              <button
+                onClick={() => setMergeConflict(null)}
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
+              >
+                Yopish
+              </button>
             </div>
           </div>
         </div>

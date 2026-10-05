@@ -1,4 +1,4 @@
-// Telegram Login Bot webhook v2026-10-06 — hash tokens + inline URL + used_at
+// Telegram Login Bot webhook v2026-10-06c — hash tokens + inline URL + used_at + in-bot merge
 // verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -239,6 +239,191 @@ async function confirmLoginSession(
   return !error;
 }
 
+// ── Birlashtirish callback handler ──────────────────────────────────────────
+async function handleMergeCallback(callbackQuery: any, cfg: BotConfig): Promise<void> {
+  const chatId: number = callbackQuery.message?.chat?.id || callbackQuery.from?.id;
+  const telegramId: number = callbackQuery.from?.id;
+  const data: string = callbackQuery.data || '';
+  const cbId: string = callbackQuery.id;
+
+  const answerCb = (text = '') =>
+    fetch(`https://api.telegram.org/bot${cfg.token}/answerCallbackQuery`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: cbId, text }),
+    });
+
+  const editMsg = (text: string, replyMarkup?: any) =>
+    fetch(`https://api.telegram.org/bot${cfg.token}/editMessageText`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: callbackQuery.message?.message_id,
+        text, parse_mode: 'HTML',
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+      }),
+    });
+
+  const isYes = data.startsWith('mg:y:');
+  const hash16 = data.split(':')[2] || '';
+  if (hash16.length < 8) { await answerCb('❌ Noto\'g\'ri so\'rov'); return; }
+
+  // Tokenni hash prefiksi bo'yicha topish
+  const { data: tokens } = await supabaseAdmin
+    .from('telegram_link_tokens')
+    .select('token, token_hash, talaba_id, conflict_talaba_id, start_chat_id, used_at, expires_at, platform')
+    .like('token_hash', `${hash16}%`)
+    .maybeSingle();
+
+  if (!tokens) {
+    await answerCb('❌ Token topilmadi');
+    return;
+  }
+
+  // (a) callback jo'natuvchisi chat_id == start_chat_id bo'lsin
+  if (tokens.start_chat_id && chatId !== tokens.start_chat_id) {
+    console.log(`[merge-callback] rad: chat_id mos emas. keldi=${chatId}, start=${tokens.start_chat_id}`);
+    await answerCb('❌ Bu tugma siz uchun emas');
+    return;
+  }
+
+  // Bekor qilish
+  if (!isYes) {
+    await supabaseAdmin
+      .from('telegram_link_tokens')
+      .update({ used_at: new Date().toISOString() })
+      .eq('token_hash', tokens.token_hash)
+      .is('used_at', null);
+
+    await answerCb('Bekor qilindi');
+    await editMsg('❌ <b>Birlashtirish bekor qilindi.</b>\\n\\nHech narsa o\'zgarmadi.');
+    return;
+  }
+
+  // (b) token muddati o'tmagan va used_at NULL bo'lsin
+  if (tokens.used_at) {
+    await answerCb('⚠️ Allaqachon ishlatilgan');
+    return;
+  }
+  if (new Date(tokens.expires_at) < new Date()) {
+    await answerCb('⏰ Muddati o\'tgan');
+    await editMsg('⏰ <b>Havola muddati tugagan.</b>\\n\\nSaytdan yangi havola oling.');
+    return;
+  }
+
+  // (c) atomik UPDATE ... SET used_at=now() WHERE used_at IS NULL AND expires_at>now() RETURNING
+  const { data: claimed, error: claimErr } = await supabaseAdmin
+    .from('telegram_link_tokens')
+    .update({ used_at: new Date().toISOString() })
+    .eq('token_hash', tokens.token_hash)
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .select('talaba_id, conflict_talaba_id, platform')
+    .maybeSingle();
+
+  if (claimErr || !claimed) {
+    console.log('[merge-callback] rad: ikkinchi bosish yoki muddati o\'tgan');
+    await answerCb('⚠️ Allaqachon ishlatilgan yoki muddati o\'tgan');
+    return;
+  }
+
+  if (!claimed.conflict_talaba_id) {
+    await answerCb('⚠️ Mojaro topilmadi');
+    return;
+  }
+
+  // Rate limit: soatiga 3 martadan ko'p bo'lmasin
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count } = await supabaseAdmin
+    .from('merge_attempts')
+    .select('id', { count: 'exact', head: true })
+    .eq('talaba_id', claimed.talaba_id)
+    .gte('created_at', oneHourAgo);
+
+  if ((count || 0) >= 3) {
+    await answerCb('⏰ Soatiga 3 martadan ko\'p urinish mumkin emas');
+    await editMsg('⏰ <b>Soatiga 3 martadan ko\'p birlashtirish mumkin emas.</b>\\n\\nKeyinroq urinib ko\'ring.');
+    return;
+  }
+
+  // Rate limit log yozish
+  await supabaseAdmin
+    .from('merge_attempts')
+    .insert({ talaba_id: claimed.talaba_id });
+
+  // (d) birlashtirish RPC chaqirish
+  const { data: resultId, error: mergeErr } = await supabaseAdmin
+    .rpc('birlashtirish_talabalari', {
+      p_asosiy_id: claimed.talaba_id,
+      p_birlashgan_id: claimed.conflict_talaba_id,
+      p_sabab: 'telegram_link_bot',
+    });
+
+  if (mergeErr) {
+    console.error('[merge-callback] RPC xato:', mergeErr.message);
+    await answerCb('❌ Birlashtirish xatosi');
+    await editMsg('❌ <b>Birlashtirishda xatolik yuz berdi.</b>\\n\\nQaytadan urinib ko\'ring.');
+    return;
+  }
+
+  // (e) answerCallbackQuery va xabar tahrirlash
+  await answerCb('Birlashtirildi ✅');
+
+  // Asosiy talaba ma'lumotini olish
+  const { data: asosiy } = await supabaseAdmin
+    .from('talabalar')
+    .select('ism, familiya')
+    .eq('id', resultId)
+    .maybeSingle();
+
+  const asosiyIsm = asosiy ? `${asosiy.ism} ${asosiy.familiya}` : 'Talaba';
+
+  // (f) platform bo'yicha tugma
+  const replyMarkup: any = {};
+  let msg = `✅ <b>Birlashtirildi!</b>\\n\\n👤 ${asosiyIsm}\\n\\nIkkala akkaunt bitta akkauntga birlashtirildi.`;
+
+  if (claimed.platform === 'desktop') {
+    // Bir martalik kirish sessiyasi
+    const tokenArray = new Uint8Array(16);
+    crypto.getRandomValues(tokenArray);
+    const loginToken = Array.from(tokenArray).map(b => b.toString(16).padStart(2, '0')).join('');
+    const loginHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(loginToken));
+    const loginTokenHash = Array.from(new Uint8Array(loginHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    await supabaseAdmin
+      .from('telegram_login_sessions')
+      .insert({
+        session_token: loginTokenHash,
+        status: 'confirmed',
+        talaba_id: resultId,
+        ism: asosiy?.ism || '',
+        familiya: asosiy?.familiya || '',
+        guruh: '',
+        kurs: '',
+        login_id: (asosiy?.ism || '') + '_' + (asosiy?.familiya || ''),
+        telegram_id: telegramId,
+        telegram_ism: asosiy?.ism || '',
+        telegram_familiya: asosiy?.familiya || '',
+        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      });
+
+    const callbackUrl = `${cfg.siteUrl}/telegram-callback?token=${loginToken}`;
+    msg += '\\n\\nQuyidagi tugma bilan saytga qaytishingiz mumkin:';
+    replyMarkup.reply_markup = {
+      inline_keyboard: [[{ text: '🌐 Saytga qaytish', url: callbackUrl }]],
+    };
+  } else {
+    // Mobile — web_app tugmasi
+    msg += '\\n\\nKabinetingizni oching:';
+    replyMarkup.reply_markup = {
+      inline_keyboard: [[
+        { text: '📱 Kabinetni ochish', web_app: { url: cfg.siteUrl } },
+      ]],
+    };
+  }
+
+  await editMsg(msg, replyMarkup.reply_markup);
+}
+
 // ── Callback query ──────────────────────────────────────────────────────────
 async function handleCallback(callbackQuery: any, cfg: BotConfig): Promise<void> {
   const chatId: number = callbackQuery.message?.chat?.id || callbackQuery.from?.id;
@@ -254,6 +439,12 @@ async function handleCallback(callbackQuery: any, cfg: BotConfig): Promise<void>
     });
 
   if (data === 'noop') { await answerCb(''); return; }
+
+  // ── Birlashtirish callback lari (mg:y / mg:n) ──
+  if (data.startsWith('mg:y:') || data.startsWith('mg:n:')) {
+    await handleMergeCallback(callbackQuery, cfg);
+    return;
+  }
 
   if (data === 'check_channel') {
     const [notMember, session] = await Promise.all([
@@ -299,7 +490,7 @@ async function handleLinkToken(
   // Avval hash bo'yicha qidiramiz (yangi tokenlar)
   let { data: linkRow } = await supabaseAdmin
     .from('telegram_link_tokens')
-    .select('talaba_id, platform, expires_at, used_at')
+    .select('talaba_id, platform, expires_at, used_at, start_chat_id')
     .eq('token_hash', tokenHash)
     .maybeSingle();
 
@@ -307,7 +498,7 @@ async function handleLinkToken(
   if (!linkRow) {
     const { data: legacyRow } = await supabaseAdmin
       .from('telegram_link_tokens')
-      .select('talaba_id, platform, expires_at, used_at')
+      .select('talaba_id, platform, expires_at, used_at, start_chat_id')
       .eq('token', linkToken)
       .maybeSingle();
     linkRow = legacyRow;
@@ -332,10 +523,17 @@ async function handleLinkToken(
   if (new Date(linkRow.expires_at) < new Date()) {
     console.log(`[link-token] token muddati o'tgan: prefix=${tokenPrefix}…`);
     await sendMessage(cfg.token, chatId,
-      '⏰ <b>Havola eskirgan.</b>\n\nSaytdan yangi havola oling (10 daqiqa amal qiladi).'
+      '⏰ <b>Havola eskirgan.</b>\n\nSaytdan yangi havola oling (15 daqiqa amal qiladi).'
     );
     return;
   }
+
+  // START chat_id ni token qatoriga yozish
+  await supabaseAdmin
+    .from('telegram_link_tokens')
+    .update({ start_chat_id: chatId })
+    .eq('token_hash', tokenHash)
+    .is('start_chat_id', null);
 
   console.log(`[link-token] token topildi, talaba_id=${linkRow.talaba_id}`);
 
@@ -357,9 +555,38 @@ async function handleLinkToken(
       .update({ conflict_talaba_id: existingTalaba.id })
       .eq('token_hash', tokenHash);
 
+    // Ikkala talaba ma'lumotini olish (telefon/email/ID ko'rsatilmasin)
+    const { data: joriyTalaba } = await supabaseAdmin
+      .from('talabalar')
+      .select('id, ism, familiya, created_at')
+      .eq('id', linkRow.talaba_id)
+      .maybeSingle();
+
+    const hash16 = tokenHash.slice(0, 16);
+
+    const joriyText = joriyTalaba
+      ? `👤 <b>${joriyTalaba.ism} ${joriyTalaba.familiya}</b>\n   📅 ${new Date(joriyTalaba.created_at).toLocaleDateString('uz')}`
+      : '👤 (ma\'lumot topilmadi)';
+
+    const mavjudText =
+      `👤 <b>${existingTalaba.ism} ${existingTalaba.familiya}</b>\n` +
+      `   📅 ${new Date(existingTalaba.created_at).toLocaleDateString('uz')}`;
+
     await sendMessage(cfg.token, chatId,
-      'ℹ️ <b>Bu Telegram akkaunt boshqa akkauntga bog\'langan.</b>\n\n' +
-      'Saytda birlashtirish taklifini qabul qiling yoki bekor qiling.'
+      '⚠️ <b>Bu Telegram akkaunt boshqa akkauntga bog\'langan.</b>\n\n' +
+      'Quyidagi ikkita akkaunt birlashtirilishi mumkin:\n\n' +
+      `${joriyText}\n\n${mavjudText}\n\n` +
+      'Ma\'lumotlar saqlanadi. Tasdiqlaysizmi?',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Ha, birlashtirish', callback_data: `mg:y:${hash16}` },
+              { text: '❌ Bekor qilish', callback_data: `mg:n:${hash16}` },
+            ],
+          ],
+        },
+      }
     );
 
     return;

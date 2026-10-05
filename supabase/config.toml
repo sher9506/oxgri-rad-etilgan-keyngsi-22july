@@ -82,6 +82,9 @@ verify_jwt = false
 [functions.link-telegram-start]
 verify_jwt = false
 
+[functions.link-telegram-status]
+verify_jwt = false
+
 [functions.upload-avatar]
 verify_jwt = false
 
