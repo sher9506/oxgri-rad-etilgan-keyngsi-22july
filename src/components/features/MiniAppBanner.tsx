@@ -165,24 +165,22 @@ export function useMiniAppAutoLogin(login: (user: any) => void) {
       const initData = tryGetInitData();
       if (initData) {
         didRunRef.current = true;
+        window.dispatchEvent(new CustomEvent('miniapp-autologin-loading'));
         performAutoLogin(initData, loginRef);
       }
     };
 
-    // initData darhol bo'lsa
     run();
 
-    // initData hali bo'sh — skript kech yuklangan bo'lishi mumkin
     const delays = [500, 1500, 3000];
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     delays.forEach((delay, i) => {
       const t = setTimeout(() => {
         if (i === delays.length - 1) {
-          // Oxirgi urinish ham bo'sh — mini app emas yoki script yuklanmadi
           const d = tryGetInitData();
           if (!d) {
-            console.warn('[miniapp-autologin] initData topilmadi (3 urinishdan keyin)');
+            console.warn('[miniapp-autologin] initData topilmadi (3 urnishdan keyin)');
             return;
           }
           run();
@@ -232,6 +230,7 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
         google_linked: t.google_linked,
         telegram_linked: true,
       });
+      window.dispatchEvent(new CustomEvent('miniapp-autologin-done'));
       return;
     }
 
@@ -271,6 +270,7 @@ async function performAutoLogin(initData: string, loginRef: React.MutableRefObje
 
   if (errCode) {
     console.warn('[miniapp-autologin] muvaffaqiyatsiz:', errCode);
+    window.dispatchEvent(new CustomEvent('miniapp-autologin-done'));
     window.dispatchEvent(new CustomEvent('miniapp-autologin-failed', {
       detail: { code: errCode, message: errMsg }
     }));

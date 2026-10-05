@@ -112,6 +112,19 @@ function AppContent() {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [miniappLoading, setMiniappLoading] = useState(false);
+
+  // Mini app avto-kirish loading holati
+  useEffect(() => {
+    const onLoading = () => setMiniappLoading(true);
+    const onDone = () => setMiniappLoading(false);
+    window.addEventListener('miniapp-autologin-loading', onLoading);
+    window.addEventListener('miniapp-autologin-done', onDone);
+    return () => {
+      window.removeEventListener('miniapp-autologin-loading', onLoading);
+      window.removeEventListener('miniapp-autologin-done', onDone);
+    };
+  }, []);
 
   useEffect(() => {
     const handler = () => setIsLoginModalOpen(true);
@@ -348,6 +361,14 @@ function AppContent() {
   return (
     <>
       <MiniAppBanner />
+      {miniappLoading && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: 'var(--bg, #f8fafc)' }}>
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 rounded-full animate-spin" style={{ border: '3px solid var(--cobalt-1, #2563eb)', borderTopColor: 'transparent' }} />
+            <p className="text-sm font-medium" style={{ color: 'var(--text-muted, #64748b)' }}>Kirilmoqda...</p>
+          </div>
+        </div>
+      )}
       <Suspense fallback={null}><LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} /></Suspense>
       
       <AdminContext.Provider value={{ isAdmin, adminView, loginAdmin, logoutAdmin, setAdminView }}>
