@@ -133,59 +133,95 @@ export function useMiniAppAutoLogin(login: (user: any) => void) {
 
   useEffect(() => {
     if (didRunRef.current) return;
-    didRunRef.current = true;
 
     let initData = '';
     try {
+      // WebApp.ready() chaqiramiz — Telegram skripti initData ni to'ldiradi
+      window.Telegram?.WebApp?.ready?.();
       initData = window.Telegram?.WebApp?.initData || '';
     } catch {
-      return;
+      // ignore
     }
 
-    if (!initData) return;
-
-    const sessionKey = 'miniapp_autologin_done';
-    try {
-      if (sessionStorage.getItem(sessionKey)) return;
-    } catch {
-      return;
-    }
-
-    (async () => {
-      try {
-        const res = await fetch(`${supabaseUrl}/functions/v1/telegram-miniapp-auth`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${supabaseAnonKey}`,
-          },
-          body: JSON.stringify({ initData }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.success && data?.talaba) {
-            const t = data.talaba;
-            loginRef.current({
-              ism: t.ism,
-              familiya: t.familiya,
-              rol: 'oquvchi',
-              guruh: t.guruh,
-              kurs: t.kurs,
-              login: t.login,
-              talaba_id: t.id,
-              tasdiqlangan: t.tasdiqlangan,
-            });
-            try {
-              sessionStorage.setItem(sessionKey, '1');
-            } catch {
-              // storage yo'q bo'lsa — e'tibor bermaymiz
-            }
+    // initData hali bo'sh bo'lsa — skript kech yuklangan bo'lishi mumkin
+    // 500ms dan keyin qayta tekshiramiz
+    if (!initData) {
+      const retryTimer = setTimeout(() => {
+        try {
+          window.Telegram?.WebApp?.ready?.();
+          const retryInitData = window.Telegram?.WebApp?.initData || '';
+          if (retryInitData && !didRunRef.current) {
+            didRunRef.current = true;
+            performAutoLogin(retryInitData, loginRef);
           }
+        } catch {
+          // ignore
         }
-      } catch {
-        // Tarmoq xatosi — jim o'tamiz
-      }
-    })();
+      }, 500);
+      return () => clearTimeout(retryTimer);
+    }
+
+    didRunRef.current = true;
+    performAutoLogin(initData, loginRef);
   }, []);
+}
+
+async function performAutoLogin(initData: string, loginRef: React.MutableRefObject<(user: any) => void>) {
+  const sessionKey = 'miniapp_autologin_done';
+  try {
+    if (sessionStorage.getItem(sessionKey)) return;
+  } catch {
+    return;
+  }
+
+  let errCode = '';
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/telegram-miniapp-auth`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ initData }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && data?.talaba) {
+        const t = data.talaba;
+        loginRef.current({
+          ism: t.ism,
+          familiya: t.familiya,
+          rol: 'oquvchi',
+          guruh: t.guruh,
+          kurs: t.kurs,
+          login: t.login,
+          talaba_id: t.id,
+          tasdiqlangan: t.tasdiqlangan,
+        });
+        try {
+          sessionStorage.setItem(sessionKey, '1');
+        } catch {
+          // storage yo'q bo'lsa — e'tibor bermaymiz
+        }
+        return;
+      }
+
+      // not_found — talaba topilmadi
+      if (data?.status === 'not_found') {
+        errCode = 'not_registered';
+      }
+    } else if (res.status === 401) {
+      errCode = 'bad_signature';
+    } else {
+      errCode = 'server_' + res.status;
+    }
+  } catch {
+    errCode = 'network';
+  }
+
+  // Diagnostika matni — initData chiqmaydi
+  if (errCode) {
+    console.warn('[miniapp-autologin] muvaffaqiyatsiz:', errCode);
+  }
 }

@@ -1,3 +1,4 @@
+// link-telegram-start v2.2 — token + token_hash saqlaydi
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -86,10 +87,11 @@ Deno.serve(async (req: Request) => {
       .eq('talaba_id', talabaUuid)
       .is('used_at', null);
 
-    // Yangi token yaratish — hash saqlaymiz, 15 daqiqa muddat
+    // Yangi token yaratish — token va hash saqlaymiz, 15 daqiqa muddat
     const { error: insertError } = await supabaseAdmin
       .from('telegram_link_tokens')
       .insert({
+        token,
         token_hash: tokenHash,
         talaba_id: talabaUuid,
         platform: platform || 'mobile',
@@ -97,9 +99,10 @@ Deno.serve(async (req: Request) => {
       });
 
     if (insertError) {
-      console.error('[link-telegram-start] token insert xato:', insertError);
+      const errCode = insertError.code || 'db_error';
+      console.error('[link-telegram-start] token insert xato:', errCode, insertError.message);
       return new Response(
-        JSON.stringify({ error: 'Token yaratilmadi' }),
+        JSON.stringify({ error: `Token yaratilmadi: ${errCode}` }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

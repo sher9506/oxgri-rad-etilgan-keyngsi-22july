@@ -1,4 +1,4 @@
-// talaba-birlashtirish — akkaunt birlashtirish edge function
+// talaba-birlashtirish v2.2 — akkaunt birlashtirish edge function
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 

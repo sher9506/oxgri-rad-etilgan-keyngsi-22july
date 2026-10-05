@@ -1,6 +1,4 @@
-// Telegram Login Bot webhook v2 — hash tokens + inline URL + used_at
-// verify_jwt = false (Telegram serverlari Authorization header'siz chaqiradi)
-// v2.1 — npm import + used_at tracking
+// Telegram Login Bot webhook v2.2 — hash tokens + inline URL + used_at
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
