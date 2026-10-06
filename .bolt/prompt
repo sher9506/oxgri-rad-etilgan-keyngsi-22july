@@ -1,0 +1,20 @@
+LOYIHA: FanFaster (fanfaster.uz) — o'zbek tilidagi huquq ta'limi platformasi. Stack: React + Vite + TypeScript, Supabase (Postgres, RLS, Edge Functions/Deno), Telegram botlar va Mini App. Deploy: GitHub → Cloudflare Pages (bun). Asosiy foydalanuvchilar telefondan va Telegram ichidan kiradi, shuning uchun mobile-first.
+
+ISH TARTIBI (mutaxassis kabi):
+1. O'zgartirishdan oldin tegishli fayllar, DB sxemasi va mavjud mantiqni o'qi. Faraz qilma, ustun/jadval/funksiya nomlarini real manbadan tekshir.
+2. Faqat so'ralgan narsaga tegil. Ishlayotgan kodni qayta yozma, dizayn tili (ranglar, shriftlar, radius, navigatsiya) saqlansin. Matn, raqam, link va handler'lar so'ralmasa o'zgarmasin.
+3. Ish tugagach "tayyor" deb yozmasdan oldin tekshir: build, haqiqiy xatti-harakat, boshqa bo'limlar buzilmaganligi. Hisobotda aniq ajrat: TEKSHIRILDI (dalil bilan) va TEKSHIRILMADI.
+4. Xato bo'lsa avval sababni log/kod bilan topib ayt, keyin tuzat. Taxminiy tuzatishlarni ketma-ket tashlama. Mock/soxta ma'lumot qo'shma, real Supabase jadvallaridan foydalan.
+5. Xavfli amallar (versiya tiklash, ustun/jadval o'chirish, katta qayta yozish, secret o'zgartirish) oldin ogohlantir va tasdiq so'ra. Versiya tiklash undan keyingi tuzatishlarni yo'qotadi.
+6. Hisobot qisqa bo'lsin: nima o'zgardi (fayllar, migration), nima tekshirildi, nima qoldi.
+
+TEXNIK QOIDALAR:
+- Telegram bilan bog'liq edge function'larda `verify_jwt = false` (config.toml'da aniq). Deploy yoki versiya tiklashdan keyin qayta tekshir.
+- Yangi jadvallarda RLS yoq. Policy'larga `anon` rolini ham qo'sh, chunki frontend anon key ishlatadi. Maxfiy ma'lumot (token, kalit, parol hash) anon'ga o'qilmasin.
+- AI model nomi va kalitlar `settings` jadvalidan o'qiladi (Deno secret emas); yangi AI chaqiruvlar shu mexanizmni va `ai-provider.ts` fallback'ini ishlatsin. Kodda yo'q secret uchun tasodifiy qiymat o'ylab topma.
+- Backup/restore DB sxemasida yo'q ustunlarni jim o'chirib yuboradi. Tiklashdan keyin ustunlar ro'yxatini sxema bilan solishtir. `password_hash`/`parol_hash` kabi nomlar chalkash, ishlatishdan oldin real ustunni tekshir.
+- Dependency: `bun.lock` bun 1.2.15 bilan mos bo'lsin, `iceberg-js` o'rnatilgan bo'lsin, aks holda Cloudflare build yiqiladi. Domen manzillarini qattiq kodlama (`url.origin` ishlat).
+- Token, kalit, parol hech qachon frontend kodiga, logga yoki hisobotga to'liq yozilmasin.
+- Telegram Mini App kodi faqat `window.Telegram?.WebApp?.initData` bo'sh bo'lmaganda ishlasin; oddiy sayt o'zgarmasin.
+
+MULOQOT: o'zbek tilida (lotin), qisqa lekin batafsil; texnik atamalar inglizcha. Faqat oxirgi so'ralgan narsaga javob ber. Aniq bo'lmagan joyda bitta aniq savol ber, o'zing o'ylab topma.
