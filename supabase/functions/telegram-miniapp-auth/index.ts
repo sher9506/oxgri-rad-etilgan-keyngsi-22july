@@ -28,7 +28,7 @@ async function getMiniAppBotToken(): Promise<string> {
     .select('text_value')
     .eq('key', 'MINIAPP_BOT_TOKEN')
     .maybeSingle();
-  const token = data?.text_value || '';
+  const token = (data?.text_value || '').trim();
   tokenCache = { token, ts: Date.now() };
   return token;
 }
@@ -40,20 +40,23 @@ async function getLoginBotToken(): Promise<string> {
     .select('text_value')
     .eq('key', 'TELEGRAM_LOGIN_BOT_TOKEN')
     .maybeSingle();
-  return data?.text_value || '';
+  return (data?.text_value || '').trim();
 }
 
-async function validateInitData(initData: string, botToken: string): Promise<{ valid: boolean; user?: any }> {
+async function validateInitData(initData: string, botToken: string): Promise<{ valid: boolean; user?: any; errorCode?: string }> {
   try {
     const params = new URLSearchParams(initData);
     const hash = params.get('hash');
-    if (!hash) return { valid: false };
+    if (!hash) return { valid: false, errorCode: 'no_hash' };
 
     const authDate = parseInt(params.get('auth_date') || '0');
-    if (!authDate || (Date.now() / 1000) - authDate > 3600) {
-      return { valid: false };
+    const nowSec = Math.floor(Date.now() / 1000);
+    const diffSec = nowSec - authDate;
+    if (!authDate || diffSec > 3600) {
+      return { valid: false, errorCode: 'expired' };
     }
 
+    // FAQAT hash ni chiqaramiz, signature ni qoldiramiz
     const keys: string[] = [];
     const values: Record<string, string> = {};
     for (const [key, value] of params.entries()) {
@@ -66,12 +69,16 @@ async function validateInitData(initData: string, botToken: string): Promise<{ v
     const dataCheckString = keys.map(k => `${k}=${values[k]}`).join('\n');
 
     const encoder = new TextEncoder();
+
+    // secret_key = HMAC_SHA256(key="WebAppData", message=botToken)
+    // MUHIM: kalit="WebAppData", xabar=botToken (eski kodda teskari edi)
     const secretKeyBuf = await crypto.subtle.importKey(
-      'raw', encoder.encode(botToken),
+      'raw', encoder.encode('WebAppData'),
       { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
     );
-    const secretKey = await crypto.subtle.sign('HMAC', secretKeyBuf, encoder.encode('WebAppData'));
+    const secretKey = await crypto.subtle.sign('HMAC', secretKeyBuf, encoder.encode(botToken));
 
+    // hash = HMAC_SHA256(key=secret_key, message=data_check_string)
     const hmacKey = await crypto.subtle.importKey(
       'raw', secretKey,
       { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
@@ -79,13 +86,16 @@ async function validateInitData(initData: string, botToken: string): Promise<{ v
     const calculatedHashBuf = await crypto.subtle.sign('HMAC', hmacKey, encoder.encode(dataCheckString));
     const calculatedHash = Array.from(new Uint8Array(calculatedHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (calculatedHash !== hash) return { valid: false };
+    if (calculatedHash !== hash) {
+      return { valid: false, errorCode: 'hash_mismatch' };
+    }
 
     const userJson = params.get('user');
     const user = userJson ? JSON.parse(userJson) : undefined;
     return { valid: true, user };
-  } catch {
-    return { valid: false };
+  } catch (e) {
+    console.error('[miniapp-auth] validateInitData exception:', e);
+    return { valid: false, errorCode: 'exception' };
   }
 }
 
@@ -115,7 +125,7 @@ Deno.serve(async (req: Request) => {
     // Avval Mini App bot tokeni, keyin login bot tokeni bilan tekshiramiz
     const [miniappToken, loginBotToken] = await Promise.all([getMiniAppBotToken(), getLoginBotToken()]);
 
-    let result = { valid: false, user: undefined as any };
+    let result = { valid: false, user: undefined as any, errorCode: undefined as string | undefined };
     if (miniappToken) {
       result = await validateInitData(initData, miniappToken);
     }
@@ -124,8 +134,14 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!result.valid) {
+      const code = result.errorCode || 'unknown';
+      let msg = 'initData noto\'g\'ri yoki muddati o\'tgan';
+      if (code === 'no_token') msg = 'Mini App bot tokeni sozlanmagan';
+      else if (code === 'no_hash') msg = 'initData da hash topilmadi';
+      else if (code === 'expired') msg = 'initData muddati o\'tgan (1 soatdan eski)';
+      else if (code === 'hash_mismatch') msg = 'Telegram imzo noto\'g\'ri (hash mos emas)';
       return new Response(
-        JSON.stringify({ error: 'initData noto\'g\'ri yoki muddati o\'tgan' }),
+        JSON.stringify({ error: msg, error_code: code }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

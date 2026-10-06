@@ -122,7 +122,8 @@ function MiniAppLoginCard() {
       }
 
       setState('error');
-      setErrorMsg(data?.error || 'Noma\'lum xatolik');
+      const code = data?.error_code ? ` [${data.error_code}]` : '';
+      setErrorMsg((data?.error || 'Noma\'lum xatolik') + code);
     } catch {
       setState('error');
       setErrorMsg('Tarmoq xatosi. Iltimos, qayta urinib ko\'ring.');
