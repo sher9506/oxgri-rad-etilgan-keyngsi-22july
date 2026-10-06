@@ -102,3 +102,6 @@ verify_jwt = false
 
 [functions.miniapp-bot]
 verify_jwt = false
+
+[functions.link-confirm]
+verify_jwt = false
