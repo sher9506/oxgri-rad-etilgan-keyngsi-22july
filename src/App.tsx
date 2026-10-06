@@ -6,7 +6,6 @@ import TelegramCallback from '@/pages/TelegramCallback';
 const GoogleCallback = lazy(() => import('@/pages/GoogleCallback'));
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
-import { toast } from '@/components/ui/sonner';
 import TopNav from '@/components/layout/TopNav';
 import Sidebar from '@/components/layout/Sidebar';
 import { Menu as MenuIcon, LogOut, User as UserIcon } from 'lucide-react';
@@ -50,7 +49,7 @@ const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz')
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
-import MiniAppBanner, { useMiniAppAutoLogin, MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
+import MiniAppBanner, { MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Admin Context
@@ -95,28 +94,7 @@ function AppContent() {
     return () => window.removeEventListener('open-login-modal', handler);
   }, []);
 
-  // Mini app avtokirish xatosi — foydalanuvchiga ko'rsatish
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.code === 'not_registered') {
-        toast.warning('Telegram akkauntingiz topilmadi', {
-          description: 'Iltimos, saytda ro\'yxatdan o\'ting yoki Telegramni ulang.',
-        });
-      } else if (detail?.code === 'bad_signature') {
-        toast.error('Telegram imzo noto\'g\'ri', {
-          description: 'Iltimos, saytdan qaytadan kiring.',
-        });
-      }
-    };
-    window.addEventListener('miniapp-autologin-failed', handler);
-    return () => window.removeEventListener('miniapp-autologin-failed', handler);
-  }, []);
-
-  const { user, logout, login } = useAuth();
-
-  // Mini app avtomatik kirish
-  useMiniAppAutoLogin(login);
+  const { user, logout } = useAuth();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminView, setAdminView] = useState('ustoz');

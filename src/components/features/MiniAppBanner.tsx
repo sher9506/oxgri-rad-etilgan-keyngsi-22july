@@ -63,9 +63,11 @@ export function isDesktopPlatform(): boolean {
 // "Davom etish" login kartochkasi — Mini App ichida login bo'lmaganda chiqadi
 function MiniAppLoginCard() {
   const { login } = useAuth();
-  const [state, setState] = useState<'idle' | 'loading' | 'need_phone' | 'phone_sent' | 'phone_cancelled' | 'error'>('idle');
+  const [state, setState] = useState<'checking' | 'idle' | 'phone_sent' | 'phone_cancelled' | 'error'>('checking');
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorCode, setErrorCode] = useState('');
   const retryCountRef = useRef(0);
+  const didCheckRef = useRef(false);
 
   const callAuth = async (initData: string, isPhoneRetry = false) => {
     try {
@@ -100,8 +102,7 @@ function MiniAppLoginCard() {
 
       if (data?.status === 'need_phone') {
         if (!isPhoneRetry) {
-          setState('need_phone');
-          requestPhone();
+          setState('idle');
         } else {
           // Phone retry — contact kelganidan keyin yana urindik lekin hali topilmadi
           retryCountRef.current++;
@@ -122,13 +123,34 @@ function MiniAppLoginCard() {
       }
 
       setState('error');
-      const code = data?.error_code ? ` [${data.error_code}]` : '';
-      setErrorMsg((data?.error || 'Noma\'lum xatolik') + code);
+      setErrorCode(data?.error_code || '');
+      setErrorMsg(data?.error || 'Noma\'lum xatolik');
     } catch {
       setState('error');
       setErrorMsg('Tarmoq xatosi. Iltimos, qayta urinib ko\'ring.');
     }
   };
+
+  // Checking holatida darhol initData ni yuboramiz — kartochka ko'rinmaydi
+  useEffect(() => {
+    if (didCheckRef.current) return;
+    const initData = safeGetInitData();
+    if (initData) {
+      didCheckRef.current = true;
+      callAuth(initData);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const retryData = safeGetInitData();
+      didCheckRef.current = true;
+      if (retryData) {
+        callAuth(retryData);
+      } else {
+        setState('idle');
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
 
   const requestPhone = () => {
     const tg = window.Telegram?.WebApp;
@@ -159,29 +181,42 @@ function MiniAppLoginCard() {
   };
 
   const handleContinue = () => {
-    setState('loading');
     const initData = safeGetInitData();
     if (!initData) {
       setState('error');
       setErrorMsg('Telegram ma\'lumotlari topilmadi.');
       return;
     }
-    callAuth(initData);
+    requestPhone();
   };
 
   const handleRetry = () => {
     setErrorMsg('');
-    setState('idle');
+    setErrorCode('');
+    setState('checking');
     retryCountRef.current = 0;
+    didCheckRef.current = true;
+    const initData = safeGetInitData();
+    if (initData) {
+      callAuth(initData);
+    } else {
+      setState('idle');
+    }
   };
 
-  if (state === 'loading' || state === 'phone_sent') {
+  if (state === 'checking') {
     return (
       <div className="flex flex-col items-center justify-center gap-3 px-6 py-10">
         <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-        <p className="text-sm font-semibold text-gray-600">
-          {state === 'phone_sent' ? 'Telefon tekshirilmoqda...' : 'Kirilmoqda...'}
-        </p>
+      </div>
+    );
+  }
+
+  if (state === 'phone_sent') {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 px-6 py-10">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <p className="text-sm font-semibold text-gray-600">Telefon tekshirilmoqda...</p>
       </div>
     );
   }
@@ -215,6 +250,7 @@ function MiniAppLoginCard() {
           </div>
         </div>
         <p className="text-sm font-bold text-gray-700">{errorMsg}</p>
+        {errorCode && <p className="text-xs text-gray-400 font-mono">{errorCode}</p>}
         <button
           onClick={handleRetry}
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition"
@@ -225,7 +261,7 @@ function MiniAppLoginCard() {
     );
   }
 
-  // idle yoki need_phone — boshlang'ich kartochka
+  // idle — need_phone tasdiqlangan, kartochka ko'rsatish
   return (
     <div className="px-6 py-8 space-y-5">
       <div className="text-center space-y-2">
@@ -345,118 +381,4 @@ export default function MiniAppBanner() {
   );
 }
 
-// Mini app avtomatik kirish hook — avtomatik tekshirish (Kirish tugmasisiz)
-export function useMiniAppAutoLogin(login: (user: any) => void) {
-  const loginRef = useRef(login);
-  loginRef.current = login;
-  const didRunRef = useRef(false);
 
-  useEffect(() => {
-    if (didRunRef.current) return;
-
-    const tryGetInitData = (): string => {
-      try {
-        window.Telegram?.WebApp?.ready?.();
-        return window.Telegram?.WebApp?.initData || '';
-      } catch {
-        return '';
-      }
-    };
-
-    let initData = tryGetInitData();
-    if (initData) {
-      didRunRef.current = true;
-      performAutoLogin(initData, loginRef);
-      return;
-    }
-
-    const delays = [500, 1500, 3000];
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    delays.forEach((delay, i) => {
-      const t = setTimeout(() => {
-        if (didRunRef.current) return;
-        const retryData = tryGetInitData();
-        if (retryData) {
-          didRunRef.current = true;
-          performAutoLogin(retryData, loginRef);
-        } else if (i === delays.length - 1) {
-          console.warn('[miniapp-autologin] initData topilmadi (3 urinishdan keyin)');
-        }
-      }, delay);
-      timers.push(t);
-    });
-
-    return () => timers.forEach(t => clearTimeout(t));
-  }, []);
-}
-
-async function performAutoLogin(initData: string, loginRef: React.MutableRefObject<(user: any) => void>) {
-  const sessionKey = 'miniapp_autologin_done';
-  try {
-    if (sessionStorage.getItem(sessionKey)) return;
-  } catch {
-    return;
-  }
-
-  let errCode = '';
-  let errMsg = '';
-  try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/telegram-miniapp-auth`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${supabaseAnonKey}`,
-      },
-      body: JSON.stringify({ initData }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.success && data?.talaba) {
-        const t = data.talaba;
-        loginRef.current({
-          ism: t.ism,
-          familiya: t.familiya,
-          rol: 'oquvchi',
-          guruh: t.guruh,
-          kurs: t.kurs,
-          login: t.login,
-          talaba_id: t.id,
-          tasdiqlangan: t.tasdiqlangan,
-          telegram_linked: t.telegram_linked,
-          google_linked: t.google_linked,
-        });
-        try {
-          sessionStorage.setItem(sessionKey, '1');
-        } catch {}
-        return;
-      }
-
-      if (data?.status === 'need_phone') {
-        // Avtomatik kirish uchun telefon kerak — UI ko'rsatamiz
-        errCode = 'need_phone';
-        errMsg = data?.message || 'Davom etish uchun telefon raqamingizni ulashing.';
-      } else if (data?.status === 'not_found') {
-        errCode = 'not_registered';
-        errMsg = data?.message || 'Talaba topilmadi. Saytda ro\'yxatdan o\'ting.';
-      }
-    } else if (res.status === 401) {
-      errCode = 'bad_signature';
-      errMsg = 'Telegram imzo noto\'g\'ri. Iltimos saytdan kiring.';
-    } else {
-      errCode = 'server_' + res.status;
-      errMsg = 'Server xatosi (' + res.status + ')';
-    }
-  } catch {
-    errCode = 'network';
-    errMsg = 'Tarmoq xatosi';
-  }
-
-  if (errCode) {
-    console.warn('[miniapp-autologin] muvaffaqiyatsiz:', errCode);
-    window.dispatchEvent(new CustomEvent('miniapp-autologin-failed', {
-      detail: { code: errCode, message: errMsg }
-    }));
-  }
-}
