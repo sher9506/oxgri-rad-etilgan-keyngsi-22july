@@ -19,6 +19,7 @@ import BotXabarnomasi from './BotXabarnomasi';
 import OquvchilarRoyhat from './OquvchilarRoyhat';
 import MentorAiSozlamalari from './MentorAiSozlamalari';
 import TelegramLoginSozlamalari from './TelegramLoginSozlamalari';
+import MiniAppSozlamalari from './MiniAppSozlamalari';
 import Analitika from './Analitika';
 import AdminChunking from './AdminChunking';
 import AiKvotaWidget from './AiKvotaWidget';
@@ -1597,6 +1598,9 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
 
       {/* ─────────── TELEGRAM LOGIN BOT ─────────── */}
       {view === 'tg_login_bot' && <TelegramLoginSozlamalari />}
+
+      {/* ─────────── TELEGRAM MINI APP BOT ─────────── */}
+      {view === 'miniapp_bot' && <MiniAppSozlamalari />}
 
       {/* ─────────── ADMIN RO'YHAT ─────────── */}
       {view === 'royhat' && (() => {

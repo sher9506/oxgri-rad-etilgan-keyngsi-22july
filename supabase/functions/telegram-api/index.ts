@@ -1,5 +1,8 @@
 import { corsHeaders } from '../_shared/cors.ts';
 
+// telegram-api — generic Telegram API proxy (verify_jwt = false)
+// Allowed methods include setChatMenuButton for Mini App bot menu configuration.
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -15,7 +18,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const allowed = ['getMe', 'setWebhook', 'getWebhookInfo', 'deleteWebhook', 'sendMessage', 'sendPhoto', 'answerCallbackQuery', 'getChat', 'getChatMember'];
+    const allowed = ['getMe', 'setWebhook', 'getWebhookInfo', 'deleteWebhook', 'sendMessage', 'sendPhoto', 'answerCallbackQuery', 'getChat', 'getChatMember', 'setChatMenuButton'];
     if (!allowed.includes(method)) {
       return new Response(
         JSON.stringify({ ok: false, description: `Method '${method}' ruxsat etilmagan` }),

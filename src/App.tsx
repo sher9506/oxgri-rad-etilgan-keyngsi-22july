@@ -50,7 +50,7 @@ const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz')
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
-import MiniAppBanner, { useMiniAppAutoLogin } from '@/components/features/MiniAppBanner';
+import MiniAppBanner, { useMiniAppAutoLogin, MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Admin Context
@@ -291,6 +291,9 @@ function AppContent() {
     <>
       <MiniAppBanner />
       <Suspense fallback={null}><LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} /></Suspense>
+      
+      {/* Mini App ichida login bo'lmaganda "Davom etish" overlay */}
+      {isTelegramMiniApp() && !user && <MiniAppLoginOverlay />}
       
       <AdminContext.Provider value={{ isAdmin, adminView, loginAdmin, logoutAdmin, setAdminView }}>
         {isAdmin || user?.rol === 'ustoz' ? (
