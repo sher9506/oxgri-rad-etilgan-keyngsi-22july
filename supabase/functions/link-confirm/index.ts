@@ -1,5 +1,5 @@
 // link-confirm — Mini App ichida tasdiqlash (initData + kanal + atomik merge)
-// verify_jwt = false (config.toml'da aniq)
+// verify_jwt = false (config.toml'da aniq) — force redeploy v2
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -271,7 +271,7 @@ Deno.serve(async (req: Request) => {
       // Audit log
       await supabaseAdmin
         .from('akkaunt_birlashtirish_log')
-        .insert({ talaba_id: claimed.talaba_id, sabab: 'telegram_link_simple', amal: 'linked' })
+        .insert({ asosiy_id: claimed.talaba_id, sabab: 'telegram_link_simple' })
         .then(() => {}, () => {});
 
       return new Response(JSON.stringify({
@@ -402,7 +402,7 @@ Deno.serve(async (req: Request) => {
     // Audit log
     await supabaseAdmin
       .from('akkaunt_birlashtirish_log')
-      .insert({ talaba_id: asosiyId, birlashgan_id: birlashganId, sabab: 'telegram_link_miniapp', amal: 'merged' })
+      .insert({ asosiy_id: asosiyId, birlashgan_id: birlashganId, sabab: 'telegram_link_miniapp' })
       .then(() => {}, () => {});
 
     // Asosiy talaba ma'lumoti

@@ -25,8 +25,8 @@ export default function BirlashtirishKartasi() {
 
   // Telegram ulash
   const [linkLoading, setLinkLoading] = useState(false);
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const linkTokenRef = useRef<string | null>(null);
+  const [linkTokenHash, setLinkTokenHash] = useState<string | null>(null);
+  const linkTokenHashRef = useRef<string | null>(null);
   const [linkPolling, setLinkPolling] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -115,11 +115,10 @@ export default function BirlashtirishKartasi() {
         return;
       }
       if (data?.deepLink) {
-        const token = data.token as string;
-        setLinkToken(token);
-        linkTokenRef.current = token;
+        const tokenHash = data.tokenHash as string;
+        setLinkTokenHash(tokenHash);
+        linkTokenHashRef.current = tokenHash;
         window.open(data.deepLink, '_blank');
-        // Polling — link-telegram-status orqali
         setLinkPolling(true);
         const startTime = Date.now();
         pollingRef.current = setInterval(async () => {
@@ -129,8 +128,8 @@ export default function BirlashtirishKartasi() {
             toast({ title: 'Vaqt tugadi', description: 'Telegram ulash amalga oshmadi', variant: 'destructive' });
             return;
           }
-          const currentToken = linkTokenRef.current;
-          if (!currentToken) { stopLinkPolling(); return; }
+          const currentHash = linkTokenHashRef.current;
+          if (!currentHash) { stopLinkPolling(); return; }
 
           try {
             const statusRes = await fetch(`${supabaseUrl}/functions/v1/link-telegram-status`, {
@@ -139,7 +138,7 @@ export default function BirlashtirishKartasi() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${supabaseAnonKey}`,
               },
-              body: JSON.stringify({ token: currentToken }),
+              body: JSON.stringify({ tokenHash: currentHash }),
             });
             const statusData = await statusRes.json();
 
@@ -211,6 +210,13 @@ export default function BirlashtirishKartasi() {
                 conflictFamiliya: '',
                 conflictCreated: '',
               });
+              return;
+            }
+
+            if (statusData?.status === 'rejected') {
+              stopLinkPolling();
+              toast({ title: 'Rad etildi', description: 'Birlashtirish rad etildi', variant: 'destructive' });
+              setMergeConflict(null);
               return;
             }
 

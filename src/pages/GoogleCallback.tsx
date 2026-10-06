@@ -28,6 +28,7 @@ export default function GoogleCallback() {
 
   const linkMode = new URLSearchParams(window.location.search).get('link') === 'true';
   const linkTalabaId = new URLSearchParams(window.location.search).get('talaba_id');
+  const linkState = new URLSearchParams(window.location.search).get('state');
 
   const ranRef = useRef(false);
 
@@ -62,6 +63,7 @@ export default function GoogleCallback() {
         body: JSON.stringify({
           code,
           linkTalabaId: linkMode ? linkTalabaId : undefined,
+          linkState: linkMode ? linkState : undefined,
           redirectUri: `${window.location.origin}/google-callback`,
         }),
       });
@@ -107,7 +109,7 @@ export default function GoogleCallback() {
     } catch (err: any) {
       redirectToHomeWithError('Server xatosi: ' + (err.message || 'Noma\'lum'));
     }
-  }, [linkMode, linkTalabaId, login, redirectToHome, redirectToHomeWithError]);
+  }, [linkMode, linkTalabaId, linkState, login, redirectToHome, redirectToHomeWithError]);
 
   useEffect(() => {
     handleGoogleSession();

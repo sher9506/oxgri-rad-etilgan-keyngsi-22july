@@ -462,9 +462,39 @@ async function handleCallback(callbackQuery: any, cfg: BotConfig): Promise<void>
 
   if (data === 'noop') { await answerCb(''); return; }
 
-  // ── Birlashtirish callback lari (mg:y / mg:n) ──
+  // Eski inline tugmalar endi Mini App'ga yo'naltiriladi
+  // Yangi tokenlar handleLinkToken orqali web_app tugma yuboradi
   if (data.startsWith('mg:y:') || data.startsWith('mg:n:')) {
-    await handleMergeCallback(callbackQuery, cfg);
+    const hash16 = data.split(':')[2] || '';
+    if (hash16.length < 8) { await answerCb('❌ Noto\'g\'ri so\'rov'); return; }
+
+    const { data: tokens } = await supabaseAdmin
+      .from('telegram_link_tokens')
+      .select('token_hash, talaba_id')
+      .like('token_hash', `${hash16}%`)
+      .maybeSingle();
+
+    if (!tokens) { await answerCb('❌ Token topilmadi'); return; }
+
+    const { data: miniappUrlData } = await supabaseAdmin
+      .from('settings')
+      .select('text_value')
+      .eq('key', 'MINIAPP_URL')
+      .maybeSingle();
+    const miniappUrl = miniappUrlData?.text_value || cfg.siteUrl;
+    const confirmUrl = `${miniappUrl}/link-confirm?token=${tokens.token_hash}`;
+
+    await answerCb('Mini App ochiladi…');
+    await fetch(`https://api.telegram.org/bot${cfg.token}/editMessageText`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: callbackQuery.message?.message_id,
+        text: 'Tasdiqlash uchun quyidagi tugmani bosing:',
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: '🔓 Tasdiqlash uchun ochish', web_app: { url: confirmUrl } }]] },
+      }),
+    });
     return;
   }
 
@@ -577,36 +607,23 @@ async function handleLinkToken(
       .update({ conflict_talaba_id: existingTalaba.id })
       .eq('token_hash', tokenHash);
 
-    // Ikkala talaba ma'lumotini olish (telefon/email/ID ko'rsatilmasin)
-    const { data: joriyTalaba } = await supabaseAdmin
-      .from('talabalar')
-      .select('id, ism, familiya, created_at')
-      .eq('id', linkRow.talaba_id)
+    // Mini App orqali tasdiqlash — web_app tugma yuboramiz
+    const { data: miniappUrlData } = await supabaseAdmin
+      .from('settings')
+      .select('text_value')
+      .eq('key', 'MINIAPP_URL')
       .maybeSingle();
-
-    const hash16 = tokenHash.slice(0, 16);
-
-    const joriyText = joriyTalaba
-      ? `👤 <b>${joriyTalaba.ism} ${joriyTalaba.familiya}</b>\n   📅 ${new Date(joriyTalaba.created_at).toLocaleDateString('uz')}`
-      : '👤 (ma\'lumot topilmadi)';
-
-    const mavjudText =
-      `👤 <b>${existingTalaba.ism} ${existingTalaba.familiya}</b>\n` +
-      `   📅 ${new Date(existingTalaba.created_at).toLocaleDateString('uz')}`;
+    const miniappUrl = miniappUrlData?.text_value || cfg.siteUrl;
+    const confirmUrl = `${miniappUrl}/link-confirm?token=${tokenHash}`;
 
     await sendMessage(cfg.token, chatId,
       '⚠️ <b>Bu Telegram akkaunt boshqa akkauntga bog\'langan.</b>\n\n' +
-      'Quyidagi ikkita akkaunt birlashtirilishi mumkin:\n\n' +
-      `${joriyText}\n\n${mavjudText}\n\n` +
-      'Ma\'lumotlar saqlanadi. Tasdiqlaysizmi?',
+      'Tasdiqlash uchun quyidagi tugmani bosing:',
       {
         reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '✅ Ha, birlashtirish', callback_data: `mg:y:${hash16}` },
-              { text: '❌ Bekor qilish', callback_data: `mg:n:${hash16}` },
-            ],
-          ],
+          inline_keyboard: [[
+            { text: '🔓 Tasdiqlash uchun ochish', web_app: { url: confirmUrl } },
+          ]],
         },
       }
     );

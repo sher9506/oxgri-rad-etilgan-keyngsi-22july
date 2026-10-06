@@ -36,9 +36,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { code, linkTalabaId, redirectUri } = body as {
+    const { code, linkTalabaId, linkState, redirectUri } = body as {
       code: string;
       linkTalabaId?: string;
+      linkState?: string;
       redirectUri?: string;
     };
 
@@ -126,6 +127,40 @@ Deno.serve(async (req: Request) => {
 
     // ── Boglash rejimi ──
     if (linkTalabaId) {
+      // State hash tekshiruvi
+      if (linkState) {
+        const stateHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(linkState));
+        const stateHash = Array.from(new Uint8Array(stateHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const { data: linkRow } = await supabaseAdmin
+          .from('telegram_link_tokens')
+          .select('id, talaba_id, used_at, expires_at')
+          .eq('state_hash', stateHash)
+          .maybeSingle();
+
+        if (!linkRow) {
+          return new Response(JSON.stringify({ error: 'State noto\'g\'ri' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        if (linkRow.used_at) {
+          return new Response(JSON.stringify({ error: 'State allaqachon ishlatilgan' }),
+            { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        if (new Date(linkRow.expires_at) < new Date()) {
+          return new Response(JSON.stringify({ error: 'State muddati o\'tgan' }),
+            { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        // talaba_id mosligi
+        if (linkRow.talaba_id !== linkTalabaId) {
+          return new Response(JSON.stringify({ error: 'Talaba mos emas' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        // google_sub ni qatorga yozish
+        await supabaseAdmin
+          .from('telegram_link_tokens')
+          .update({ google_sub: googleUserId, status: 'google_proven' })
+          .eq('state_hash', stateHash);
+      }
+
       // Boshqa talabaga boglanganmi?
       const { data: existing } = await supabaseAdmin
         .from('talabalar')

@@ -17,6 +17,7 @@ const SETTING_KEYS = [
   'MINIAPP_WELCOME_TEXT',
   'MINIAPP_BUTTON_TEXT',
   'MINIAPP_WEBHOOK_SECRET',
+  'MINIAPP_LINK_CHANNEL',
 ];
 
 const DEFAULT_WELCOME = "FanFaster botiga xush kelibsiz!\n\nPastdagi «Kirish» tugmasini bosing — kabinetingiz shu yerning o'zida, Telegram ichida ochiladi.";
@@ -30,6 +31,8 @@ export default function MiniAppSozlamalari() {
   const [welcomeText, setWelcomeText] = useState(DEFAULT_WELCOME);
   const [buttonText, setButtonText] = useState(DEFAULT_BUTTON);
   const [webhookSecret, setWebhookSecret] = useState('');
+  const [linkChannel, setLinkChannel] = useState('');
+  const [channelError, setChannelError] = useState('');
 
   const [tokenKo, setTokenKo] = useState(false);
   const [secretKo, setSecretKo] = useState(false);
@@ -60,6 +63,7 @@ export default function MiniAppSozlamalari() {
       setWelcomeText(map['MINIAPP_WELCOME_TEXT'] || DEFAULT_WELCOME);
       setButtonText(map['MINIAPP_BUTTON_TEXT'] || DEFAULT_BUTTON);
       setWebhookSecret(map['MINIAPP_WEBHOOK_SECRET'] || '');
+      setLinkChannel(map['MINIAPP_LINK_CHANNEL'] || '');
 
       if (map['MINIAPP_BOT_TOKEN']) {
         botMalumotOlish(map['MINIAPP_BOT_TOKEN']);
@@ -180,7 +184,26 @@ export default function MiniAppSozlamalari() {
         supabase.from('settings').upsert({ key: 'MINIAPP_WELCOME_TEXT', text_value: welcomeText, value: true, tavsif: 'Mini App Salomlashuv matni' }, { onConflict: 'key' }),
         supabase.from('settings').upsert({ key: 'MINIAPP_BUTTON_TEXT', text_value: buttonText.trim(), value: true, tavsif: 'Mini App Tugma matni' }, { onConflict: 'key' }),
         supabase.from('settings').upsert({ key: 'MINIAPP_WEBHOOK_SECRET', text_value: secret, value: true, tavsif: 'Mini App Webhook Secret' }, { onConflict: 'key' }),
+        supabase.from('settings').upsert({ key: 'MINIAPP_LINK_CHANNEL', text_value: linkChannel.trim(), value: true, tavsif: 'Mini App birlashtirish kanali' }, { onConflict: 'key' }),
       ]);
+
+      // Kanal adminligini tekshirish (agar kanal kiritilgan bo'lsa)
+      if (linkChannel.trim()) {
+        try {
+          const { data: chatResult, error: chatErr } = await supabase.functions.invoke('telegram-api', {
+            body: { token: token.trim(), method: 'getChat', body: { chat_id: linkChannel.trim() } },
+          });
+          if (chatErr || !chatResult?.ok) {
+            setChannelError(chatResult?.description || 'Kanal topilmadi yoki bot admin emas');
+          } else {
+            setChannelError('');
+          }
+        } catch (e: any) {
+          setChannelError(e.message || 'Kanal tekshirilmadi');
+        }
+      } else {
+        setChannelError('');
+      }
 
       setWebhookSecret(secret);
       setBotUsername(autoUsername);
@@ -385,6 +408,39 @@ export default function MiniAppSozlamalari() {
               className={inputCls}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Birlashtirish kanali */}
+      <Card className="border-2 border-slate-200 shadow-md">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Hash className="h-5 w-5 text-amber-600" />Birlashtirish kanali
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-gray-500">
+            Akkaunt birlashtirishdan oldin foydalanuvchi shu kanalga a'zo bo'lishi shart. Bo'sh = tekshiruv o'chiq.
+          </p>
+          <input
+            type="text"
+            value={linkChannel}
+            onChange={(e) => setLinkChannel(e.target.value)}
+            placeholder="@kanal_username yoki -1001234567890"
+            className={inputCls}
+          />
+          {channelError && (
+            <div className="flex items-start gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700">{channelError}</p>
+            </div>
+          )}
+          {linkChannel && !channelError && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <p className="text-xs text-green-700">Kanal faol</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

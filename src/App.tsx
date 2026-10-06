@@ -50,6 +50,7 @@ const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvc
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
 import MiniAppBanner, { MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
+const MiniAppLinkConfirm = lazy(() => import('@/components/features/MiniAppLinkConfirm'));
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Admin Context
@@ -366,6 +367,15 @@ function RouterRoot() {
     return (
       <AuthProvider>
         <TelegramCallback />
+      </AuthProvider>
+    );
+  }
+  if (location.pathname === '/link-confirm') {
+    return (
+      <AuthProvider>
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" /></div>}>
+          <MiniAppLinkConfirm />
+        </Suspense>
       </AuthProvider>
     );
   }

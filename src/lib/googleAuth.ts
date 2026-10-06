@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import { detectPlatform } from './platform';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -41,8 +41,22 @@ export function startGoogleLogin(): Promise<{ error?: string }> {
   return redirectToGoogle();
 }
 
-export function startGoogleLink(talabaId: string): Promise<{ error?: string }> {
-  return redirectToGoogle(`link=true&talaba_id=${encodeURIComponent(talabaId)}`);
+export async function startGoogleLink(talabaId: string): Promise<{ error?: string }> {
+  try {
+    // Serverdan state hash olish
+    const res = await fetch(`${supabaseUrl}/functions/v1/link-telegram-start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+      body: JSON.stringify({ talaba_id: talabaId, mode: 'google' }),
+    });
+    const data = await res.json();
+    if (data?.error) return { error: data.error };
+    if (!data?.state) return { error: 'State olinmadi' };
+
+    return redirectToGoogle(`link=true&talaba_id=${encodeURIComponent(talabaId)}&state=${encodeURIComponent(data.state)}`);
+  } catch (err: any) {
+    return { error: err.message || 'Google ulash xatosi' };
+  }
 }
 
 export { detectPlatform };
