@@ -35,7 +35,7 @@ const LINKED_KEY = 'ff_miniapp_linked';
 const BANNER_DISMISS_KEY = 'ff_miniapp_banner_dismissed';
 const BANNER_RESHOW_DAYS = 3;
 
-const DESKTOP_PLATFORMS = ['tdesktop', 'macos', 'weba', 'webk', 'webz', 'web', 'unigram'];
+const MOBILE_PLATFORMS = ['ios', 'android', 'android_x'];
 
 function safeGetInitData(): string {
   try {
@@ -61,10 +61,10 @@ export function isTelegramMiniApp(): boolean {
   }
 }
 
-export function isDesktopPlatform(): boolean {
+export function isMobilePlatform(): boolean {
   try {
     const platform = safeGetPlatform();
-    return DESKTOP_PLATFORMS.includes(platform);
+    return MOBILE_PLATFORMS.includes(platform);
   } catch {
     return false;
   }
@@ -95,7 +95,7 @@ export function MiniAppDesktopBanner() {
 
   useEffect(() => {
     if (!isTelegramMiniApp()) return;
-    if (isDesktopPlatform()) return;
+    if (isMobilePlatform()) return;
 
     // Eslab qolingan dismiss ni tekshir
     try {
