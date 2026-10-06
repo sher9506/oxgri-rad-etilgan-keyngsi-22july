@@ -6,7 +6,8 @@ import {
   ScanFace, X, User as UserIcon, FileText, GraduationCap,
   Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
   Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain, LogOut,
-  BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper, Activity, Server, Smartphone
+  BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper, Activity, Server, Smartphone,
+  Gavel
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang } from '@/contexts/LangContext';
@@ -92,15 +93,18 @@ function buildSections(
   t: (k: string) => string,
   blogHuquqi: boolean = false,
   ustozHuquqi: boolean = false,
+  hukmOnly: boolean = false,
 ) {
   const isUstoz = userRol === 'ustoz';
   // blog_huquqi=true — faqat blog, blog_yozish, profil, haqida, yordam
   // ustoz_huquqi=true — blog_yozishdan tashqari hammasi
+  // hukm_only=true — faqat Hukm kabineti, profil, haqida, yordam
   // ikkalasi false — hammasi ko'rinadi
-  const isBlogOnly = isUstoz && blogHuquqi && !ustozHuquqi;
-  const isUstozRestricted = isUstoz && ustozHuquqi && !blogHuquqi;
+  const isBlogOnly = isUstoz && blogHuquqi && !ustozHuquqi && !hukmOnly;
+  const isUstozRestricted = isUstoz && ustozHuquqi && !blogHuquqi && !hukmOnly;
+  const isHukmOnly = isUstoz && hukmOnly;
 
-  const oqishItems = isBlogOnly ? [
+  const oqishItems = isHukmOnly ? [] : isBlogOnly ? [
     { id: 'blog', label: 'Blog', icon: Newspaper },
   ] : [
     { id: 'kurslar', label: t('nav.kurslar'), icon: BookMarked },
@@ -109,7 +113,7 @@ function buildSections(
     { id: 'blog', label: 'Blog', icon: Newspaper },
   ];
 
-  const sinovItems = isBlogOnly ? [] : [
+  const sinovItems = (isBlogOnly || isHukmOnly) ? [] : [
     { id: 'sinov', label: t('nav.bilim_olish'), icon: Play, accent: true },
     { id: 'mavjud_testlar', label: t('nav.mavjud_testlar'), icon: FileText },
     { id: 'mavjud_kazuslar', label: t('nav.mavjud_kazuslar'), icon: GraduationCap },
@@ -123,13 +127,17 @@ function buildSections(
     { id: 'yordam', label: t('nav.yordam'), icon: HelpCircle },
   ];
 
-  // Blog-only uchun natijalar ham yashirin
-  const visibleBottomItems = isBlogOnly
+  // Blog-only va Hukm-only uchun natijalar ham yashirin
+  const visibleBottomItems = (isBlogOnly || isHukmOnly)
     ? bottomItems.filter(i => ['profil', 'haqida', 'yordam'].includes(i.id))
     : bottomItems;
 
   let kabinetItems: { id: string; label: string; icon: any }[] = [];
-  if (isUstoz && isBlogOnly) {
+  if (isUstoz && isHukmOnly) {
+    kabinetItems = [
+      { id: 'hukm', label: 'Hukm kabineti', icon: Gavel },
+    ];
+  } else if (isUstoz && isBlogOnly) {
     kabinetItems = [
       { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
     ];
@@ -137,6 +145,7 @@ function buildSections(
     const allKabinet = [
       { id: 'ustoz', label: 'Kazus kabineti', icon: UserCircle },
       { id: 'testlar', label: 'Test kabineti', icon: BookOpen },
+      { id: 'hukm', label: 'Hukm kabineti', icon: Gavel },
       { id: 'oquvchilar', label: "O'quvchilarim", icon: GraduationCap },
       { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
       { id: 'moot_court', label: 'Moot Court', icon: Scale },
@@ -232,7 +241,7 @@ export default function Sidebar({
   };
 
   const { oqishItems, sinovItems, bottomItems, kabinetItems } = buildSections(
-    user?.rol, ustozBotRuxsat, t, user?.blog_huquqi, user?.ustoz_huquqi
+    user?.rol, ustozBotRuxsat, t, user?.blog_huquqi, user?.ustoz_huquqi, user?.hukm_only
   );
 
   // ── Menu item renderer ──────────────────────────────────────────────────────

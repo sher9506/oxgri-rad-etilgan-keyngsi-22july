@@ -48,6 +48,8 @@ const BlogMuallif = lazy(() => import('@/components/features/BlogMuallif'));
 const TezOradaSahifa = lazy(() => import('@/components/features/TezOradaSahifa'));
 const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz'));
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
+const HukmKabineti = lazy(() => import('@/components/features/HukmKabineti'));
+const HukmOquvchi = lazy(() => import('@/components/features/HukmOquvchi'));
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
 import MiniAppBanner, { MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
@@ -218,8 +220,17 @@ function AppContent() {
     if (user?.rol === 'ustoz') {
       const blogHuquqi = user.blog_huquqi === true;
       const ustozHuquqi = user.ustoz_huquqi === true;
-      const isBlogOnly = blogHuquqi && !ustozHuquqi;
-      const isUstozRestricted = ustozHuquqi && !blogHuquqi;
+      const hukmOnly = user.hukm_only === true;
+      const isBlogOnly = blogHuquqi && !ustozHuquqi && !hukmOnly;
+      const isUstozRestricted = ustozHuquqi && !blogHuquqi && !hukmOnly;
+      const isHukmOnly = hukmOnly;
+
+      if (isHukmOnly) {
+        const allowed = ['hukm', 'profil', 'haqida', 'yordam'];
+        if (!allowed.includes(activeTab)) {
+          return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
+        }
+      }
 
       if (isBlogOnly) {
         const allowed = ['blog', 'blog_yozish', 'profil', 'haqida', 'yordam'];
@@ -242,6 +253,7 @@ function AppContent() {
       case 'natijalar': return <Suspense fallback={<LazyFallback />}><RealVaqtNatijalar /></Suspense>;
       case 'mavjud_testlar': return <Suspense fallback={<LazyFallback />}><MavjudTestlar /></Suspense>;
       case 'reyting': return <Suspense fallback={<LazyFallback />}><ReytingSahifa /></Suspense>;
+      case 'hukm': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <HukmKabineti ustozId={user?.ustoz_id} onNavigate={handleTabChange} /> : <HukmOquvchi onNavigate={handleTabChange} />}</Suspense>;
       case 'mavjud_kazuslar': return <Suspense fallback={<LazyFallback />}><MavjudKazuslar /></Suspense>;
       case 'oqmatlar': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <OquvMateriallarUstoz /> : <OquvMateriallarOquvchi />}</Suspense>;
       case 'savol_javob': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <SavolJavobUstoz /> : <SavolJavobOquvchi />}</Suspense>;

@@ -3,7 +3,7 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 import {
   Scale, Play, FileText, GraduationCap, Library, Newspaper,
   Layers, ArrowRight, BookOpen, Rocket,
-  CheckCircle2, Brain, ChevronDown, Trophy,
+  CheckCircle2, Brain, ChevronDown, Trophy, Gavel,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -623,31 +623,24 @@ function FloatChips({ onNavigate, blogTitle }: { onNavigate: (tab: string) => vo
         style={{ left: -16, bottom: 52 }}
       >
         <button
-          onClick={() => onNavigate('mavjud_testlar')}
+          onClick={() => onNavigate('hukm')}
           className="pointer-events-auto flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-all text-left ff-focus"
           style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 24, boxShadow: '0 18px 40px -18px rgba(13,27,66,.28)' }}
           onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 22px 44px -16px rgba(13,27,66,.38)'}
           onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 18px 40px -18px rgba(13,27,66,.28)'}
         >
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
-            <FileText className="h-3.5 w-3.5 text-white" />
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, var(--navy-1), var(--gold))' }}>
+            <Gavel className="h-3.5 w-3.5 text-white" />
           </div>
           <div className="leading-none text-left">
-            <p className="text-[11px] font-bold" style={{ color: 'var(--ink)' }}>Mavjud testlar</p>
-            <p className="text-[9px] mt-1" style={{ color: 'var(--ink-body)' }}>Bilim sinovi</p>
+            <p className="text-[11px] font-bold" style={{ color: 'var(--ink)' }}>Hukm</p>
+            <p className="text-[9px] mt-1" style={{ color: 'var(--ink-body)' }}>Jonli viktorina</p>
           </div>
           <div className="flex items-center gap-1 ml-1">
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'var(--success-tint)', color: 'var(--success)' }}>A</span>
-            {!reduceMotion && (
-              <motion.span
-                animate={{ opacity: [0, 1, 0] }}
-                transition={{ duration: 2.5, repeat: Infinity, delay: 1 }}
-                className="text-[8px] font-bold whitespace-nowrap"
-                style={{ color: 'var(--success)' }}
-              >
-                TO'G'RI
-              </motion.span>
-            )}
+            <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(194,48,61,.12)', color: '#C2303D' }}>◆</span>
+            <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(47,107,224,.12)', color: '#2F6BE0' }}>◆</span>
+            <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(18,128,92,.12)', color: '#12805C' }}>●</span>
+            <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(242,169,59,.12)', color: '#B07420' }}>■</span>
           </div>
         </button>
       </motion.div>
@@ -839,16 +832,16 @@ function HeroSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
               <CourtCard onNavigate={onNavigate} story={mobileStory} />
               <div className="grid grid-cols-2 gap-3 mt-4">
                 <button
-                  onClick={() => onNavigate('mavjud_testlar')}
+                  onClick={() => onNavigate('hukm')}
                   className="flex items-center gap-2 px-3 text-left ff-focus"
                   style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', borderRadius: 16, minHeight: 56 }}
                 >
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}>
-                    <FileText className="h-4 w-4 text-white" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, var(--navy-1), var(--gold))' }}>
+                    <Gavel className="h-4 w-4 text-white" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-bold" style={{ color: 'var(--ink)' }}>Mavjud testlar</p>
-                    <p className="text-[10px] truncate" style={{ color: 'var(--ink-body)' }}>Bilim sinovi</p>
+                    <p className="text-xs font-bold" style={{ color: 'var(--ink)' }}>Hukm</p>
+                    <p className="text-[10px] truncate" style={{ color: 'var(--ink-body)' }}>Jonli viktorina</p>
                   </div>
                 </button>
                 <button
@@ -965,7 +958,7 @@ function FeatureGrid({ onNavigate }: { onNavigate: (tab: string) => void }) {
   }, []);
 
   const features = [
-    { icon: FileText, color: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))', title: 'Mavjud testlar', desc: "Ommaviy testlar bilan bilimingizni xolis filtrdan o'tkazing.", tab: 'mavjud_testlar', demo: 'test' as const },
+    { icon: Gavel, color: 'linear-gradient(135deg, var(--navy-1), var(--gold))', title: 'Hukm', desc: 'Ustoz yaratgan jonli viktorinada sinov. Har savoldan keyin izoh va asos modda.', tab: 'hukm', demo: 'hukm' as const },
     { icon: Brain, color: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-light))', title: 'Mavjud kazuslar', desc: 'Haqiqiy huquqiy vaziyatlar va AI ning xolis bahosi.', tab: 'mavjud_kazuslar', demo: 'kazus' as const },
     { icon: Scale, color: 'linear-gradient(135deg, var(--navy-1), var(--navy-3))', title: 'Moot Court', desc: 'AI sudya bilan jonli bahs. Ustoz bahoni tasdiqlaydi.', tab: 'moot_court', demo: 'moot' as const },
     { icon: Library, color: 'linear-gradient(135deg, var(--cobalt-2), var(--cobalt-light))', title: "O'quv materiallari", desc: "Sara va tizimlashtirilgan kontent — murakkab mavzular oddiy tilda.", tab: 'oqmatlar', demo: null },
@@ -1004,7 +997,7 @@ function FeatureGrid({ onNavigate }: { onNavigate: (tab: string) => void }) {
                     </div>
 
                     {/* Mini demos */}
-                    {f.demo === 'test' && <MiniTestDemo />}
+                    {f.demo === 'hukm' && <MiniHukmDemo />}
                     {f.demo === 'kazus' && <MiniKazusDemo />}
                     {f.demo === 'moot' && <MiniMootDemo />}
 
@@ -1091,6 +1084,36 @@ function MiniKazusDemo() {
           <span key={i} className="text-[10px] font-bold px-2 py-0.5 rounded-full transition-all duration-300" style={i < filledCriteria ? { background: 'var(--cobalt-tint)', color: 'var(--cobalt-2)' } : { background: 'var(--bg-2)', color: 'var(--ink-muted)' }}>
             {c}
           </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniHukmDemo() {
+  const [active, setActive] = useState(-1);
+  useEffect(() => {
+    if (reduceMotion) { setActive(1); return; }
+    const interval = setInterval(() => {
+      setActive(prev => (prev + 1) % 4);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, []);
+  const shapes = [
+    { color: '#C2303D', shape: '◆' },
+    { color: '#2F6BE0', shape: '◆' },
+    { color: '#12805C', shape: '●' },
+    { color: '#F2A93B', shape: '■' },
+  ];
+  return (
+    <div className="flex flex-col gap-1.5 mt-1">
+      <div className="text-[10px] font-bold truncate" style={{ color: 'var(--ink-body)' }}>JK 97-modda qaysi huquqni beradi?</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {shapes.map((s, i) => (
+          <div key={i} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all duration-300" style={active === i ? { background: `${s.color}18`, border: `1px solid ${s.color}` } : { background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
+            <span className="text-[10px] font-bold" style={{ color: s.color }}>{s.shape}</span>
+            <span className="text-[9px] truncate" style={{ color: 'var(--ink-body)' }}>{['Mulkiy', 'Shaxsiy', 'Intellektual', 'Vorislik'][i]}</span>
+          </div>
         ))}
       </div>
     </div>
@@ -1245,11 +1268,15 @@ const FAQ_ITEMS = [
   },
   {
     q: "Qayerdan boshlash kerak?",
-    a: "Yo'l oddiy: avval O'quv materiallari bilan nazariyani o'rganing, so'ng Mavjud testlar va kazuslarda bilimingizni tekshiring, tayyor bo'lganda Moot Court'da AI sudya bilan bahslashing. Savol–javoblar bo'limi mavzularni mustahkamlashga yordam beradi.",
+    a: "Yo'l oddiy: avval O'quv materiallari bilan nazariyani o'rganing, so'ng Hukm viktorinalari va kazuslarda bilimingizni tekshiring, tayyor bo'lganda Moot Court'da AI sudya bilan bahslashing. Savol–javoblar bo'limi mavzularni mustahkamlashga yordam beradi.",
+  },
+  {
+    q: "Hukm nima?",
+    a: "Hukm — ustoz yaratgan jonli viktorina. PIN kod orqali o'quvchilar qo'shiladi, har savoldan keyin to'g'ri javob, izoh va asos modda ko'rsatiladi. O'yin oxirida shaxsiy natija va xatolar tahlili beriladi. FanFaster hisobi talab qilinadi.",
   },
   {
     q: "Ustozlar platformadan qanday foydalanadi?",
-    a: "Ustoz Moot Court uchun kazus yaratadi, talabalar natijalarini ko'radi va AI bergan bahoni tasdiqlaydi yoki tuzatadi. Talabaga qayta urinishga ruxsat berish ham ustozning qo'lida.",
+    a: "Ustoz Moot Court uchun kazus yaratadi, Hukm viktorinalarini tuzadi va o'tkazadi, talabalar natijalarini ko'radi va AI bergan bahoni tasdiqlaydi yoki tuzatadi. Talabaga qayta urinishga ruxsat berish ham ustozning qo'lida.",
   },
 ];
 
@@ -1349,7 +1376,7 @@ function SiteFooter({ onNavigate }: { onNavigate: (tab: string) => void }) {
             <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--on-navy)' }}>Funksiyalar</h3>
             <ul className="space-y-2">
               {[
-                { label: 'Mavjud testlar', tab: 'mavjud_testlar' },
+                { label: 'Hukm', tab: 'hukm' },
                 { label: 'Mavjud kazuslar', tab: 'mavjud_kazuslar' },
                 { label: 'Moot Court', tab: 'moot_court' },
                 { label: 'Savol–javoblar', tab: 'savol_javob' },

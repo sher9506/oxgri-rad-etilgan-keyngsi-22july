@@ -118,6 +118,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const [tasdiqlashModal, setTasdiqlashModal] = useState<{ ustozId: string; fullName: string; mode: 'approve' | 'edit' } | null>(null);
   const [modalBlogHuquqi, setModalBlogHuquqi] = useState(false);
   const [modalUstozHuquqi, setModalUstozHuquqi] = useState(false);
+  const [modalHukmOnly, setModalHukmOnly] = useState(false);
   const [ustoz_bot_yuklanyapti, setUstozBotYuklanyapti] = useState(false);
   const [adminToplamKazuslar, setAdminToplamKazuslar] = useState<any[]>([]);
   const [ochiqKazuslarAdmin, setOchiqKazuslarAdmin] = useState<Set<number>>(new Set());
@@ -446,7 +447,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
     }
   };
 
-  const ustozniTasdiqlash = async (ustozId: string, status: 'approved' | 'rejected', huquqlar?: { blog_huquqi?: boolean; ustoz_huquqi?: boolean }) => {
+  const ustozniTasdiqlash = async (ustozId: string, status: 'approved' | 'rejected', huquqlar?: { blog_huquqi?: boolean; ustoz_huquqi?: boolean; hukm_only?: boolean }) => {
     setYuklanyapti(true);
     try {
       // Ustoz ma'lumotlarini olish (bot xabari uchun)
@@ -713,12 +714,12 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
     );
   }
 
-  const huquqlarniYangilash = async (ustozId: string, huquqlar: { blog_huquqi: boolean; ustoz_huquqi: boolean }) => {
+  const huquqlarniYangilash = async (ustozId: string, huquqlar: { blog_huquqi: boolean; ustoz_huquqi: boolean; hukm_only: boolean }) => {
     setYuklanyapti(true);
     try {
       const { error } = await supabase
         .from('ustoz')
-        .update({ blog_huquqi: huquqlar.blog_huquqi, ustoz_huquqi: huquqlar.ustoz_huquqi })
+        .update({ blog_huquqi: huquqlar.blog_huquqi, ustoz_huquqi: huquqlar.ustoz_huquqi, hukm_only: huquqlar.hukm_only })
         .eq('id', ustozId);
       if (error) throw error;
       await ustozlarniYuklash();
@@ -871,6 +872,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
                               setTasdiqlashModal({ ustozId: ustoz.id, fullName: ustoz.full_name });
                               setModalBlogHuquqi(false);
                               setModalUstozHuquqi(false);
+                              setModalHukmOnly(false);
                             }} disabled={yuklanyapti} size="sm" className="bg-green-600 hover:bg-green-700 h-8">
                               {yuklanyapti ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><CheckCircle className="h-3.5 w-3.5 mr-1" />Tasdiqlash</>}
                             </Button>
@@ -883,7 +885,8 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
                           <div className="flex items-center gap-1.5 text-xs">
                             {ustoz.blog_huquqi && <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold">Blog huquqi</span>}
                             {ustoz.ustoz_huquqi && <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">Ustoz huquqi</span>}
-                            {!ustoz.blog_huquqi && !ustoz.ustoz_huquqi && <span className="bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-semibold">To'liq huquq</span>}
+                            {ustoz.hukm_only && <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">Hukm only</span>}
+                            {!ustoz.blog_huquqi && !ustoz.ustoz_huquqi && !ustoz.hukm_only && <span className="bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-semibold">To'liq huquq</span>}
                           </div>
                         )}
                         {ustoz.status === 'approved' && (
@@ -891,6 +894,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
                             setTasdiqlashModal({ ustozId: ustoz.id, fullName: ustoz.full_name, mode: 'edit' });
                             setModalBlogHuquqi(ustoz.blog_huquqi ?? false);
                             setModalUstozHuquqi(ustoz.ustoz_huquqi ?? false);
+                            setModalHukmOnly(ustoz.hukm_only ?? false);
                           }} disabled={yuklanyapti} variant="outline" size="sm" className="h-8 border-blue-300 text-blue-700 hover:bg-blue-50">
                             <ShieldAlert className="h-3.5 w-3.5 mr-1" />Huquqlarni o'zgartirish
                           </Button>
@@ -1920,7 +1924,16 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
                   <Switch checked={modalUstozHuquqi} onCheckedChange={setModalUstozHuquqi} />
                 </div>
 
-                {!modalBlogHuquqi && !modalUstozHuquqi && (
+                <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${modalHukmOnly ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}
+                  onClick={() => setModalHukmOnly(v => !v)}>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-gray-900">Hukm only</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Faqat Hukm kabineti, profil, dastur haqida va yordam ko'rinadi</p>
+                  </div>
+                  <Switch checked={modalHukmOnly} onCheckedChange={setModalHukmOnly} />
+                </div>
+
+                {!modalBlogHuquqi && !modalUstozHuquqi && !modalHukmOnly && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                     <p className="text-xs text-amber-800 font-medium">Hech qaysi huquq tanlanmagan — to'liq huquq (barcha funksiyalar).</p>
                   </div>
@@ -1930,9 +1943,9 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
                   <Button
                     onClick={async () => {
                       if (isEditMode) {
-                        await huquqlarniYangilash(tasdiqlashModal.ustozId, { blog_huquqi: modalBlogHuquqi, ustoz_huquqi: modalUstozHuquqi });
+                        await huquqlarniYangilash(tasdiqlashModal.ustozId, { blog_huquqi: modalBlogHuquqi, ustoz_huquqi: modalUstozHuquqi, hukm_only: modalHukmOnly });
                       } else {
-                        await ustozniTasdiqlash(tasdiqlashModal.ustozId, 'approved', { blog_huquqi: modalBlogHuquqi, ustoz_huquqi: modalUstozHuquqi });
+                        await ustozniTasdiqlash(tasdiqlashModal.ustozId, 'approved', { blog_huquqi: modalBlogHuquqi, ustoz_huquqi: modalUstozHuquqi, hukm_only: modalHukmOnly });
                       }
                       setTasdiqlashModal(null);
                     }}

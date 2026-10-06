@@ -6,7 +6,7 @@ import {
   Loader2, AlertCircle, Star, CheckCircle,
   Clock, ArrowLeft, Send, X, LogOut,
   KeyRound, Eye, EyeOff, Lock, CheckCircle2, Save,
-  BookOpenCheck, Scale, Camera, Trash2
+  BookOpenCheck, Scale, Camera, Trash2, Gavel
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -485,6 +485,11 @@ export default function ProfilSahifa() {
         <BirlashtirishKartasi />
       )}
 
+      {/* ── HUKM STATISTIKASI (ustoz) ─────────────────────────── */}
+      {isUstoz && user.ustoz_id && (
+        <HukmProfilStats ustozId={user.ustoz_id} />
+      )}
+
       {/* ── KURS/GURUH TAHRIRLASH (o'quvchi, ixtiyoriy) ────────────── */}
       {!isUstoz && (
         <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm overflow-hidden">
@@ -779,6 +784,40 @@ function InfoChip({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
       <span className="text-xs text-gray-400 font-medium">{label}</span>
       <span className="text-xs font-semibold text-gray-800 text-right max-w-[55%] truncate">{value}</span>
+    </div>
+  );
+}
+
+function HukmProfilStats({ ustozId }: { ustozId: string }) {
+  const [stats, setStats] = useState<{ quizzes: number; sessions: number; players: number } | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [{ count: quizzes }, { count: sessions }] = await Promise.all([
+          supabase.from('hukm_quizzes').select('*', { count: 'exact', head: true }).eq('owner', ustozId),
+          supabase.from('hukm_sessions').select('*', { count: 'exact', head: true }).eq('quiz_id', supabase.from('hukm_quizzes').select('id').eq('owner', ustozId)).in('status', ['active', 'ended']),
+        ]);
+        setStats({ quizzes: quizzes || 0, sessions: sessions || 0, players: 0 });
+      } catch {
+        setStats(null);
+      }
+    };
+    load();
+  }, [ustozId]);
+
+  if (!stats) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-3 flex items-center gap-2 border-b border-gray-100 bg-gray-50 text-gray-700 font-bold text-sm">
+        <Gavel className="h-4 w-4 text-amber-500" />
+        Hukm statistikasi
+      </div>
+      <div className="p-4 grid grid-cols-2 gap-2">
+        <InfoChip label="Viktorinalar" value={String(stats.quizzes)} />
+        <InfoChip label="O'yinlar" value={String(stats.sessions)} />
+      </div>
     </div>
   );
 }
