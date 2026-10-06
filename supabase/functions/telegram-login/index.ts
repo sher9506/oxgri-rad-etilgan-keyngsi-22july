@@ -859,9 +859,12 @@ Deno.serve(async (req: Request) => {
         return new Response('ok', { status: 200 });
       }
 
-      // ── link_ token: Telegramni bog'lash (login emas) ──
+      // ── link_ token: Mini App botga yo'naltirilgan — login botda ishlovchi yo'q ──
       if (sessionToken.startsWith('link_')) {
-        await handleLinkToken(chatId, telegramId, sessionToken, cfg);
+        await sendMessage(cfg.token, chatId,
+          'ℹ️ <b>Bu havola Mini App bot orqali ochiladi.</b>\n\n' +
+          'Iltimos, saytdan yangi havola oling.'
+        );
         return new Response('ok', { status: 200 });
       }
 

@@ -100,15 +100,17 @@ Deno.serve(async (req: Request) => {
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Bot username
-    const { data: botLinkData } = await supabaseAdmin
+    // Mini App bot username (birlashtirish so'rovlari mini app botga boradi)
+    const { data: botUsernameData } = await supabaseAdmin
       .from('settings')
       .select('text_value')
-      .eq('key', 'TELEGRAM_LOGIN_BOT_LINK')
+      .eq('key', 'MINIAPP_BOT_USERNAME')
       .maybeSingle();
-    const botLink = botLinkData?.text_value || '';
-    if (!botLink) {
-      return new Response(JSON.stringify({ error: 'Telegram bot sozlanmagan' }),
+    let botUsername = botUsernameData?.text_value || '';
+    // @ belgisini olib tashlash
+    botUsername = botUsername.replace(/^@/, '');
+    if (!botUsername) {
+      return new Response(JSON.stringify({ error: 'Mini App bot sozlanmagan' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -157,8 +159,7 @@ Deno.serve(async (req: Request) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const botLinkClean = botLink.endsWith('/') ? botLink.slice(0, -1) : botLink;
-    const deepLink = `${botLinkClean}?start=${token}`;
+    const deepLink = `https://t.me/${botUsername}?start=${token}`;
 
     return new Response(JSON.stringify({ deepLink, tokenHash }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
