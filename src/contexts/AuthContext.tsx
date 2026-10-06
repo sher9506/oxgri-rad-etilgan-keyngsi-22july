@@ -188,6 +188,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('baholash_toplam_kod');
     localStorage.removeItem('sinov_oquvchi');
     localStorage.removeItem('fanfaster_demo_used');
+    // Mini App eslab qolish flag'ini tozalash
+    try { localStorage.removeItem('ff_miniapp_linked'); } catch {}
+    try {
+      window.Telegram?.WebApp?.CloudStorage?.removeItem?.('ff_miniapp_linked', () => {});
+    } catch {}
     console.log('✅ Foydalanuvchi tizimdan chiqdi');
   };
 
