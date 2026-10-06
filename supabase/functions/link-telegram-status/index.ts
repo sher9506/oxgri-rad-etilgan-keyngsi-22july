@@ -56,7 +56,11 @@ Deno.serve(async (req: Request) => {
 
     // Rad etilgan
     if (linkRow.status === 'rejected' && linkRow.used_at) {
-      return new Response(JSON.stringify({ status: 'rejected' }),
+      const reason = linkRow.conflict_talaba_id ? 'conflict_other_account' : 'user_rejected';
+      const message = linkRow.conflict_talaba_id
+        ? "Bu Telegram boshqa Google akkauntga ulangan. Bitta Telegram faqat bitta akkauntga ulanadi."
+        : "Birlashtirish rad etildi.";
+      return new Response(JSON.stringify({ status: 'rejected', reason, message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

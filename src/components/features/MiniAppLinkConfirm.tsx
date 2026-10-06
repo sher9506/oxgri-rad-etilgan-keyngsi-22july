@@ -156,6 +156,7 @@ export default function MiniAppLinkConfirm() {
       }
 
       if (data.status === 'rejected') {
+        setErrorMsg(data.message || 'Birlashtirish rad etildi');
         setState('rejected');
         return;
       }
@@ -361,13 +362,17 @@ export default function MiniAppLinkConfirm() {
     return (
       <div style={darkBg} className="flex flex-col items-center justify-center min-h-screen px-6 py-8">
         <div className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl" style={cardStyle}>
-          <div className="h-1.5 w-full bg-gradient-to-r from-slate-500 to-slate-600" />
+          <div className="h-1.5 w-full bg-gradient-to-r from-red-500 to-red-600" />
           <div className="px-6 py-10 space-y-5 text-center">
-            <div className="w-14 h-14 rounded-full bg-slate-500/10 flex items-center justify-center mx-auto">
-              <X className="h-7 w-7 text-slate-400" />
+            <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
+              <X className="h-7 w-7 text-red-400" />
             </div>
-            <h2 className="text-lg font-bold text-white">Birlashtirish bekor qilindi</h2>
-            <p className="text-sm text-blue-200/50">Hech narsa o'zgarmadi.</p>
+            <h2 className="text-lg font-bold text-white">Rad etildi</h2>
+            {errorMsg
+              ? <p className="text-sm text-blue-200/60">{errorMsg}</p>
+              : <p className="text-sm text-blue-200/50">Birlashtirish rad etildi.</p>
+            }
+            <p className="text-xs text-blue-200/30">Hech narsa o'zgarmadi.</p>
             <button onClick={() => { window.Telegram?.WebApp?.close?.(); }}
               className="w-full h-12 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm transition active:scale-[0.98]">
               Yopish

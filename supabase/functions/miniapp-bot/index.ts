@@ -1,6 +1,6 @@
 // miniapp-bot — Telegram Mini App bot webhook
 // verify_jwt = false (config.toml'da aniq yozilgan)
-// X-Telegram-Bot-Api-Secret-Token tekshiriladi
+// X-Telegram-Bot-Api-Secret-Token tekshiriladi — v2 conflict check
 // link_ token'lar bilan birlashtirish so'rovlarini qabul qiladi
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -134,7 +134,7 @@ async function handleLinkToken(
   // Telegram chat_id boshqa talabaga bog'langanmi?
   const { data: existingTalaba } = await supabaseAdmin
     .from('talabalar')
-    .select('id, ism, familiya, created_at, merged_into')
+    .select('id, ism, familiya, google_user_id, created_at, merged_into')
     .eq('telegram_chat_id', String(chatId))
     .neq('id', linkRow.talaba_id)
     .is('merged_into', null)
@@ -142,6 +142,32 @@ async function handleLinkToken(
 
   if (existingTalaba) {
     console.log(`[miniapp-bot][link-token] mojaro: telegram chat_id=${chatId} boshqa talabaga bog'langan. Joriy=${linkRow.talaba_id}, mavjud=${existingTalaba.id}`);
+
+    // ── QAT'IY BIR-BIR TEKSHIRUVI ──
+    // Mavjud talaba boshqa Google bilan ulanganmi?
+    if (existingTalaba.google_user_id) {
+      // Joriy talaba ham Google bilan ulanganmi va boshqa Google'mi?
+      const { data: joriyTalaba } = await supabaseAdmin
+        .from('talabalar')
+        .select('id, google_user_id, google_email_masked')
+        .eq('id', linkRow.talaba_id)
+        .maybeSingle();
+
+      if (joriyTalaba?.google_user_id && joriyTalaba.google_user_id !== existingTalaba.google_user_id) {
+        // Ikkala profil ham o'z Google'lariga ulangan — RAD ETISH
+        await supabaseAdmin
+          .from('telegram_link_tokens')
+          .update({ used_at: new Date().toISOString(), status: 'rejected', conflict_talaba_id: existingTalaba.id })
+          .eq('token_hash', tokenHash);
+
+        await sendMessage(cfg.token, chatId,
+          '❌ <b>Bu Telegram boshqa Google akkauntga ulangan.</b>\n\n' +
+          'Bitta Telegram faqat bitta akkauntga ulanadi.\n\n' +
+          'Saytdan yangi havola oling.'
+        );
+        return;
+      }
+    }
 
     // Mojaro ma'lumotini token qatoriga yozish
     await supabaseAdmin
@@ -186,6 +212,20 @@ async function handleLinkToken(
   if (!talaba) {
     await sendMessage(cfg.token, chatId,
       "❌ <b>Talaba topilmadi.</b>\n\nSaytda qaytadan urinib ko'ring."
+    );
+    return;
+  }
+
+  // ── QAT'IY BIR-BIR: joriy talabada allaqachon boshqa Telegram bormi? ──
+  if (talaba.telegram_chat_id && String(talaba.telegram_chat_id) !== String(chatId)) {
+    await supabaseAdmin
+      .from('telegram_link_tokens')
+      .update({ used_at: new Date().toISOString(), status: 'rejected' })
+      .eq('token_hash', tokenHash);
+
+    await sendMessage(cfg.token, chatId,
+      '❌ <b>Bu akkauntda boshqa Telegram allaqachon ulangan.</b>\n\n' +
+      'Bitta akkaunt faqat bitta Telegram\'ga ulanadi.'
     );
     return;
   }

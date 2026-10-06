@@ -1,5 +1,5 @@
 // link-confirm — Mini App ichida tasdiqlash (initData + kanal + atomik merge)
-// verify_jwt = false (config.toml'da aniq) — force redeploy v2
+// verify_jwt = false (config.toml'da aniq) — force redeploy v3
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -226,6 +226,40 @@ Deno.serve(async (req: Request) => {
       .is('merged_into', null)
       .maybeSingle();
 
+    // ── QAT'IY BIR-BIR TEKSHIRUVI ──
+    // (a) Joriy talabada allaqachon boshqa Telegram bor?
+    if (talaba.telegram_chat_id && String(talaba.telegram_chat_id) !== String(telegramId)) {
+      await supabaseAdmin
+        .from('telegram_link_tokens')
+        .update({ used_at: new Date().toISOString(), status: 'rejected' })
+        .eq('token_hash', tokenHash)
+        .is('used_at', null);
+      return new Response(JSON.stringify({
+        status: 'rejected',
+        reason: 'conflict_other_account',
+        message: 'Bu akkauntda boshqa Telegram allaqachon ulangan. Bitta akkaunt faqat bitta Telegram\'ga ulanadi.',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // (b) Mavjud talaba (existingTalaba) boshqa Google bilan ulanganmi?
+    if (existingTalaba?.google_user_id && existingTalaba.google_user_id !== talaba.google_user_id) {
+      await supabaseAdmin
+        .from('telegram_link_tokens')
+        .update({ used_at: new Date().toISOString(), status: 'rejected' })
+        .eq('token_hash', tokenHash)
+        .is('used_at', null);
+      return new Response(JSON.stringify({
+        status: 'rejected',
+        reason: 'conflict_other_account',
+        message: 'Bu Telegram boshqa Google akkauntga ulangan. Bitta Telegram faqat bitta akkauntga ulanadi.',
+        conflict_email_masked: existingTalaba.google_email_masked || '',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // (c) Joriy talaba Google bilan ulangan, lekin boshqa talabada shu Telegram bor
+    //     va u talaba ham boshqa Google bilan ulangan — yuqorida (b) ushaldi.
+    // (d) Joriy talabada Google bor, existingTalaba'da Google yo'q → OK (Telegram-only + Google-only birlashtirish)
+
     // (1) Telegram bo'sh — oddiy ulash
     if (!existingTalaba) {
       // Atomik sarflash
@@ -377,6 +411,61 @@ Deno.serve(async (req: Request) => {
     if (claimErr || !claimed) {
       return new Response(JSON.stringify({ error: 'Allaqachon ishlatilgan', status: 'used' }),
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ── TASDIQLASH VAQTIDA HOLAT O'ZGARGAN BO'LISHI MUMKIN ──
+    // Preview'dan keyin boshqa ulash bo'lgan bo'lishi mumkin — qayta tekshiramiz
+    const { data: recheckAsosiy } = await supabaseAdmin
+      .from('talabalar')
+      .select('id, google_user_id, telegram_chat_id')
+      .eq('id', asosiyId)
+      .maybeSingle();
+    const { data: recheckBirlashgan } = await supabaseAdmin
+      .from('talabalar')
+      .select('id, google_user_id, telegram_chat_id')
+      .eq('id', birlashganId)
+      .maybeSingle();
+
+    // Agar asosiy'da boshqa Telegram paydo bo'lgan yoki birlashgan'da boshqa Google paydo bo'lgan
+    if (recheckAsosiy?.telegram_chat_id && recheckBirlashgan?.google_user_id &&
+        recheckAsosiy.google_user_id !== recheckBirlashgan.google_user_id) {
+      // Ikkalasi ham o'ziga aloqador bo'lgan — endi boshqa akkaunt bilan ulangan
+      await supabaseAdmin
+        .from('telegram_link_tokens')
+        .update({ status: 'rejected' })
+        .eq('token_hash', tokenHash);
+      return new Response(JSON.stringify({
+        status: 'rejected',
+        reason: 'conflict_other_account',
+        message: 'Tasdiqlash vaqtida holat o\'zgardi. Bitta Telegram faqat bitta akkauntga ulanadi.',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Asosiyda allaqachon shu Telegram bormi (boshqa so'rov ulagan bo'lishi mumkin)
+    if (recheckAsosiy?.telegram_chat_id && String(recheckAsosiy.telegram_chat_id) !== String(telegramId)) {
+      await supabaseAdmin
+        .from('telegram_link_tokens')
+        .update({ status: 'rejected' })
+        .eq('token_hash', tokenHash);
+      return new Response(JSON.stringify({
+        status: 'rejected',
+        reason: 'conflict_other_account',
+        message: 'Bu akkauntda boshqa Telegram allaqachon ulangan.',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Birlashgan'da boshqa Google paydo bo'lganmi
+    if (recheckBirlashgan?.google_user_id && recheckAsosiy?.google_user_id &&
+        recheckBirlashgan.google_user_id !== recheckAsosiy.google_user_id) {
+      await supabaseAdmin
+        .from('telegram_link_tokens')
+        .update({ status: 'rejected' })
+        .eq('token_hash', tokenHash);
+      return new Response(JSON.stringify({
+        status: 'rejected',
+        reason: 'conflict_other_account',
+        message: 'Bu Telegram boshqa Google akkauntga ulangan.',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Rate limit log

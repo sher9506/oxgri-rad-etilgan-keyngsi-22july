@@ -1,4 +1,4 @@
-// google-auth v2 — name-based existing account detection
+// google-auth v3 — name-based existing account detection + conflict check
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -161,18 +161,53 @@ Deno.serve(async (req: Request) => {
           .eq('state_hash', stateHash);
       }
 
-      // Boshqa talabaga boglanganmi?
+      // Boshqa talabaga boglanganmi? (google_user_id bo'yicha)
       const { data: existing } = await supabaseAdmin
         .from('talabalar')
-        .select('id')
+        .select('id, ism, familiya, google_email_masked, google_user_id, telegram_chat_id, telegram_id')
         .eq('google_user_id', googleUserId)
         .neq('id', linkTalabaId)
+        .is('merged_into', null)
         .maybeSingle();
 
       if (existing) {
+        // Bu Google allaqachon boshqa talabaga ulangan — rad etish
         return new Response(
-          JSON.stringify({ error: 'Bu Google akkaunt boshqa talabaga boglangan', alreadyLinked: true }),
+          JSON.stringify({
+            error: 'Bu Google akkaunt boshqa talabaga boglangan',
+            status: 'rejected',
+            reason: 'conflict_other_account',
+            message: 'Bu Google akkaunt boshqa Telegram\'ga ulangan. Bitta Google faqat bitta Telegram\'ga ulanadi.',
+            alreadyLinked: true,
+          }),
           { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Joriy talabada allaqachon boshqa Google bor?
+      const { data: currentTalaba } = await supabaseAdmin
+        .from('talabalar')
+        .select('id, google_user_id, google_email_masked, telegram_chat_id')
+        .eq('id', linkTalabaId)
+        .maybeSingle();
+
+      if (currentTalaba?.google_user_id && currentTalaba.google_user_id !== googleUserId) {
+        return new Response(
+          JSON.stringify({
+            error: 'Bu akkauntda boshqa Google allaqachon ulangan',
+            status: 'rejected',
+            reason: 'conflict_other_account',
+            message: 'Bu Telegram boshqa Google akkauntga ulangan. Bitta Telegram faqat bitta akkauntga ulanadi.',
+          }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Agar joriy talabada allaqachon shu Google bor — hech narsa qilmaymiz
+      if (currentTalaba?.google_user_id === googleUserId) {
+        return new Response(
+          JSON.stringify({ mode: 'linked', googleUserId, googleEmail, name: userInfo.name || '', already_linked: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 

@@ -215,7 +215,10 @@ export default function BirlashtirishKartasi() {
 
             if (statusData?.status === 'rejected') {
               stopLinkPolling();
-              toast({ title: 'Rad etildi', description: 'Birlashtirish rad etildi', variant: 'destructive' });
+              const rejectReason = statusData?.reason === 'conflict_other_account'
+                ? (statusData?.message || 'Bu Telegram boshqa akkauntga ulangan')
+                : 'Birlashtirish rad etildi';
+              toast({ title: 'Rad etildi', description: rejectReason, variant: 'destructive' });
               setMergeConflict(null);
               return;
             }
