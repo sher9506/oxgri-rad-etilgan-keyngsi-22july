@@ -105,3 +105,9 @@ verify_jwt = false
 
 [functions.link-confirm]
 verify_jwt = false
+
+[functions.miniapp-handoff]
+verify_jwt = false
+
+[functions.handoff-consume]
+verify_jwt = false

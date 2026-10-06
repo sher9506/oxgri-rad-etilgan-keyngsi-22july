@@ -32,10 +32,9 @@ declare global {
 }
 
 const LINKED_KEY = 'ff_miniapp_linked';
-const BANNER_DISMISS_KEY = 'ff_miniapp_banner_dismissed';
-const BANNER_RESHOW_DAYS = 3;
 
 const MOBILE_PLATFORMS = ['ios', 'android', 'android_x'];
+const DESKTOP_PLATFORMS = ['tdesktop', 'macos', 'weba', 'webk', 'unigram', 'web', 'unknown'];
 
 function safeGetInitData(): string {
   try {
@@ -70,6 +69,15 @@ export function isMobilePlatform(): boolean {
   }
 }
 
+function isDesktopPlatform(): boolean {
+  try {
+    const platform = safeGetPlatform();
+    return DESKTOP_PLATFORMS.includes(platform);
+  } catch {
+    return false;
+  }
+}
+
 // --- Eslab qolish flag'lari ---
 function setLinkedFlag() {
   try { localStorage.setItem(LINKED_KEY, '1'); } catch {}
@@ -92,40 +100,52 @@ function getLinkedFlag(): boolean {
 // --- "Kompyuterda sayt qulayroq" banneri ---
 export function MiniAppDesktopBanner() {
   const [show, setShow] = useState(false);
+  const [handoffLoading, setHandoffLoading] = useState(false);
+  const [handoffError, setHandoffError] = useState('');
 
   useEffect(() => {
     if (!isTelegramMiniApp()) return;
     if (isMobilePlatform()) return;
-
-    // Eslab qolingan dismiss ni tekshir
-    try {
-      const raw = localStorage.getItem(BANNER_DISMISS_KEY);
-      if (raw) {
-        const ts = parseInt(raw, 10);
-        if (!isNaN(ts)) {
-          const days = (Date.now() - ts) / (1000 * 60 * 60 * 24);
-          if (days < BANNER_RESHOW_DAYS) return;
-        }
-      }
-    } catch {}
-
+    if (!isDesktopPlatform()) return;
     setShow(true);
   }, []);
 
   const handleDismiss = () => {
     setShow(false);
-    try { localStorage.setItem(BANNER_DISMISS_KEY, String(Date.now())); } catch {}
   };
 
-  const handleOpenSite = () => {
+  const handleOpenSite = async () => {
+    setHandoffLoading(true);
+    setHandoffError('');
     try {
-      if (window.Telegram?.WebApp?.openLink) {
-        window.Telegram.WebApp.openLink('https://fanfaster.uz');
+      const initData = safeGetInitData();
+      if (!initData) {
+        if (window.Telegram?.WebApp?.openLink) {
+          window.Telegram.WebApp.openLink('https://fanfaster.uz');
+        } else {
+          window.open('https://fanfaster.uz', '_blank');
+        }
+        return;
+      }
+      const res = await fetch(`${supabaseUrl}/functions/v1/miniapp-handoff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({ initData }),
+      });
+      const data = await res.json();
+      if (data?.handoffUrl) {
+        if (window.Telegram?.WebApp?.openLink) {
+          window.Telegram.WebApp.openLink(data.handoffUrl);
+        } else {
+          window.open(data.handoffUrl, '_blank');
+        }
       } else {
-        window.open('https://fanfaster.uz', '_blank');
+        setHandoffError(data?.error || 'Xatolik yuz berdi');
       }
     } catch {
-      window.open('https://fanfaster.uz', '_blank');
+      setHandoffError('Tarmoq xatosi');
+    } finally {
+      setHandoffLoading(false);
     }
   };
 
@@ -141,20 +161,23 @@ export function MiniAppDesktopBanner() {
         paddingTop: 'calc(0.625rem + env(safe-area-inset-top))',
       }}
     >
-      <Monitor className="h-5 w-5 flex-shrink-0 text-white/90" />
+      <Monitor className="h-5 w-5 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.9)' }} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold leading-tight">Kompyuterda sayt qulayroq</p>
       </div>
       <button
         onClick={handleOpenSite}
-        className="flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-bold transition"
+        disabled={handoffLoading}
+        className="flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-bold transition disabled:opacity-50"
+        style={{ minHeight: '44px' }}
       >
-        <ExternalLink className="h-3.5 w-3.5" />
-        Saytda ochish
+        {handoffLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
+        {handoffLoading ? 'Yuklanmoqda...' : 'Saytda ochish'}
       </button>
+      {handoffError && <span className="text-xs mr-1" style={{ color: 'rgba(255,255,255,0.7)' }}>{handoffError}</span>}
       <button
         onClick={handleDismiss}
-        className="text-white/60 hover:text-white transition"
+        className="text-white opacity-60 hover:opacity-100 hover:text-white transition"
         aria-label="Bannerni yopish"
       >
         <X className="h-4 w-4" />

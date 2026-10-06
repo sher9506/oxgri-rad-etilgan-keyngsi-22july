@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import TelegramCallback from '@/pages/TelegramCallback';
 const GoogleCallback = lazy(() => import('@/pages/GoogleCallback'));
+const HandoffPage = lazy(() => import('@/pages/HandoffPage'));
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
 import TopNav from '@/components/layout/TopNav';
@@ -375,6 +376,15 @@ function RouterRoot() {
       <AuthProvider>
         <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" /></div>}>
           <MiniAppLinkConfirm />
+        </Suspense>
+      </AuthProvider>
+    );
+  }
+  if (location.pathname === '/auth/handoff') {
+    return (
+      <AuthProvider>
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" /></div>}>
+          <HandoffPage />
         </Suspense>
       </AuthProvider>
     );
