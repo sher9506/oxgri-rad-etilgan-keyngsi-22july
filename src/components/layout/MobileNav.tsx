@@ -4,7 +4,7 @@ import {
   Scale, ChevronRight, ChevronDown, X, LogIn, LogOut, User as UserIcon,
   Play, FileText, GraduationCap, Library, Newspaper, Layers,
   TrendingUp, HelpCircle, BookOpen, BookMarked, MessageCircle,
-  ClipboardCheck, MoreHorizontal, Home, Globe,
+  ClipboardCheck, MoreHorizontal, Home, Globe, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang, Lang } from '@/contexts/LangContext';
@@ -59,6 +59,7 @@ export function buildNavGroups(
           { id: 'mavjud_testlar', label: 'Mavjud testlar', icon: FileText, desc: "Ommaviy testlar ro'yxati" },
           { id: 'mavjud_kazuslar', label: 'Mavjud kazuslar', icon: GraduationCap, desc: "Ommaviy kazuslar to'plami" },
           { id: 'moot_court', label: 'Moot Court', icon: Scale, desc: 'AI sudya bilan jonli bahs' },
+          { id: 'fanfaster_chat', label: 'FanFaster Chat', icon: Sparkles, desc: 'AI yordamida huquqiy tahlil' },
         ],
   };
 
@@ -110,7 +111,7 @@ const LANG_OPTIONS: { code: Lang; flag: string; label: string }[] = [
 ];
 
 /* ═══ Sinov guruhidagi tab id'lar ═══ */
-const SINOV_TABS = ['sinov', 'mavjud_testlar', 'mavjud_kazuslar', 'moot_court'];
+const SINOV_TABS = ['sinov', 'mavjud_testlar', 'mavjud_kazuslar', 'moot_court', 'fanfaster_chat'];
 const YANA_TABS = ['savol_javob', 'reyting', 'blog', 'yordam'];
 
 /* ═════════════════════════════════════════════════════════════════

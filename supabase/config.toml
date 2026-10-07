@@ -114,3 +114,9 @@ verify_jwt = false
 
 [functions.hukm-api]
 verify_jwt = false
+
+[functions.chat-submit]
+verify_jwt = false
+
+[functions.chat-worker]
+verify_jwt = false

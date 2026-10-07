@@ -3,7 +3,7 @@ import {
   Scale, ChevronDown, Bell, LogIn, LogOut, User as UserIcon,
   Play, FileText, GraduationCap, BookOpen, Library, Newspaper,
   Layers, TrendingUp, HelpCircle, UserCircle, BookMarked,
-  MessageCircle,
+  MessageCircle, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang, Lang } from '@/contexts/LangContext';
@@ -72,6 +72,7 @@ function buildNavGroups(
           { id: 'mavjud_testlar', label: 'Mavjud testlar', icon: FileText, desc: "Ommaviy testlar ro'yxati" },
           { id: 'mavjud_kazuslar', label: 'Mavjud kazuslar', icon: GraduationCap, desc: "Ommaviy kazuslar to'plami" },
           { id: 'moot_court', label: 'Moot Court', icon: Scale, desc: 'AI sudya bilan jonli bahs' },
+          { id: 'fanfaster_chat', label: 'FanFaster Chat', icon: Sparkles, desc: 'AI yordamida huquqiy tahlil' },
         ],
   };
 

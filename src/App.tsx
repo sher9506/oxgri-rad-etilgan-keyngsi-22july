@@ -52,6 +52,7 @@ const HukmKabineti = lazy(() => import('@/components/features/HukmKabineti'));
 const HukmOquvchi = lazy(() => import('@/components/features/HukmOquvchi'));
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
 const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi'));
+const FanFasterChat = lazy(() => import('@/components/features/FanFasterChat'));
 import MiniAppBanner, { MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
 const MiniAppLinkConfirm = lazy(() => import('@/components/features/MiniAppLinkConfirm'));
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -267,6 +268,7 @@ function AppContent() {
       case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
       case 'lex_uz_qidiruvchi': return <Suspense fallback={<LazyFallback />}><LexUzQidiruvchi /></Suspense>;
+      case 'fanfaster_chat': return <Suspense fallback={<LazyFallback />}><FanFasterChat /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
       case 'faceid': return <Suspense fallback={<LazyFallback />}><FaceIdPanel /></Suspense>;
       default: return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
