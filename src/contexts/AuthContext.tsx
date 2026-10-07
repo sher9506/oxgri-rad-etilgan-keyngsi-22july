@@ -12,7 +12,6 @@ export interface User {
   faceIdTasdiqlangan?: boolean;
   blog_huquqi?: boolean;
   ustoz_huquqi?: boolean;
-  hukm_only?: boolean;
   talaba_id?: string;
   google_linked?: boolean;
   telegram_linked?: boolean;
