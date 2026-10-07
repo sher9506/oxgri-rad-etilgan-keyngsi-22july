@@ -118,7 +118,6 @@ function buildSections(
     { id: 'mavjud_testlar', label: t('nav.mavjud_testlar'), icon: FileText },
     { id: 'mavjud_kazuslar', label: t('nav.mavjud_kazuslar'), icon: GraduationCap },
     { id: 'moot_court', label: 'Moot Court', icon: Scale },
-    { id: 'fanfaster_chat', label: 'FanFaster Chat', icon: MessageCircle },
   ];
 
   const bottomItems = [
