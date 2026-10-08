@@ -114,3 +114,6 @@ verify_jwt = false
 
 [functions.hukm-api]
 verify_jwt = false
+
+[functions.fanfaster-ai-chat]
+verify_jwt = false

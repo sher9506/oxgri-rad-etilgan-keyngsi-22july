@@ -7,7 +7,7 @@ import {
   Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
   Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain, LogOut,
   BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper, Activity, Server, Smartphone,
-  Gavel
+  Gavel, BrainCircuit
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang } from '@/contexts/LangContext';
@@ -76,6 +76,7 @@ const ADMIN_GROUPS = [
       { id: 'tg_login_bot', label: 'Telegram Login Bot', icon: Bot },
       { id: 'miniapp_bot', label: 'Mini App Bot', icon: Smartphone },
       { id: 'ai_mentor', label: 'AI Mentor', icon: Brain },
+      { id: 'ai_chat_monitor', label: 'AI Chat Monitoring', icon: BrainCircuit },
       { id: 'ai_kvota', label: 'AI Kvota (Tizim holati)', icon: Activity },
       { id: 'chunking', label: 'Chunking (AI Index)', icon: Database },
       { id: 'lex_uz_qidiruvchi', label: 'Lex.uz qidiruvchisi', icon: BookMarked },
@@ -118,6 +119,7 @@ function buildSections(
     { id: 'mavjud_testlar', label: t('nav.mavjud_testlar'), icon: FileText },
     { id: 'mavjud_kazuslar', label: t('nav.mavjud_kazuslar'), icon: GraduationCap },
     { id: 'moot_court', label: 'Moot Court', icon: Scale },
+    { id: 'fanfaster_ai_chat', label: 'AI Chat', icon: BrainCircuit },
   ];
 
   const bottomItems = [
@@ -150,6 +152,7 @@ function buildSections(
       { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper },
       { id: 'moot_court', label: 'Moot Court', icon: Scale },
       ...(ustozBotRuxsat ? [{ id: 'bot_yangilik', label: 'Bot Yangilik', icon: Megaphone }] : []),
+      { id: 'fanfaster_ai_chat', label: 'AI Chat', icon: BrainCircuit },
     ];
     // ustoz_huquqi=true — blog_yozishni yashir
     kabinetItems = isUstozRestricted
