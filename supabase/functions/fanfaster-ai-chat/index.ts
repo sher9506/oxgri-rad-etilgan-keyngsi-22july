@@ -1,3 +1,8 @@
+// fanfaster-ai-chat — faqat admin monitoring uchun (admin_stats, admin_summary)
+// Chat savollari endi fanfaster-chat-submit va fanfaster-chat-status orqali Render'ga yuboriladi.
+// Eski Gemini/Groq yo'li, citationSearch, mode:'models' — olib tashlangan.
+// Eski jadvallar (fanfaster_ai_stats, fanfaster_ai_sessions, fanfaster_ai_queue) O'CHIRILMADI.
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -6,346 +11,32 @@ const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  text: string;
-}
-
-interface CitationChunk {
-  ref: number;
-  material_id: string;
-  bolim_id: string;
-  bob_id: string;
-  bolim_nomi: string;
-  bob_nomi: string;
-  material_nomi: string;
-  chunk_index: number;
-  matn: string;
-}
-
-// ── Rejim-specific AI config ──────────────────────────────────────────────────
-interface RejimAIConfig {
-  provider: 'gemini' | 'groq';
-  apiUrl: string;
-  apiKey: string;
-  model: string;
-}
-
-async function loadRejimConfig(rejim: 'lexion' | 'manba'): Promise<RejimAIConfig> {
-  const modelKey = rejim === 'lexion' ? 'AI_CHAT_LEXION_MODEL' : 'AI_CHAT_MANBA_MODEL';
-  const providerKey = rejim === 'lexion' ? 'AI_CHAT_LEXION_PROVIDER' : 'AI_CHAT_MANBA_PROVIDER';
-
-  const { data } = await supabaseAdmin
-    .from('settings')
-    .select('key, text_value')
-    .in('key', [
-      modelKey, providerKey,
-      'AI_MENTOR_API_URL', 'AI_MENTOR_API_KEY', 'AI_MENTOR_MODEL',
-      'GROQ_API_KEY', 'GROQ_API_URL', 'GROQ_MODEL',
-    ]);
-
-  const map: Record<string, string> = {};
-  (data || []).forEach((r: any) => { map[r.key] = r.text_value || ''; });
-
-  const provider = (map[providerKey] || (rejim === 'lexion' ? 'gemini' : 'groq')) as 'gemini' | 'groq';
-
-  if (provider === 'groq') {
-    return {
-      provider: 'groq',
-      apiUrl: map['GROQ_API_URL'] || 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: map['GROQ_API_KEY'] || '',
-      model: map[modelKey] || map['GROQ_MODEL'] || 'openai/gpt-oss-120b',
-    };
-  }
-
-  return {
-    provider: 'gemini',
-    apiUrl: map['AI_MENTOR_API_URL'] || 'https://generativelanguage.googleapis.com/v1beta/models',
-    apiKey: map['AI_MENTOR_API_KEY'] || '',
-    model: map[modelKey] || map['AI_MENTOR_MODEL'] || 'gemini-3.1-flash-lite',
-  };
-}
-
-async function callGemini(config: RejimAIConfig, systemPrompt: string, messages: ChatMessage[], maxTokens: number, temperature: number): Promise<string> {
-  const modelPath = config.model.replace(/^google\//, '');
-  const url = `${config.apiUrl}/${modelPath}:generateContent?key=${config.apiKey}`;
-  const contents = messages.map(m => ({
-    role: m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: m.text }],
-  }));
-  const body: any = {
-    contents,
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    generationConfig: { temperature, maxOutputTokens: maxTokens },
-  };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text();
-  if (!res.ok) {
-    const err = new Error(`Gemini API [${res.status}]`);
-    (err as any).status = res.status;
-    (err as any).body = txt;
-    throw err;
-  }
-  const data = JSON.parse(txt);
-  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!reply) throw new Error('Gemini bo\'sh javob qaytardi');
-  return reply;
-}
-
-async function callGroq(config: RejimAIConfig, systemPrompt: string, messages: ChatMessage[], maxTokens: number, temperature: number): Promise<string> {
-  const formattedMessages = [
-    { role: 'system', content: systemPrompt },
-    ...messages.map(m => ({ role: m.role, content: m.text })),
-  ];
-  const body: any = {
-    model: config.model,
-    messages: formattedMessages,
-    max_tokens: maxTokens,
-    temperature,
-  };
-  const res = await fetch(config.apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text();
-  if (!res.ok) {
-    const err = new Error(`Groq API [${res.status}]`);
-    (err as any).status = res.status;
-    (err as any).body = txt;
-    throw err;
-  }
-  const data = JSON.parse(txt);
-  const reply = data?.choices?.[0]?.message?.content;
-  if (!reply) throw new Error('Groq bo\'sh javob qaytardi');
-  return reply;
-}
-
-// ── Fallback config (opposite provider) ───────────────────────────────────────
-async function loadFallbackConfig(failedProvider: 'gemini' | 'groq'): Promise<RejimAIConfig | null> {
-  const oppositeRejim = failedProvider === 'gemini' ? 'manba' : 'lexion';
-  return loadRejimConfig(oppositeRejim);
-}
-
-async function callAIForRejim(rejim: 'lexion' | 'manba', systemPrompt: string, messages: ChatMessage[], maxTokens: number, temperature: number): Promise<{ text: string; provider: string; model: string }> {
-  const config = await loadRejimConfig(rejim);
-
-  if (!config.apiKey) {
-    // Asosiy provider yo'q, fallbackga o't
-    const fallback = await loadFallbackConfig(config.provider);
-    if (fallback && fallback.apiKey) {
-      const text = fallback.provider === 'gemini'
-        ? await callGemini(fallback, systemPrompt, messages, maxTokens, temperature)
-        : await callGroq(fallback, systemPrompt, messages, maxTokens, temperature);
-      return { text, provider: fallback.provider, model: fallback.model };
-    }
-    throw new Error('AI provayder sozlanmagan. Admin bilan bog\'laning.');
-  }
-
+async function isAdmin(userLogin: string): Promise<boolean> {
+  if (!userLogin) return false;
   try {
-    const text = config.provider === 'gemini'
-      ? await callGemini(config, systemPrompt, messages, maxTokens, temperature)
-      : await callGroq(config, systemPrompt, messages, maxTokens, temperature);
-    return { text, provider: config.provider, model: config.model };
-  } catch (err: any) {
-    const status = err.status || 0;
-    console.warn(`[fanfaster-ai-chat] ${config.provider} [${status}] xato, fallbackga o'tilmoqda`);
-    const fallback = await loadFallbackConfig(config.provider);
-    if (fallback && fallback.apiKey) {
-      const text = fallback.provider === 'gemini'
-        ? await callGemini(fallback, systemPrompt, messages, maxTokens, temperature)
-        : await callGroq(fallback, systemPrompt, messages, maxTokens, temperature);
-      return { text, provider: fallback.provider, model: fallback.model };
-    }
-    throw err;
+    const { data } = await supabaseAdmin
+      .from('talabalar')
+      .select('rol')
+      .eq('login', userLogin)
+      .maybeSingle();
+    return data?.rol === 'admin';
+  } catch {
+    return false;
   }
 }
 
-// ── Xavfsizlik filtrlari ──────────────────────────────────────────────────────
-function isHaramSavol(text: string): boolean {
-  return /\b(din|islom|xristian|yahudiy|budda|namoz|ro['']za|haj|qur['']on|injil|tavrot|siyosat|prezident|partiya|saylov|terrorchi|bomb[aа]|qurol|narkotik|giyohvand)\b/i.test(text);
-}
-
-function isShaxsiyMalumotSorovi(text: string): boolean {
-  return /\b(telefon|tel|raqam|phone|parol|password|login.*parol|access.*token|api.*key|secret|passport|pinfl|inn\b)\b/i.test(text)
-    && /\b(ber|ko.rsat|ayt|top|bil|yoz|nima|qanday|qancha)\b/i.test(text);
-}
-
-// ── Lexion rejimi uchun system prompt ─────────────────────────────────────────
-const LEXION_SYSTEM = `Siz FanFaster huquq ta'lim platformasining AI yordamchisiz — "FanFaster AI Chat" (Lexion rejimi).
-
-## ASOSIY QOIDALAR
-- O'zbek tilida, "Siz" murojaat, qisqa va aniq javob bering (3-7 gap)
-- Huquqiy savollarga to'g'ridan-to'g'ri bilimingizdan javob bering
-- Agar aniq bilmayotgan bo'lsangiz, "Bu masala bo'yicha aniq ma'lumotim yo'q" deb ayt
-- Hech qachon mavjud bo'lmagan qonun moddasini o'ylab topmang
-- Hech qachon xayoliy faktlar yozmang
-- Javoblaringiz professional huquqiy uslubda bo'lsin
-
-## TAQIQLAR
-- Din, siyosat, shaxsiy ma'lumotlar haqida gapirmang
-- Telefon, parol, login kabi ma'lumotlar bermang
-- O'zgartirib bo'lmaydigan qarorlar chiqarmang`;
-
-// ── Manba rejimi uchun system prompt (RAG) ────────────────────────────────────
-const MANBA_SYSTEM = `Siz FanFaster huquq ta'lim platformasining AI yordamchisiz — "FanFaster AI Chat" (Manba rejimi).
-
-## ASOSIY QOIDALAR
-- O'zbek tilida, "Siz" murojaat, qisqa va aniq javob bering
-- FAQAT berilgan darslik mazmunidan (manba) javob bering
-- Har bir gap oxiriga [N] raqamini qo'ying (manba havolasi)
-- Materialda javob yo'q bo'lsa: "Bu ma'lumot darsliklarimizda topilmadi [0]."
-- Matnni qayta yozmang — qisqa xulosa + [N]
-- MAX 5 gap
-
-## TAQIQLAR
-- Din, siyosat, shaxsiy ma'lumot berma
-- Hech qachon mavjud bo'lmagan modda raqamini o'ylab topma`;
-
-// ── Citation search (ILIKE + FTS fallback) ────────────────────────────────────
-async function citationSearch(savol: string, maxChunks = 5): Promise<CitationChunk[]> {
-  const stop = new Set(['va', 'yoki', 'bu', 'u', 'men', 'sen', 'biz', 'siz', 'nima', 'qanday', 'qaysi', 'kim', 'haqida', 'uchun', 'bilan', 'ning', 'ga', 'da', 'dan', 'ni', 'ham', 'ammo', 'lekin', 'chunki', 'agar', 'bir', 'edi', 'bor', 'yo', 'kerak']);
-
-  const rawWords = savol.toLowerCase()
-    .replace(/[^\w\s']/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !stop.has(w));
-
-  if (!rawWords.length) return [];
-
-  const finalTerms = [...new Set(rawWords)].slice(0, 10);
-  const ilikeConditions = finalTerms.slice(0, 8).map(t => `matn.ilike.%${t}%`).join(',');
-
-  const { data: ilikeData } = await supabaseAdmin
-    .from('om_chunks')
-    .select('id,material_id,bolim_id,bob_id,bolim_nomi,bob_nomi,material_nomi,chunk_index,matn')
-    .or(ilikeConditions)
-    .limit(maxChunks + 4);
-
-  if (ilikeData && ilikeData.length > 0) {
-    const scored = (ilikeData as any[]).map(c => {
-      const matn = (c.matn || '').toLowerCase();
-      const score = finalTerms.reduce((s, t) => s + (matn.includes(t) ? 1 : 0), 0);
-      return { ...c, _score: score };
-    }).sort((a, b) => b._score - a._score);
-    return scored.slice(0, maxChunks).map((c: any, i: number) => {
-      const { _score, ...rest } = c;
-      return { ref: i + 1, ...rest } as CitationChunk;
-    });
-  }
-
-  // FTS fallback
-  const tsQuery = finalTerms.slice(0, 6).join(' | ');
-  const { data: ftsData } = await supabaseAdmin
-    .from('om_chunks')
-    .select('id,material_id,bolim_id,bob_id,bolim_nomi,bob_nomi,material_nomi,chunk_index,matn')
-    .textSearch('matn', tsQuery, { config: 'simple', type: 'plain' })
-    .limit(maxChunks);
-
-  if (ftsData && ftsData.length > 0) {
-    return ftsData.slice(0, maxChunks).map((c: any, i: number) => ({ ref: i + 1, ...c })) as CitationChunk[];
-  }
-
-  return [];
-}
-
-function buildCitationBlok(chunks: CitationChunk[]): string {
-  if (!chunks.length) return '\n## DARSLIK MAZMUNI\nHozircha bu mavzu bo\'yicha darslik matni topilmadi.\n\n';
-  let b = '\n## DARSLIK MAZMUNI\nQOIDA: Har bir gap oxiriga [N] qo\'y. Matnni QAYTA YOZMA — qisqa xulosa+[N].\n\n';
-  chunks.forEach(c => {
-    b += `### [${c.ref}] ${c.bolim_nomi} > ${c.bob_nomi} > ${c.material_nomi}\n`;
-    b += c.matn.slice(0, 300) + (c.matn.length > 300 ? '...' : '') + '\n\n';
-  });
-  return b;
-}
-
-// ── Queue tizimi ──────────────────────────────────────────────────────────────
-async function enqueue(userLogin: string, sessionId: string): Promise<string> {
-  const { data } = await supabaseAdmin
-    .from('fanfaster_ai_queue')
-    .insert({ user_login: userLogin, session_id: sessionId, status: 'waiting' })
-    .select('id')
-    .single();
-  return data?.id || '';
-}
-
-async function updateQueueStatus(queueId: string, status: string) {
-  if (!queueId) return;
-  await supabaseAdmin
-    .from('fanfaster_ai_queue')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', queueId);
-}
-
-// ── Statistika saqlash ────────────────────────────────────────────────────────
-async function saveStat(params: {
-  userLogin: string; userIsm: string; userRol: string; rejim: string;
-  savolMatn: string; javobMatn: string; xato: boolean; xatoMatn?: string;
-  sarflanganSekund: number; sessionId: string; provider?: string; model?: string;
-}) {
-  try {
-    await supabaseAdmin.from('fanfaster_ai_stats').insert({
-      user_login: params.userLogin,
-      user_ism: params.userIsm,
-      user_rol: params.userRol,
-      rejim: params.rejim,
-      savol_matn: params.savolMatn.slice(0, 200),
-      javob_matn: params.javobMatn.slice(0, 500),
-      xato: params.xato,
-      xato_matn: params.xatoMatn || null,
-      sarflangan_sekund: params.sarflanganSekund,
-      session_id: params.sessionId,
-    });
-  } catch (e) {
-    console.warn('[fanfaster-ai-chat] stat saqlash xato:', e);
-  }
-}
-
-// ── Sessiya yangilash ─────────────────────────────────────────────────────────
-async function updateSession(sessionId: string, messages: ChatMessage[], savolSoni: number, sarflanganVaqt: number) {
-  try {
-    await supabaseAdmin
-      .from('fanfaster_ai_sessions')
-      .update({
-        messages: JSON.stringify(messages),
-        savol_soni: savolSoni,
-        sarflangan_vaqt_sekund: sarflanganVaqt,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', sessionId);
-  } catch (e) {
-    console.warn('[fanfaster-ai-chat] sessiya yangilash xato:', e);
-  }
-}
-
-// ── Edge function ─────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
     const body = await req.json();
-    const {
-      messages, rejim, userLogin, userIsm, userRol,
-      sessionId, mode,
-    } = body as {
-      messages: ChatMessage[];
-      rejim?: 'lexion' | 'manba';
-      userLogin?: string;
-      userIsm?: string;
-      userRol?: string;
-      sessionId?: string;
-      mode?: string;
-    };
+    const { mode, user_login } = body as { mode?: string; user_login?: string };
 
-    // ── Admin monitoring mode ─────────────────────────────────────────────────
+    // ── Admin monitoring — server-side rol tekshiruvi ──
     if (mode === 'admin_stats') {
+      if (!(await isAdmin(user_login || ''))) {
+        return new Response(JSON.stringify({ error: 'Ruxsat yo\'q' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       const { data: stats } = await supabaseAdmin
         .from('fanfaster_ai_stats')
         .select('*')
@@ -355,6 +46,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (mode === 'admin_summary') {
+      if (!(await isAdmin(user_login || ''))) {
+        return new Response(JSON.stringify({ error: 'Ruxsat yo\'q' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       const { data: allStats } = await supabaseAdmin
         .from('fanfaster_ai_stats')
         .select('user_login, user_ism, user_rol, rejim, xato, sarflangan_sekund, created_at')
@@ -389,136 +83,10 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ summary: result }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // ── Model info mode (frontend uchun) ──────────────────────────────────────
-    if (mode === 'models') {
-      const [lexionCfg, manbaCfg] = await Promise.all([
-        loadRejimConfig('lexion'),
-        loadRejimConfig('manba'),
-      ]);
-      return new Response(JSON.stringify({
-        models: {
-          lexion: { provider: lexionCfg.provider, model: lexionCfg.model },
-          manba: { provider: manbaCfg.provider, model: manbaCfg.model },
-        }
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    if (!messages?.length) {
-      return new Response(JSON.stringify({ error: "messages bo'sh" }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    const chatRejim = rejim || 'lexion';
-    const lastText = messages.filter(m => m.role === 'user').at(-1)?.text || '';
-
-    // ── Xavfsizlik filtri ─────────────────────────────────────────────────────
-    if (isHaramSavol(lastText) || isShaxsiyMalumotSorovi(lastText)) {
-      const xavfsizJavob = isShaxsiyMalumotSorovi(lastText)
-        ? 'Shaxsiy ma\u2019lumotlar (telefon, parol, login va h.k.) xavfsizlik sababli berilmaydi.'
-        : 'Uzr, bu mavzu bo\u2019yicha yordam bera olmayman.';
-
-      if (sessionId) {
-        await saveStat({
-          userLogin: userLogin || 'anonim', userIsm: userIsm || '', userRol: userRol || 'oquvchi',
-          rejim: chatRejim, savolMatn: lastText, javobMatn: xavfsizJavob, xato: false,
-          sarflanganSekund: 0, sessionId,
-        });
-      }
-
-      return new Response(JSON.stringify({ reply: xavfsizJavob, rejim: chatRejim, rejected: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    // ── Navbatga qo'shish ─────────────────────────────────────────────────────
-    let queueId = '';
-    if (sessionId && userLogin) {
-      queueId = await enqueue(userLogin, sessionId);
-    }
-
-    const startTime = Date.now();
-
-    try {
-      let systemPrompt: string;
-      let citationMeta: any[] | null = null;
-
-      if (chatRejim === 'manba') {
-        // ── Manba rejimi: RAG orqali ─────────────────────────────────────────
-        const chunks = await citationSearch(lastText, 5);
-        const citBlok = buildCitationBlok(chunks);
-        systemPrompt = `${MANBA_SYSTEM}\n${citBlok}`;
-        citationMeta = chunks.length > 0 ? chunks.map(c => ({
-          ref: c.ref, material_id: c.material_id, bolim_id: c.bolim_id,
-          bob_id: c.bob_id, bolim_nomi: c.bolim_nomi, bob_nomi: c.bob_nomi,
-          material_nomi: c.material_nomi,
-        })) : null;
-      } else {
-        // ── Lexion rejimi: to'g'ridan-to'g'ri ────────────────────────────────
-        systemPrompt = LEXION_SYSTEM;
-      }
-
-      const { text: aiReply, provider, model } = await callAIForRejim(
-        chatRejim,
-        systemPrompt,
-        messages,
-        1500,
-        0.5,
-      );
-
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-
-      // ── Sessiya yangilash ───────────────────────────────────────────────────
-      if (sessionId) {
-        const allMessages = [...messages, { role: 'assistant' as const, text: aiReply }];
-        const savolSoni = allMessages.filter(m => m.role === 'user').length;
-        await updateSession(sessionId, allMessages, savolSoni, elapsed);
-        await saveStat({
-          userLogin: userLogin || 'anonim', userIsm: userIsm || '', userRol: userRol || 'oquvchi',
-          rejim: chatRejim, savolMatn: lastText, javobMatn: aiReply, xato: false,
-          sarflanganSekund: elapsed, sessionId, provider, model,
-        });
-      }
-
-      // ── Navbatni yakunlash ──────────────────────────────────────────────────
-      await updateQueueStatus(queueId, 'done');
-
-      return new Response(JSON.stringify({
-        reply: aiReply,
-        rejim: chatRejim,
-        citationMeta,
-        elapsed,
-        provider,
-        model,
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-    } catch (aiError: any) {
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      const errMsg = aiError instanceof Error ? aiError.message : String(aiError);
-
-      // Statistikaga xato yozish
-      if (sessionId) {
-        await saveStat({
-          userLogin: userLogin || 'anonim', userIsm: userIsm || '', userRol: userRol || 'oquvchi',
-          rejim: chatRejim, savolMatn: lastText, javobMatn: '', xato: true, xatoMatn: errMsg.slice(0, 200),
-          sarflanganSekund: elapsed, sessionId,
-        });
-      }
-
-      await updateQueueStatus(queueId, 'error');
-
-      console.error('[fanfaster-ai-chat] AI xato:', errMsg.slice(0, 200));
-
-      const friendlyMsg = errMsg.includes('402') || errMsg.includes('429')
-        ? 'AI yordamchi vaqtincha band. Iltimos, bir necha daqiqadan so\'ng qayta urinib ko\'ring.'
-        : 'AI javob berishda xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.';
-
-      return new Response(JSON.stringify({
-        reply: friendlyMsg,
-        rejim: chatRejim,
-        error: true,
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
+    return new Response(JSON.stringify({ error: 'Noto\'g\'ri so'rov' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error('[fanfaster-ai-chat] tashqi xato:', msg.slice(0, 200));
-    return new Response(JSON.stringify({ error: `Xatolik: ${msg.slice(0, 150)}` }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    console.error('[fanfaster-ai-chat] xato:', msg.slice(0, 200));
+    return new Response(JSON.stringify({ error: 'Xatolik yuz berdi' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

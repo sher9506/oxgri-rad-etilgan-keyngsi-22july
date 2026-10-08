@@ -4,6 +4,7 @@ import {
   Users, Zap, BookOpen, TrendingUp, Loader2, Search,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface StatRow {
   id: string;
@@ -38,6 +39,8 @@ function formatVaqt(sekund: number): string {
 }
 
 export default function AdminAiChatMonitor() {
+  const { user } = useAuth();
+  const userLogin = user?.login || '';
   const [stats, setStats] = useState<StatRow[]>([]);
   const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,10 +54,10 @@ export default function AdminAiChatMonitor() {
     try {
       const [statsRes, summaryRes] = await Promise.all([
         supabase.functions.invoke('fanfaster-ai-chat', {
-          body: { mode: 'admin_stats' },
+          body: { mode: 'admin_stats', user_login: userLogin },
         }),
         supabase.functions.invoke('fanfaster-ai-chat', {
-          body: { mode: 'admin_summary' },
+          body: { mode: 'admin_summary', user_login: userLogin },
         }),
       ]);
 
@@ -65,7 +68,7 @@ export default function AdminAiChatMonitor() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userLogin]);
 
   useEffect(() => {
     loadData();

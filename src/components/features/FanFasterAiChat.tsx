@@ -1,33 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Loader2, RotateCcw, BookOpen, Zap, ChevronRight,
-  BrainCircuit, MessageSquare, Clock, AlertCircle,
-  History, X, Cpu,
+  BrainCircuit, History, X, AlertCircle, Clock,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { FunctionsHttpError } from '@supabase/supabase-js';
+import { useFanFasterChatJob } from '@/hooks/useFanFasterChatJob';
+import type { ChatRejim, ChatSourceItem } from '@/hooks/useFanFasterChatJob';
+import { ChatSourcesBlock } from '@/components/features/ChatSourcesBlock';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   timestamp?: number;
-  citationMeta?: CitationMeta[] | null;
   rejim?: string;
   error?: boolean;
-  provider?: string;
-  model?: string;
-}
-
-interface CitationMeta {
-  ref: number;
-  material_id: string;
-  bolim_id: string;
-  bob_id: string;
-  bolim_nomi: string;
-  bob_nomi: string;
-  material_nomi: string;
 }
 
 interface SessionRow {
@@ -39,14 +26,6 @@ interface SessionRow {
   created_at: string;
 }
 
-type Rejim = 'lexion' | 'manba';
-
-interface RejimModelInfo {
-  provider: string;
-  model: string;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function formatPlainText(text: string): string {
   return text
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -60,17 +39,6 @@ function formatPlainText(text: string): string {
     .replace(/(?<!>)\n(?!<)/g, '<br/>');
 }
 
-function renderWithCitations(html: string, citationMeta?: CitationMeta[] | null): string {
-  if (!citationMeta || citationMeta.length === 0) return html;
-  return html.replace(/\[([0-9]+)\]/g, (match, num) => {
-    const n = parseInt(num);
-    if (n === 0) return `<span class="inline-flex items-center mx-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded bg-gray-200 text-gray-500 border border-gray-300">[0]</span>`;
-    const meta = citationMeta.find(c => c.ref === n);
-    if (!meta) return match;
-    return `<span class="citation-ref inline-flex items-center gap-0.5 mx-0.5 px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-blue-100 text-blue-700 border border-blue-300 cursor-pointer hover:bg-blue-200 transition-all" title="${meta.bolim_nomi} > ${meta.bob_nomi}">[${n}]</span>`;
-  });
-}
-
 function formatVaqt(sekund: number): string {
   if (sekund < 60) return `${sekund}s`;
   const m = Math.floor(sekund / 60);
@@ -78,75 +46,128 @@ function formatVaqt(sekund: number): string {
   return `${m}m ${s}s`;
 }
 
-function shortModelName(model: string): string {
-  if (!model) return '';
-  return model.replace(/^google\//, '').replace(/^openai\//, '');
-}
-
-// ── Tezkor savollar ───────────────────────────────────────────────────────────
-const TEZKOR_SAVOLLAR_OQUVCHI = [
+const TEZKOR_SAVOLLAR = [
   { label: 'Jinoyat kodeksi 158-modda', text: 'JK 158-moddasini tushuntirib bering' },
   { label: 'Shartnoma turlari', text: 'O\'zbekiston qonunchiligida shartnoma turlari qanday?' },
   { label: 'Sud tartibi', text: 'Fuqarolik sud tartibida da\'vo arizasi qanday topshiriladi?' },
   { label: 'Advokat vazifalari', text: 'Advokatning huquq va vazifalari qanday?' },
 ];
 
-const TEZKOR_SAVOLLAR_USTOZ = [
-  { label: 'JK 158-modda tahlili', text: 'JK 158-modda (firibgarlik) tahlilini batafsil yozing' },
-  { label: 'Shartnoma huquqi', text: 'Shartnoma huquqi asoslari va turlari haqida xulosa bering' },
-  { label: 'Sud ish yuritish', text: 'Fuqarolik va jinoyat sud ish yuritishidagi asosiy farqlar nimalardan iborat?' },
-  { label: 'Protsessual kodeks', text: 'JPK ning asosiy prinsiplari qanday?' },
-];
+function getElapsedText(ms: number): string {
+  const sekund = Math.floor(ms / 1000);
+  if (sekund < 60) return `${sekund} soniya`;
+  const m = Math.floor(sekund / 60);
+  const s = sekund % 60;
+  return `${m} daqiqa ${s} soniya`;
+}
 
-// ── Main Component ────────────────────────────────────────────────────────────
+function getLoadingText(rejim: ChatRejim, lexionPhase?: string | null, status?: string): string {
+  if (status === 'queued') return 'Navbatda, tez orada boshlanadi';
+  if (rejim === 'lexion') {
+    if (lexionPhase === 'lexion_searching') return 'Qonun hujjatlari lex.uz saytidan qidirilmoqda...';
+    if (lexionPhase === 'answering') return 'Chuqur tahlil (lex.uz, amaliy qonunchilik) tufayli javob biroz kutiladi';
+    return 'Chuqur tahlil (lex.uz, amaliy qonunchilik) tufayli javob biroz kutiladi';
+  }
+  return 'Chuqur tahlil tufayli javob biroz kutiladi';
+}
+
 interface FanFasterAiChatProps {
   onNavigate?: (tab: string, extra?: { materialId?: string }) => void;
 }
 
-export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
+export default function FanFasterAiChat(_props: FanFasterAiChatProps) {
   const { user, isAuthenticated } = useAuth();
-  const [rejim, setRejim] = useState<Rejim>('lexion');
+  const [rejim, setRejim] = useState<ChatRejim>('lexion');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [yuklanyapti, setYuklanyapti] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [totalSavol, setTotalSavol] = useState(0);
   const [totalVaqt, setTotalVaqt] = useState(0);
-  const [modelInfo, setModelInfo] = useState<{ lexion: RejimModelInfo; manba: RejimModelInfo } | null>(null);
-  const [lastProvider, setLastProvider] = useState<string>('');
-  const [lastModel, setLastModel] = useState<string>('');
+  const [sources, setSources] = useState<ChatSourceItem[]>([]);
+  const [elapsedMs, setElapsedMs] = useState(0);
 
+  const { jobState, submitChat, reset: resetJob } = useFanFasterChatJob();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const startTimeRef = useRef<number>(0);
+  const lastHandledJobRef = useRef<string | null>(null);
 
-  const isUstoz = user?.rol === 'ustoz';
   const userLogin = user?.login || '';
   const userIsm = user ? `${user.ism} ${user.familiya}` : '';
 
-  // ── Scroll to bottom ─────────────────────────────────────────────────────
+  const isBusy = jobState.status === 'queued' || jobState.status === 'running';
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, jobState.status]);
 
-  // ── Load model info ──────────────────────────────────────────────────────
+  // ── Elapsed timer ──
   useEffect(() => {
-    (async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('fanfaster-ai-chat', {
-          body: { mode: 'models' },
-        });
-        if (!error && data?.models) {
-          setModelInfo(data.models);
-        }
-      } catch (e) {
-        console.warn('[FanFasterAiChat] model info xatosi:', e);
-      }
-    })();
-  }, []);
+    if (!isBusy) {
+      setElapsedMs(0);
+      return;
+    }
+    if (startTimeRef.current === 0) startTimeRef.current = Date.now();
+    const timer = setInterval(() => {
+      setElapsedMs(Date.now() - startTimeRef.current);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isBusy]);
 
-  // ── Load session history ─────────────────────────────────────────────────
+  // ── Handle job completion ──
+  useEffect(() => {
+    if (jobState.jobId && jobState.jobId !== lastHandledJobRef.current) {
+      if (jobState.status === 'done' && jobState.answer) {
+        lastHandledJobRef.current = jobState.jobId;
+        const assistantMsg: ChatMessage = {
+          role: 'assistant',
+          text: jobState.answer,
+          timestamp: Date.now(),
+          rejim,
+          error: false,
+        };
+        setMessages(prev => [...prev, assistantMsg]);
+        saveToSession(jobState.answer, false);
+        startTimeRef.current = 0;
+      } else if ((jobState.status === 'error' || jobState.status === 'timeout') && jobState.error) {
+        lastHandledJobRef.current = jobState.jobId;
+        const errorMsg: ChatMessage = {
+          role: 'assistant',
+          text: jobState.error,
+          timestamp: Date.now(),
+          error: true,
+        };
+        setMessages(prev => [...prev, errorMsg]);
+        saveToSession(jobState.error, true);
+        startTimeRef.current = 0;
+      }
+    }
+  }, [jobState.jobId, jobState.status, jobState.answer, jobState.error, rejim]);
+
+  const saveToSession = useCallback(async (aiText: string, isError: boolean) => {
+    if (!sessionId) return;
+    const elapsedSec = Math.round((Date.now() - (startTimeRef.current || Date.now())) / 1000);
+    const allMessages = [...messages, { role: 'assistant' as const, text: aiText, error: isError }];
+    const savolSoni = allMessages.filter(m => m.role === 'user').length;
+    try {
+      await supabase
+        .from('fanfaster_ai_sessions')
+        .update({
+          messages: JSON.stringify(allMessages),
+          savol_soni: savolSoni,
+          sarflangan_vaqt_sekund: elapsedSec,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sessionId);
+      await loadSessions();
+    } catch (e) {
+      console.warn('[FanFasterAiChat] sessiya yangilash xatosi:', e);
+    }
+  }, [sessionId, messages]);
+
+  // ── Load session history ──
   const loadSessions = useCallback(async () => {
     if (!userLogin) return;
     try {
@@ -172,7 +193,6 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
     if (isAuthenticated && userLogin) loadSessions();
   }, [isAuthenticated, userLogin, loadSessions]);
 
-  // ── Create new session ───────────────────────────────────────────────────
   const ensureSession = async (): Promise<string> => {
     if (sessionId) return sessionId;
     try {
@@ -199,101 +219,62 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
     }
   };
 
-  // ── Rejim o'zgarganda yangi sessiya ──────────────────────────────────────
-  const handleRejimChange = (newRejim: Rejim) => {
-    if (newRejim === rejim) return;
+  const handleRejimChange = (newRejim: ChatRejim) => {
+    if (newRejim === rejim || isBusy) return;
     setRejim(newRejim);
     setMessages([]);
     setSessionId(null);
+    setSources([]);
   };
 
-  // ── Xabar yuborish ───────────────────────────────────────────────────────
   const xabarYuborish = async (matn?: string) => {
     const trimmed = (matn || input).trim();
-    if (!trimmed || yuklanyapti) return;
+    if (!trimmed || isBusy) return;
 
     const userMsg: ChatMessage = { role: 'user', text: trimmed, timestamp: Date.now() };
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
-    setYuklanyapti(true);
-    setLastProvider('');
-    setLastModel('');
+    lastHandledJobRef.current = null;
+    startTimeRef.current = Date.now();
 
-    try {
-      const sId = await ensureSession();
-      const contextMessages = updatedMessages.slice(-12).map(m => ({ role: m.role, text: m.text }));
-
-      const { data, error } = await supabase.functions.invoke('fanfaster-ai-chat', {
-        body: {
-          messages: contextMessages,
-          rejim,
-          userLogin: userLogin || 'anonim',
-          userIsm,
-          userRol: user?.rol || 'oquvchi',
-          sessionId: sId,
-        },
-      });
-
-      if (error) {
-        let errMsg = error.message;
-        if (error instanceof FunctionsHttpError) {
-          try {
-            const t = await error.context?.text?.();
-            if (t) { try { errMsg = JSON.parse(t).error || t; } catch { errMsg = t; } }
-          } catch {}
-        }
-        setMessages(prev => [...prev, {
-          role: 'assistant', text: `Xatolik: ${errMsg}`, timestamp: Date.now(), error: true,
-        }]);
-        return;
-      }
-
-      if (data?.reply) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          text: data.reply,
-          timestamp: Date.now(),
-          citationMeta: data.citationMeta || null,
-          rejim: data.rejim || rejim,
-          error: data.error || false,
-          provider: data.provider || '',
-          model: data.model || '',
-        }]);
-        if (data.provider) setLastProvider(data.provider);
-        if (data.model) setLastModel(data.model);
-        if (sId) {
-          await loadSessions();
-        }
-      }
-    } catch {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: 'AI yordamchi vaqtincha mavjud emas. Iltimos, keyinroq urinib ko\'ring.',
-        timestamp: Date.now(),
-        error: true,
-      }]);
-    } finally {
-      setYuklanyapti(false);
-    }
+    const sId = await ensureSession();
+    await submitChat(trimmed, userLogin || 'anonim', rejim, sId, rejim === 'manba' ? sources : undefined);
   };
 
-  // ── Eski sessiyani yuklash ───────────────────────────────────────────────
+  const retryLastQuestion = () => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user' && !m.error);
+    if (!lastUserMsg) return;
+    // Remove last assistant error message
+    setMessages(prev => {
+      const filtered = [...prev];
+      while (filtered.length > 0 && filtered[filtered.length - 1].role === 'assistant') {
+        filtered.pop();
+      }
+      return filtered;
+    });
+    lastHandledJobRef.current = null;
+    startTimeRef.current = Date.now();
+    void submitChat(lastUserMsg.text, userLogin || 'anonim', rejim, sessionId || undefined, rejim === 'manba' ? sources : undefined);
+  };
+
   const loadOldSession = (sess: SessionRow) => {
     setMessages(sess.messages || []);
-    setRejim((sess.rejim || 'lexion') as Rejim);
+    setRejim((sess.rejim || 'lexion') as ChatRejim);
     setSessionId(sess.id);
     setShowHistory(false);
   };
 
-  // ── Chatni tozalash ──────────────────────────────────────────────────────
   const chatniTozalash = () => {
     setMessages([]);
     setSessionId(null);
-    setLastProvider('');
-    setLastModel('');
+    setSources([]);
+    resetJob();
+    startTimeRef.current = 0;
     setTimeout(() => inputRef.current?.focus(), 100);
   };
+
+  const handleAddSource = (src: ChatSourceItem) => setSources(prev => [...prev, src]);
+  const handleRemoveSource = (index: number) => setSources(prev => prev.filter((_, i) => i !== index));
 
   if (!isAuthenticated || !user) {
     return (
@@ -313,13 +294,9 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
     );
   }
 
-  const tezkorSavollar = isUstoz ? TEZKOR_SAVOLLAR_USTOZ : TEZKOR_SAVOLLAR_OQUVCHI;
-
-  const currentModelInfo = rejim === 'lexion' ? modelInfo?.lexion : modelInfo?.manba;
-
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-3 flex items-center gap-3 flex-shrink-0 shadow-md">
         <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
           <BrainCircuit className="h-5 w-5" />
@@ -334,6 +311,7 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
           onClick={() => setShowHistory(v => !v)}
           className="p-2 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
           title="Tarix"
+          aria-label="Tarix"
         >
           <History className="h-4 w-4" />
         </button>
@@ -341,18 +319,18 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
           onClick={chatniTozalash}
           className="p-2 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
           title="Yangi chat"
+          aria-label="Yangi chat"
         >
           <RotateCcw className="h-4 w-4" />
         </button>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* ── History panel ─────────────────────────────────────────────── */}
         {showHistory && (
           <div className="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
             <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs font-bold text-gray-700">Tarix</p>
-              <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 rounded">
+              <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 rounded" aria-label="Yopish">
                 <X className="h-3.5 w-3.5 text-gray-400" />
               </button>
             </div>
@@ -385,10 +363,9 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
           </div>
         )}
 
-        {/* ── Chat area ────────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {messages.length === 0 && !yuklanyapti && (
+            {messages.length === 0 && !isBusy && (
               <div className="space-y-2 pt-4">
                 <div className={`rounded-2xl p-4 text-center ${
                   rejim === 'lexion' ? 'bg-blue-50 border border-blue-200' : 'bg-emerald-50 border border-emerald-200'
@@ -404,23 +381,15 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
                   <p className={`text-xs ${rejim === 'lexion' ? 'text-blue-600' : 'text-emerald-600'}`}>
                     {rejim === 'lexion'
                       ? 'Huquqiy savollaringizga to\'g\'ridan-to\'g\'ri javob beraman.'
-                      : 'Darslik materiallardan manbali javob beraman.'}
+                      : 'Qo\'shgan manbalaringizdan foydalanib javob beraman.'}
                   </p>
-                  {currentModelInfo && (
-                    <div className={`mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-medium ${
-                      rejim === 'lexion' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      <Cpu className="h-3 w-3" />
-                      <span>{currentModelInfo.provider} · {shortModelName(currentModelInfo.model)}</span>
-                    </div>
-                  )}
                 </div>
                 <div className="space-y-1.5">
-                  {tezkorSavollar.map((s, i) => (
+                  {TEZKOR_SAVOLLAR.map((s, i) => (
                     <button
                       key={i}
                       onClick={() => xabarYuborish(s.text)}
-                      disabled={yuklanyapti}
+                      disabled={isBusy}
                       className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl text-left transition-all group disabled:opacity-50"
                     >
                       <span className="text-xs text-gray-700 group-hover:text-blue-700 font-medium">{s.label}</span>
@@ -435,7 +404,7 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 mr-2 ${
-                    msg.error ? 'bg-red-100' : msg.rejim === 'manba' || rejim === 'manba' ? 'bg-emerald-600' : 'bg-blue-600'
+                    msg.error ? 'bg-red-100' : rejim === 'manba' ? 'bg-emerald-600' : 'bg-blue-600'
                   }`}>
                     {msg.error ? <AlertCircle className="h-4 w-4 text-red-600" /> : <BrainCircuit className="h-4 w-4 text-white" />}
                   </div>
@@ -451,45 +420,15 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
                     }`}>
                       <div
                         className="prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{
-                          __html: renderWithCitations(
-                            formatPlainText(msg.text),
-                            msg.citationMeta
-                          ),
-                        }}
-                        onClick={(e) => {
-                          const target = (e.target as HTMLElement).closest('.citation-ref');
-                          if (target && msg.citationMeta) {
-                            const text = target.textContent || '';
-                            const match = text.match(/\[(\d+)\]/);
-                            if (match) {
-                              const n = parseInt(match[1]);
-                              const meta = msg.citationMeta.find(c => c.ref === n);
-                              if (meta) onNavigate?.('oqmatlar', { materialId: meta.material_id });
-                            }
-                          }
-                        }}
+                        dangerouslySetInnerHTML={{ __html: formatPlainText(msg.text) }}
                       />
-                      {msg.citationMeta && msg.citationMeta.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-                          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Manbalar:</p>
-                          {msg.citationMeta.map(c => (
-                            <button
-                              key={c.ref}
-                              onClick={() => onNavigate?.('oqmatlar', { materialId: c.material_id })}
-                              className="flex items-center gap-1.5 text-[10px] text-blue-600 hover:text-blue-800 hover:underline"
-                            >
-                              <span className="font-bold">[{c.ref}]</span>
-                              <span className="truncate">{c.bolim_nomi} {'>'} {c.bob_nomi} {'>'} {c.material_nomi}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {!msg.error && msg.provider && msg.model && (
-                        <div className="mt-1.5 pt-1.5 border-t border-gray-50 flex items-center gap-1">
-                          <Cpu className="h-2.5 w-2.5 text-gray-400" />
-                          <span className="text-[8px] text-gray-400">{msg.provider} · {shortModelName(msg.model)}</span>
-                        </div>
+                      {msg.error && (
+                        <button
+                          onClick={retryLastQuestion}
+                          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-colors"
+                        >
+                          <RotateCcw className="h-3 w-3" /> Qayta urinish
+                        </button>
                       )}
                     </div>
                   ) : (
@@ -499,30 +438,44 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
               </div>
             ))}
 
-            {yuklanyapti && (
+            {isBusy && (
               <div className="flex justify-start">
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 mr-2 ${
                   rejim === 'manba' ? 'bg-emerald-600' : 'bg-blue-600'
                 }`}>
                   <BrainCircuit className="h-4 w-4 text-white" />
                 </div>
-                <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    {elapsedMs > 0 && (
+                      <span className="text-[10px] text-gray-400 ml-1 inline-flex items-center gap-0.5">
+                        <Clock className="h-2.5 w-2.5" /> {getElapsedText(elapsedMs)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {getLoadingText(rejim, jobState.lexionPhase, jobState.status)}
+                  </p>
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ── Input area with rejim toggle ──────────────────────────────── */}
+          {/* Input area */}
           <div className="p-3 border-t border-gray-100 bg-white flex-shrink-0 space-y-2">
-            {/* Rejim toggle — input area ichida */}
+            {rejim === 'manba' && (
+              <ChatSourcesBlock sources={sources} onAdd={handleAddSource} onRemove={handleRemoveSource} />
+            )}
+
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => handleRejimChange('lexion')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                disabled={isBusy}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all disabled:opacity-50 ${
                   rejim === 'lexion'
                     ? 'bg-blue-100 border-blue-300 text-blue-700'
                     : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
@@ -530,37 +483,21 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
               >
                 <Zap className="h-3 w-3" />
                 <span>Lexion</span>
-                {modelInfo?.lexion && (
-                  <span className="text-[8px] font-normal text-gray-400 hidden sm:inline">
-                    {shortModelName(modelInfo.lexion.model)}
-                  </span>
-                )}
               </button>
               <button
                 onClick={() => handleRejimChange('manba')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                disabled={isBusy}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all disabled:opacity-50 ${
                   rejim === 'manba'
                     ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
                     : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
                 }`}
               >
                 <BookOpen className="h-3 w-3" />
-                <span>Manba</span>
-                {modelInfo?.manba && (
-                  <span className="text-[8px] font-normal text-gray-400 hidden sm:inline">
-                    {shortModelName(modelInfo.manba.model)}
-                  </span>
-                )}
+                <span>Manbali</span>
               </button>
-              {lastProvider && lastModel && (
-                <div className="ml-auto flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 text-[8px] text-gray-400">
-                  <Cpu className="h-2.5 w-2.5" />
-                  <span>{lastProvider} · {shortModelName(lastModel)}</span>
-                </div>
-              )}
             </div>
 
-            {/* Text input + send */}
             <div className="flex items-end gap-2 bg-gray-50 border-2 border-gray-200 focus-within:border-blue-400 rounded-xl transition-all px-3 py-2">
               <textarea
                 ref={inputRef}
@@ -573,28 +510,30 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
                   }
                 }}
                 placeholder={rejim === 'manba'
-                  ? 'Darslikdan qidirmoqchi bo\'lgan savolingiz...'
+                  ? 'Savolingizni yozing (manbalardan javob beriladi)...'
                   : 'Huquqiy savolingizni yozing...'
                 }
                 rows={1}
                 className="flex-1 bg-transparent text-sm outline-none text-gray-800 placeholder-gray-400 py-1 resize-none max-h-24"
-                disabled={yuklanyapti}
+                disabled={isBusy}
                 style={{ minHeight: '24px' }}
+                aria-label="Savol matni"
               />
               <button
                 onClick={() => xabarYuborish()}
-                disabled={!input.trim() || yuklanyapti}
+                disabled={!input.trim() || isBusy}
                 className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 flex-shrink-0 ${
                   rejim === 'manba'
                     ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300'
                     : 'bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300'
                 } text-white`}
+                aria-label="Yuborish"
               >
-                {yuklanyapti ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
             </div>
             <p className="text-[9px] text-gray-400 text-center">
-              FanFaster AI · {rejim === 'lexion' ? 'Lexion rejimi' : 'Manba rejimi'} · Enter — yuborish
+              FanFaster AI xato qilishi mumkin, qayta tekshiring · Enter — yuborish
             </p>
           </div>
         </div>

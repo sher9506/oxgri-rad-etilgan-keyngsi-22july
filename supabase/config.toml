@@ -117,3 +117,9 @@ verify_jwt = false
 
 [functions.fanfaster-ai-chat]
 verify_jwt = false
+
+[functions.fanfaster-chat-submit]
+verify_jwt = false
+
+[functions.fanfaster-chat-status]
+verify_jwt = false
