@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Loader2, RotateCcw, BookOpen, Zap, ChevronRight,
-  BrainCircuit, MessageSquare, Clock, AlertCircle, CheckCircle2,
-  History, X, Menu, ScrollText, BookMarked,
+  BrainCircuit, MessageSquare, Clock, AlertCircle,
+  History, X, Cpu,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -16,6 +16,8 @@ interface ChatMessage {
   citationMeta?: CitationMeta[] | null;
   rejim?: string;
   error?: boolean;
+  provider?: string;
+  model?: string;
 }
 
 interface CitationMeta {
@@ -38,6 +40,11 @@ interface SessionRow {
 }
 
 type Rejim = 'lexion' | 'manba';
+
+interface RejimModelInfo {
+  provider: string;
+  model: string;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatPlainText(text: string): string {
@@ -71,6 +78,11 @@ function formatVaqt(sekund: number): string {
   return `${m}m ${s}s`;
 }
 
+function shortModelName(model: string): string {
+  if (!model) return '';
+  return model.replace(/^google\//, '').replace(/^openai\//, '');
+}
+
 // ── Tezkor savollar ───────────────────────────────────────────────────────────
 const TEZKOR_SAVOLLAR_OQUVCHI = [
   { label: 'Jinoyat kodeksi 158-modda', text: 'JK 158-moddasini tushuntirib bering' },
@@ -102,6 +114,9 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [totalSavol, setTotalSavol] = useState(0);
   const [totalVaqt, setTotalVaqt] = useState(0);
+  const [modelInfo, setModelInfo] = useState<{ lexion: RejimModelInfo; manba: RejimModelInfo } | null>(null);
+  const [lastProvider, setLastProvider] = useState<string>('');
+  const [lastModel, setLastModel] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -114,6 +129,22 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // ── Load model info ──────────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('fanfaster-ai-chat', {
+          body: { mode: 'models' },
+        });
+        if (!error && data?.models) {
+          setModelInfo(data.models);
+        }
+      } catch (e) {
+        console.warn('[FanFasterAiChat] model info xatosi:', e);
+      }
+    })();
+  }, []);
 
   // ── Load session history ─────────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
@@ -186,6 +217,8 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
     setMessages(updatedMessages);
     setInput('');
     setYuklanyapti(true);
+    setLastProvider('');
+    setLastModel('');
 
     try {
       const sId = await ensureSession();
@@ -224,8 +257,11 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
           citationMeta: data.citationMeta || null,
           rejim: data.rejim || rejim,
           error: data.error || false,
+          provider: data.provider || '',
+          model: data.model || '',
         }]);
-        // Statistikani yangilash
+        if (data.provider) setLastProvider(data.provider);
+        if (data.model) setLastModel(data.model);
         if (sId) {
           await loadSessions();
         }
@@ -254,15 +290,9 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
   const chatniTozalash = () => {
     setMessages([]);
     setSessionId(null);
+    setLastProvider('');
+    setLastModel('');
     setTimeout(() => inputRef.current?.focus(), 100);
-  };
-
-  // ── Citation click ───────────────────────────────────────────────────────
-  const handleCitationClick = (e: React.MouseEvent, citationMeta?: CitationMeta[] | null) => {
-    if (!citationMeta) return;
-    const target = (e.target as HTMLElement).closest('[data-citation]');
-    if (!target) return;
-    // For rendered HTML citations, we handle via title attribute
   };
 
   if (!isAuthenticated || !user) {
@@ -284,6 +314,8 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
   }
 
   const tezkorSavollar = isUstoz ? TEZKOR_SAVOLLAR_USTOZ : TEZKOR_SAVOLLAR_OQUVCHI;
+
+  const currentModelInfo = rejim === 'lexion' ? modelInfo?.lexion : modelInfo?.manba;
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -313,45 +345,6 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
           <RotateCcw className="h-4 w-4" />
         </button>
       </div>
-
-      {/* ── Rejim toggle ─────────────────────────────────────────────────── */}
-      <div className="flex bg-white border-b border-gray-200 flex-shrink-0">
-        <button
-          onClick={() => handleRejimChange('lexion')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold border-b-2 transition-all ${
-            rejim === 'lexion'
-              ? 'border-blue-500 text-blue-700 bg-blue-50'
-              : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          <Zap className="h-3.5 w-3.5" />
-          <span>Lexion</span>
-          <span className="text-[9px] text-gray-400 font-normal hidden sm:inline">to'g'ridan-to'g'ri</span>
-        </button>
-        <button
-          onClick={() => handleRejimChange('manba')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold border-b-2 transition-all ${
-            rejim === 'manba'
-              ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
-              : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          <BookOpen className="h-3.5 w-3.5" />
-          <span>Manba</span>
-          <span className="text-[9px] text-gray-400 font-normal hidden sm:inline">darslikdan</span>
-        </button>
-      </div>
-
-      {/* ── Rejim info banner ────────────────────────────────────────────── */}
-      {messages.length === 0 && (
-        <div className={`px-4 py-2 text-[10px] font-medium flex-shrink-0 ${
-          rejim === 'lexion' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
-        }`}>
-          {rejim === 'lexion'
-            ? 'Lexion rejimi — AI to\'g\'ridan-to\'g\'ri bilimidan javob beradi. Tez va qisqa javoblar uchun ideal.'
-            : 'Manba rejimi — AI faqat darslik materiallardan javob beradi. Har bir javob manba bilan tasdiqlanadi [N].'}
-        </div>
-      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* ── History panel ─────────────────────────────────────────────── */}
@@ -413,6 +406,14 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
                       ? 'Huquqiy savollaringizga to\'g\'ridan-to\'g\'ri javob beraman.'
                       : 'Darslik materiallardan manbali javob beraman.'}
                   </p>
+                  {currentModelInfo && (
+                    <div className={`mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-medium ${
+                      rejim === 'lexion' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      <Cpu className="h-3 w-3" />
+                      <span>{currentModelInfo.provider} · {shortModelName(currentModelInfo.model)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   {tezkorSavollar.map((s, i) => (
@@ -434,7 +435,7 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 mr-2 ${
-                    msg.error ? 'bg-red-100' : rejim === 'manba' ? 'bg-emerald-600' : 'bg-blue-600'
+                    msg.error ? 'bg-red-100' : msg.rejim === 'manba' || rejim === 'manba' ? 'bg-emerald-600' : 'bg-blue-600'
                   }`}>
                     {msg.error ? <AlertCircle className="h-4 w-4 text-red-600" /> : <BrainCircuit className="h-4 w-4 text-white" />}
                   </div>
@@ -459,7 +460,6 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
                         onClick={(e) => {
                           const target = (e.target as HTMLElement).closest('.citation-ref');
                           if (target && msg.citationMeta) {
-                            // Extract ref number from title or content
                             const text = target.textContent || '';
                             const match = text.match(/\[(\d+)\]/);
                             if (match) {
@@ -483,6 +483,12 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
                               <span className="truncate">{c.bolim_nomi} {'>'} {c.bob_nomi} {'>'} {c.material_nomi}</span>
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {!msg.error && msg.provider && msg.model && (
+                        <div className="mt-1.5 pt-1.5 border-t border-gray-50 flex items-center gap-1">
+                          <Cpu className="h-2.5 w-2.5 text-gray-400" />
+                          <span className="text-[8px] text-gray-400">{msg.provider} · {shortModelName(msg.model)}</span>
                         </div>
                       )}
                     </div>
@@ -510,8 +516,51 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ── Input area ──────────────────────────────────────────────── */}
-          <div className="p-3 border-t border-gray-100 bg-white flex-shrink-0">
+          {/* ── Input area with rejim toggle ──────────────────────────────── */}
+          <div className="p-3 border-t border-gray-100 bg-white flex-shrink-0 space-y-2">
+            {/* Rejim toggle — input area ichida */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => handleRejimChange('lexion')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                  rejim === 'lexion'
+                    ? 'bg-blue-100 border-blue-300 text-blue-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                <Zap className="h-3 w-3" />
+                <span>Lexion</span>
+                {modelInfo?.lexion && (
+                  <span className="text-[8px] font-normal text-gray-400 hidden sm:inline">
+                    {shortModelName(modelInfo.lexion.model)}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => handleRejimChange('manba')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                  rejim === 'manba'
+                    ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                <BookOpen className="h-3 w-3" />
+                <span>Manba</span>
+                {modelInfo?.manba && (
+                  <span className="text-[8px] font-normal text-gray-400 hidden sm:inline">
+                    {shortModelName(modelInfo.manba.model)}
+                  </span>
+                )}
+              </button>
+              {lastProvider && lastModel && (
+                <div className="ml-auto flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 text-[8px] text-gray-400">
+                  <Cpu className="h-2.5 w-2.5" />
+                  <span>{lastProvider} · {shortModelName(lastModel)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Text input + send */}
             <div className="flex items-end gap-2 bg-gray-50 border-2 border-gray-200 focus-within:border-blue-400 rounded-xl transition-all px-3 py-2">
               <textarea
                 ref={inputRef}
@@ -544,7 +593,7 @@ export default function FanFasterAiChat({ onNavigate }: FanFasterAiChatProps) {
                 {yuklanyapti ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
             </div>
-            <p className="text-[9px] text-gray-400 text-center mt-1.5">
+            <p className="text-[9px] text-gray-400 text-center">
               FanFaster AI · {rejim === 'lexion' ? 'Lexion rejimi' : 'Manba rejimi'} · Enter — yuborish
             </p>
           </div>
