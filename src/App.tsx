@@ -48,7 +48,6 @@ const BlogMuallif = lazy(() => import('@/components/features/BlogMuallif'));
 const TezOradaSahifa = lazy(() => import('@/components/features/TezOradaSahifa'));
 const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz'));
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
-const FanFasterAiChat = lazy(() => import('@/components/features/FanFasterAiChat'));
 const HukmKabineti = lazy(() => import('@/components/features/HukmKabineti'));
 const HukmOquvchi = lazy(() => import('@/components/features/HukmOquvchi'));
 const QonunlarBazasi = lazy(() => import('@/components/features/QonunlarBazasi'));
@@ -56,7 +55,6 @@ const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi
 import MiniAppBanner, { MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
 const MiniAppLinkConfirm = lazy(() => import('@/components/features/MiniAppLinkConfirm'));
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { LexionAI } from '@/components/features/lexion-ai/LexionAI';
 
 // Admin Context
 interface AdminContextType {
@@ -267,7 +265,6 @@ function AppContent() {
       case 'blog': return <Suspense fallback={<LazyFallback />}><BlogList /></Suspense>;
       case 'blog_yozish': return <Suspense fallback={<LazyFallback />}><BlogYozish /></Suspense>;
       case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
-      case 'fanfaster_ai_chat': return <Suspense fallback={<LazyFallback />}><FanFasterAiChat onNavigate={handleTabChange} /></Suspense>;
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
       case 'lex_uz_qidiruvchi': return <Suspense fallback={<LazyFallback />}><LexUzQidiruvchi /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
@@ -372,7 +369,6 @@ function AppContent() {
           </div>
         )}
       </AdminContext.Provider>
-      {!isAdmin && user?.rol !== 'ustoz' && activeTab !== 'moot_court' && activeTab !== 'fanfaster_ai_chat' && <LexionAI />}
       <Toaster />
     </>
   );

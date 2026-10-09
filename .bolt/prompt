@@ -1,36 +1,20 @@
-LOYIHA: FanFaster (fanfaster.uz) — o'zbek tilidagi huquq ta'limi platformasi. Stack: React + Vite + TypeScript, Supabase (Postgres, RLS, Edge Functions/Deno), Telegram botlar va Mini App. Deploy: GitHub → Cloudflare Pages (bun). Asosiy foydalanuvchilar (talabalar, ustozlar) telefondan va Telegram ichidan kiradi, shuning uchun mobile-first.
-
-MODULLAR (bir-biriga aralashtirma):
-- Test/kazus tizimi, ustoz va talaba kabinetlari, XP/reyting ("Natijalar tahlili").
-- Moot Court: AI bilan sud simulyatsiyasi (moot_court_cases, moot_court_sessions, moot-court-chat, moot-court-evaluate). Mehmon rejimi, qiyinlik darajasi, allow_retry server-side majburlanadi.
-- Qonunlar bazasi (qonun_moddalari, pgvector): faqat admin panelda, ustoz kabinetiga chiqarilmasin.
-- Lex.uz qidiruvchisi (JK/JPK modda tanlash pipeline) va AI Mentor — alohida tizimlar. Qaysi biriga tegayotganingni oldin aniqla.
-- Blog/SEO: server-side meta va JSON-LD `functions/blog/[[slug]].ts` (Cloudflare Pages Function) orqali. `netlify/edge-functions/blog-seo.ts` faqat zaxira, unga tegma. Muallif sahifasida JSON-LD `ProfilePage` (mainEntity ichida Person); o'zgartirilsa Cloudflare function, zaxira fayl va frontend komponent birga yangilansin.
+LOYIHA: FanFaster (fanfaster.uz) — o'zbek tilidagi huquq ta'limi platformasi. Stack: React + Vite + TypeScript, Supabase (Postgres, RLS, Edge Functions/Deno), Telegram botlar va Mini App. Deploy: GitHub → Cloudflare Pages (bun). Asosiy foydalanuvchilar telefondan va Telegram ichidan kiradi, shuning uchun mobile-first.
 
 ISH TARTIBI (mutaxassis kabi):
 1. O'zgartirishdan oldin tegishli fayllar, DB sxemasi va mavjud mantiqni o'qi. Faraz qilma, ustun/jadval/funksiya nomlarini real manbadan tekshir.
-2. Faqat so'ralgan narsaga tegil. Ishlayotgan kodni qayta yozma, dizayn tili saqlansin. Matn, raqam, link va handler'lar so'ralmasa o'zgarmasin.
-3. "Tayyor" deb yozishdan oldin tekshir: build, haqiqiy brauzerdagi xatti-harakat (desktop va mobil), boshqa bo'limlar buzilmaganligi. "Build o'tdi" ≠ "ishlayapti". Hisobotda aniq ajrat: TEKSHIRILDI (dalil bilan) va TEKSHIRILMADI.
+2. Faqat so'ralgan narsaga tegil. Ishlayotgan kodni qayta yozma, dizayn tili (ranglar, shriftlar, radius, navigatsiya) saqlansin. Matn, raqam, link va handler'lar so'ralmasa o'zgarmasin.
+3. Ish tugagach "tayyor" deb yozmasdan oldin tekshir: build, haqiqiy xatti-harakat, boshqa bo'limlar buzilmaganligi. Hisobotda aniq ajrat: TEKSHIRILDI (dalil bilan) va TEKSHIRILMADI.
 4. Xato bo'lsa avval sababni log/kod bilan topib ayt, keyin tuzat. Taxminiy tuzatishlarni ketma-ket tashlama. Mock/soxta ma'lumot qo'shma, real Supabase jadvallaridan foydalan.
-5. Xavfli amallar (versiya tiklash, ustun/jadval o'chirish, katta qayta yozish, secret o'zgartirish) oldin ogohlantir va tasdiq so'ra. Versiya tiklash undan keyingi barcha tuzatishlarni yo'qotadi: tasdiq so'rashdan oldin qaysi o'zgarishlar yo'qolishini sanab ber.
+5. Xavfli amallar (versiya tiklash, ustun/jadval o'chirish, katta qayta yozish, secret o'zgartirish) oldin ogohlantir va tasdiq so'ra. Versiya tiklash undan keyingi tuzatishlarni yo'qotadi.
 6. Hisobot qisqa bo'lsin: nima o'zgardi (fayllar, migration), nima tekshirildi, nima qoldi.
-
-DIZAYN:
-- Mavjud til: qorong'i minimalist, oltin rang urg'ulari, serif sarlavhalar, jiddiy va ishonchli ohang. Yangi shrift, palitra yoki og'ir kutubxona qo'shma. Bolalarcha elementlar (multfilm, konfetti, kamalak) yo'q.
-- Dizayn aniq so'ralgan bo'limda erkin va jasur bo'l: bitta kuchli asosiy g'oya, vizual maydonning katta qismini egallasin, mayda va deyarli ko'rinmas bezaklar bilan "xavfsiz" yechimga qochma. Boshqa bo'limlarga tegma.
-- Animatsiya: faqat transform/opacity, IntersectionObserver, `prefers-reduced-motion`da statik, mobilda yengillashtirilgan. WCAG AA, klaviatura fokusi, aria-label.
 
 TEXNIK QOIDALAR:
 - Telegram bilan bog'liq edge function'larda `verify_jwt = false` (config.toml'da aniq). Deploy yoki versiya tiklashdan keyin qayta tekshir.
 - Yangi jadvallarda RLS yoq. Policy'larga `anon` rolini ham qo'sh, chunki frontend anon key ishlatadi. Maxfiy ma'lumot (token, kalit, parol hash) anon'ga o'qilmasin.
-- Ustozlarning telefon va Telegram ma'lumotlari faqat `phone_public` / `telegram_public` true bo'lganda ko'rsatilsin (blog muallif bloki, muallif sahifasi).
-- AI model nomi va kalitlar `settings` jadvalidan o'qiladi (Deno secret emas); yangi AI chaqiruvlar shu mexanizmni va `ai-provider.ts` fallback'ini (Groq) ishlatsin. Model nomini kodga qattiq yozma. Kodda yo'q secret uchun tasodifiy qiymat o'ylab topma.
-- AI kvotasi cheklangan (`ai_usage_log` kuzatadi). AI'siz hal bo'ladigan ishni (parsing, vektor qidiruv, oddiy tekshiruv) AI'ga topshirma, bitta funksiyada ortiqcha AI chaqiruvi qo'shma.
-- Qonunlar bazasi: embedding faqat `gemini-embedding-001` (768 o'lcham), boshqa provayderga o'tma (vektor fazolari mos kelmaydi). Moot Court AI javoblari faqat bog'langan modda matniga asoslansin; modda berilmagan bo'lsa, AI buni ochiq aytsin. Superskript raqamlar "216²" → "216-2" formatida.
+- AI model nomi va kalitlar `settings` jadvalidan o'qiladi (Deno secret emas); yangi AI chaqiruvlar shu mexanizmni va `ai-provider.ts` fallback'ini ishlatsin. Kodda yo'q secret uchun tasodifiy qiymat o'ylab topma.
 - Backup/restore DB sxemasida yo'q ustunlarni jim o'chirib yuboradi. Tiklashdan keyin ustunlar ro'yxatini sxema bilan solishtir. `password_hash`/`parol_hash` kabi nomlar chalkash, ishlatishdan oldin real ustunni tekshir.
-- Dependency: `bun.lock` bun 1.2.15 bilan mos bo'lsin (Cloudflare `--frozen-lockfile` ishlatadi), `iceberg-js` o'rnatilgan bo'lsin, aks holda build yiqiladi yoki sahifa bo'sh chiqadi. Domen manzillarini qattiq kodlama (`url.origin` ishlat).
+- Dependency: `bun.lock` bun 1.2.15 bilan mos bo'lsin, `iceberg-js` o'rnatilgan bo'lsin, aks holda Cloudflare build yiqiladi. Domen manzillarini qattiq kodlama (`url.origin` ishlat).
 - Token, kalit, parol hech qachon frontend kodiga, logga yoki hisobotga to'liq yozilmasin.
 - Telegram Mini App kodi faqat `window.Telegram?.WebApp?.initData` bo'sh bo'lmaganda ishlasin; oddiy sayt o'zgarmasin.
-- Tashqi skript (pdf.js va h.k.) qo'shsang yoki o'zgartirsang, `public/_headers` dagi CSP bilan mosligini tekshir.
 
-MULOQOT: o'zbek tilida (lotin), qisqa lekin batafsil; texnik atamalar inglizcha. Faqat oxirgi so'ralgan narsaga javob ber, oldingi savollarga qaytma. Aniq bo'lmagan joyda bitta aniq savol ber, o'zing o'ylab topma.
+MULOQOT: o'zbek tilida (lotin), qisqa lekin batafsil; texnik atamalar inglizcha. Faqat oxirgi so'ralgan narsaga javob ber. Aniq bo'lmagan joyda bitta aniq savol ber, o'zing o'ylab topma.

@@ -27,7 +27,6 @@ import QonunlarBazasi from './QonunlarBazasi';
 import LexUzQidiruvchi from './LexUzQidiruvchi';
 import QidiruvJurnali from './QidiruvJurnali';
 import LmStudioPanel from './LmStudioPanel';
-import AdminAiChatMonitor from './AdminAiChatMonitor';
 
 const ADMIN_CODE = 'adminchit';
 
@@ -1537,9 +1536,6 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
 
       {/* ─────────── AI MENTOR ─────────── */}
       {view === 'ai_mentor' && <MentorAiSozlamalari />}
-
-      {/* ─────────── AI CHAT MONITORING ─────────── */}
-      {view === 'ai_chat_monitor' && <AdminAiChatMonitor />}
 
       {/* ─────────── CHUNKING ─────────── */}
       {view === 'chunking' && <AdminChunking />}
