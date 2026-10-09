@@ -1,9 +1,10 @@
-// LexionAI — o'ng pastki burchakda turadigan jonli AI robotcha
+// LexionAI — "Adolat Orbi" — shishasomon shar ichida tarozi
+// O'ng pastki burchakda turadigan jonli AI yordamchisi
 // Faqat jamoat (public) sahifalarda ko'rinadi
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import './lexion.css';
-import { LexionRobot } from './LexionRobot';
+import { LexionOrb } from './LexionOrb';
 import { LexionLabel } from './LexionLabel';
 
 const REDUCED_MOTION =
@@ -22,14 +23,14 @@ export function LexionAI({ onOpen }: LexionAIProps) {
   const [responding, setResponding] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [tabHidden, setTabHidden] = useState(false);
+  const [tiltActive, setTiltActive] = useState(false);
 
   const sceneRef = useRef<HTMLDivElement>(null);
   const floatRef = useRef<HTMLDivElement>(null);
-  const eyesRef = useRef<SVGGElement>(null);
+  const innerLightRef = useRef<SVGCircleElement>(null);
   const pillRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
-  // Pointer target for tilt + eye tracking
   const pointerTarget = useRef({ x: 0, y: 0 });
   const pointerCurrent = useRef({ x: 0, y: 0 });
   const rafRef = useRef<number>(0);
@@ -41,7 +42,7 @@ export function LexionAI({ onOpen }: LexionAIProps) {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
-  // ── Pointer tilt + eye tracking (desktop only) ──
+  // ── Pointer tilt + inner light tracking (desktop only) ──
   useEffect(() => {
     if (REDUCED_MOTION || IS_TOUCH) return;
 
@@ -55,10 +56,10 @@ export function LexionAI({ onOpen }: LexionAIProps) {
         sceneRef.current.style.transform = `rotateX(${tx.toFixed(2)}deg) rotateY(${ty.toFixed(2)}deg)`;
       }
 
-      if (eyesRef.current) {
-        const ex = pointerCurrent.current.x * 0.4;
-        const ey = pointerCurrent.current.y * 0.35;
-        eyesRef.current.style.transform = `translate(${ex.toFixed(1)}px, ${ey.toFixed(1)}px)`;
+      if (innerLightRef.current) {
+        const lx = pointerCurrent.current.x * 0.35;
+        const ly = pointerCurrent.current.y * 0.35;
+        innerLightRef.current.style.transform = `translate(${lx.toFixed(1)}px, ${ly.toFixed(1)}px)`;
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -76,11 +77,13 @@ export function LexionAI({ onOpen }: LexionAIProps) {
       const dy = (e.clientY - cy) / (rect.height / 2);
       pointerTarget.current.x = Math.max(-10, Math.min(10, dx * 10));
       pointerTarget.current.y = Math.max(-10, Math.min(10, dy * 10));
+      setTiltActive(true);
     };
 
     const onLeave = () => {
       pointerTarget.current.x = 0;
       pointerTarget.current.y = 0;
+      setTiltActive(false);
     };
 
     window.addEventListener('mousemove', onMove, { passive: true });
@@ -92,14 +95,14 @@ export function LexionAI({ onOpen }: LexionAIProps) {
     };
   }, []);
 
-  // ── Periodic "thinking" gesture (~8s) ──
+  // ── Periodic "thinking" gesture (~7s) ──
   useEffect(() => {
     if (REDUCED_MOTION) return;
     const interval = setInterval(() => {
       if (document.hidden) return;
       setThinking(true);
-      setTimeout(() => setThinking(false), 1300);
-    }, 8000);
+      setTimeout(() => setThinking(false), 1400);
+    }, 7000);
     return () => clearInterval(interval);
   }, []);
 
@@ -113,7 +116,7 @@ export function LexionAI({ onOpen }: LexionAIProps) {
       pillRef.current.classList.add('pulse');
     }
     onOpen?.();
-    setTimeout(() => setResponding(false), 650);
+    setTimeout(() => setResponding(false), 700);
   }, [responding, onOpen]);
 
   return (
@@ -121,13 +124,13 @@ export function LexionAI({ onOpen }: LexionAIProps) {
       <LexionLabel onClick={handleClick} pulseRef={pillRef} />
       <button
         ref={btnRef}
-        className={`lex-robot-btn${responding ? ' respond' : ''}${thinking ? ' thinking' : ''}`}
+        className={`lex-orb-btn${responding ? ' respond' : ''}${thinking ? ' thinking' : ''}${tiltActive ? ' tilt-active' : ''}`}
         onClick={handleClick}
         aria-label="Lexion AI yordamchisi"
         type="button"
       >
         <div className="lex-glow" />
-        <LexionRobot sceneRef={sceneRef} floatRef={floatRef} eyesRef={eyesRef} />
+        <LexionOrb sceneRef={sceneRef} floatRef={floatRef} innerLightRef={innerLightRef} />
         <div className="lex-shadow" />
       </button>
     </div>

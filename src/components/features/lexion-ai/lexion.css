@@ -1,10 +1,12 @@
-/* ── Lexion AI robot — barcha stillar va keyframes ── */
+/* ════════════════════════════════════════════════════════════════
+   Lexion AI — "Adolat Orbi" — shishasimon shar ichida tarozi
+   Barcha stillar va keyframes
+   ════════════════════════════════════════════════════════════════ */
 
 :root {
   --lex-z: 2147483000;
-  --lex-size: 104px;
-  --lex-size-mob: 66px;
-  --lex-glow: 200px;
+  --lex-size: 120px;
+  --lex-size-mob: 76px;
   --lex-bottom: 24px;
   --lex-right: 24px;
   --lex-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -15,21 +17,22 @@
   --lex-cobalt-deep: #2F68E8;
   --lex-gold: #C99A3B;
   --lex-gold-deep: #B8862E;
+  --lex-gold-bright: #D9AC42;
   --lex-on-navy: #EAF1FF;
   --lex-sky: #8DB7FF;
   --lex-success: #5CD49A;
 }
 
-/* ── Container ── */
+/* ── Root container ── */
 .lex-root {
   position: fixed;
   right: var(--lex-right);
   bottom: calc(var(--lex-bottom) + env(safe-area-inset-bottom, 0px));
   z-index: var(--lex-z);
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 12px;
   pointer-events: none;
   opacity: 0;
   transform: translateY(40px);
@@ -40,6 +43,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Label pill ── */
 .lex-label-wrap {
   pointer-events: auto;
   opacity: 0;
@@ -51,7 +55,6 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ── Label pill ── */
 .lex-pill {
   display: inline-flex;
   align-items: center;
@@ -111,8 +114,8 @@
   100% { transform: scale(1); }
 }
 
-/* ── Robot button ── */
-.lex-robot-btn {
+/* ── Orb button ── */
+.lex-orb-btn {
   position: relative;
   width: var(--lex-size);
   height: var(--lex-size);
@@ -123,22 +126,21 @@
   pointer-events: auto;
   border-radius: 50%;
   outline: none;
-  perspective: 800px;
+  perspective: 900px;
   -webkit-tap-highlight-color: transparent;
 }
 
-.lex-robot-btn:focus-visible {
+.lex-orb-btn:focus-visible {
   outline: 2px solid var(--lex-cobalt);
-  outline-offset: 6px;
-  border-radius: 24px;
+  outline-offset: 8px;
 }
 
-/* ── Glow (behind robot) ── */
+/* ── Outer glow ── */
 .lex-glow {
   position: absolute;
-  inset: -50%;
+  inset: -55%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(47,104,232,0.12), transparent 65%);
+  background: radial-gradient(circle, rgba(47,104,232,0.13), transparent 62%);
   pointer-events: none;
   animation: lex-glow-breathe 4s ease-in-out infinite;
   z-index: 0;
@@ -146,7 +148,27 @@
 
 @keyframes lex-glow-breathe {
   0%, 100% { opacity: 0.5; transform: scale(1); }
-  50% { opacity: 0.8; transform: scale(1.1); }
+  50% { opacity: 0.85; transform: scale(1.12); }
+}
+
+/* ── Ground shadow ── */
+.lex-shadow {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 58%;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(13,27,66,0.22), transparent 70%);
+  animation: lex-shadow-breathe 3.5s ease-in-out infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes lex-shadow-breathe {
+  0%, 100% { transform: translateX(-50%) scale(1, 1); opacity: 0.45; }
+  50% { transform: translateX(-50%) scale(0.8, 0.9); opacity: 0.3; }
 }
 
 /* ── 3D scene ── */
@@ -158,36 +180,17 @@
   will-change: transform;
 }
 
-/* ── Shadow ellipse ── */
-.lex-shadow {
-  position: absolute;
-  bottom: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60%;
-  height: 10px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(13,27,66,0.25), transparent 70%);
-  animation: lex-shadow-breathe 3.5s ease-in-out infinite;
-  z-index: 0;
-}
-
-@keyframes lex-shadow-breathe {
-  0%, 100% { transform: translateX(-50%) scale(1, 1); opacity: 0.5; }
-  50% { transform: translateX(-50%) scale(0.82, 0.9); opacity: 0.35; }
-}
-
-/* ── Floating wrapper ── */
+/* ── Float wrapper (idle bob) ── */
 .lex-float {
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
-  animation: lex-float 3.5s ease-in-out infinite;
+  animation: lex-float 3.8s ease-in-out infinite;
 }
 
 @keyframes lex-float {
   0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-6px); }
+  50% { transform: translateY(-7px); }
 }
 
 /* ── SVG layers ── */
@@ -199,73 +202,107 @@
   overflow: visible;
 }
 
-.lex-layer-body { transform: translateZ(0px); }
-.lex-layer-head { transform: translateZ(18px); }
-.lex-layer-eyes { transform: translateZ(28px); }
-.lex-layer-chest { transform: translateZ(12px); }
-.lex-layer-ring { transform: translateZ(34px); }
+.lex-layer-orbit-back { transform: translateZ(-20px); }
+.lex-layer-orb { transform: translateZ(0px); }
+.lex-layer-scale { transform: translateZ(24px); }
+.lex-layer-orbit-front { transform: translateZ(40px); }
 
-/* ── Eyes ── */
-.lex-eyes-group {
-  transition: transform 200ms ease-out;
+/* ── Orbit rings ── */
+.lex-orbit-ring {
+  transform-origin: 50% 50%;
 }
 
-.lex-eye {
-  fill: var(--lex-cobalt);
-  filter: drop-shadow(0 0 3px rgba(59,139,255,0.8));
-  animation: lex-blink 5s ease-in-out infinite;
+.lex-orbit-ring-1 {
+  animation: lex-orbit-spin 12s linear infinite;
 }
 
-.lex-eye-r { animation-delay: 0.08s; }
-
-@keyframes lex-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  94%, 96% { transform: scaleY(0.1); }
+.lex-orbit-ring-2 {
+  animation: lex-orbit-spin 16s linear infinite reverse;
 }
 
-/* ── Thinking: scale balance sway ── */
-.lex-scale-icon {
-  transform-origin: 50% 30%;
-  transition: transform 600ms var(--lex-ease);
+@keyframes lex-orbit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-.lex-robot-btn.thinking .lex-scale-icon {
-  animation: lex-scale-sway 1.2s ease-in-out;
+.lex-orb-btn.tilt-active .lex-orbit-ring-1 {
+  animation-duration: 7s;
+}
+.lex-orb-btn.tilt-active .lex-orbit-ring-2 {
+  animation-duration: 9s;
+}
+
+/* ── Scale of justice sway ── */
+.lex-scale-group {
+  transform-origin: 50% 22%;
+  animation: lex-scale-sway 4s ease-in-out infinite;
 }
 
 @keyframes lex-scale-sway {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(5deg); }
+  40% { transform: rotate(-4deg); }
+  60% { transform: rotate(3deg); }
+  80% { transform: rotate(-2deg); }
+}
+
+.lex-orb-btn.thinking .lex-scale-group {
+  animation: lex-scale-think 1.4s ease-in-out;
+}
+
+@keyframes lex-scale-think {
   0% { transform: rotate(0deg); }
-  25% { transform: rotate(8deg); }
-  50% { transform: rotate(-7deg); }
-  75% { transform: rotate(4deg); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  50% { transform: rotate(8deg); }
+  70% { transform: rotate(-5deg); }
   100% { transform: rotate(0deg); }
 }
 
-.lex-robot-btn.thinking .lex-eyes-group {
-  animation: lex-eyes-think 1.2s ease-in-out;
+/* ── Specular highlight (top-left) ── */
+.lex-specular {
+  animation: lex-specular-shift 6s ease-in-out infinite;
 }
 
-@keyframes lex-eyes-think {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+@keyframes lex-specular-shift {
+  0%, 100% { opacity: 0.5; transform: translate(0, 0); }
+  50% { opacity: 0.35; transform: translate(2px, 1px); }
+}
+
+/* ── Inner light (follows pointer via CSS var) ── */
+.lex-inner-light {
+  transition: transform 300ms ease-out;
 }
 
 /* ── Click respond ── */
-.lex-robot-btn.respond .lex-float {
-  animation: lex-respond 600ms var(--lex-ease), lex-float 3.5s ease-in-out 600ms infinite;
+.lex-orb-btn.respond .lex-float {
+  animation: lex-respond 600ms var(--lex-ease), lex-float 3.8s ease-in-out 600ms infinite;
 }
 
 @keyframes lex-respond {
   0% { transform: translateY(0) scale(1); }
-  30% { transform: translateY(-10px) scale(1.06); }
+  30% { transform: translateY(-12px) scale(1.05); }
   100% { transform: translateY(0) scale(1); }
 }
 
-/* ── Tab hidden: pause animations ── */
+.lex-orb-btn.respond .lex-light-wave {
+  animation: lex-light-wave 650ms ease-out;
+}
+
+@keyframes lex-light-wave {
+  0% { opacity: 0; transform: scale(0.3); }
+  40% { opacity: 0.6; }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+
+/* ── Tab hidden: pause ── */
 .lex-root.tab-hidden .lex-float,
 .lex-root.tab-hidden .lex-glow,
 .lex-root.tab-hidden .lex-shadow,
-.lex-root.tab-hidden .lex-eye,
+.lex-root.tab-hidden .lex-orbit-ring-1,
+.lex-root.tab-hidden .lex-orbit-ring-2,
+.lex-root.tab-hidden .lex-scale-group,
+.lex-root.tab-hidden .lex-specular,
 .lex-root.tab-hidden .lex-pill-dot {
   animation-play-state: paused;
 }
@@ -285,11 +322,14 @@
   .lex-float,
   .lex-glow,
   .lex-shadow,
-  .lex-eye,
+  .lex-orbit-ring-1,
+  .lex-orbit-ring-2,
+  .lex-scale-group,
+  .lex-specular,
   .lex-pill-dot {
     animation: none !important;
   }
-  .lex-robot-btn.respond .lex-float {
+  .lex-orb-btn.respond .lex-float {
     animation: none;
   }
 }
@@ -303,11 +343,14 @@
   }
   .lex-pill-text { font-size: 11px; }
   .lex-pill { padding: 4px 10px 4px 8px; }
-  .lex-robot-btn { perspective: none; }
-  .lex-layer-head,
-  .lex-layer-eyes,
-  .lex-layer-chest,
-  .lex-layer-ring {
+  .lex-orb-btn { perspective: none; }
+  .lex-layer-orbit-back,
+  .lex-layer-orbit-front {
     transform: none;
   }
+  .lex-layer-scale {
+    transform: translateZ(0);
+  }
+  .lex-orbit-ring-1 { animation-duration: 18s; }
+  .lex-orbit-ring-2 { animation-duration: 24s; }
 }
