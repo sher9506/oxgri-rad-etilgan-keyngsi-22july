@@ -1,0 +1,313 @@
+/* ── Lexion AI robot — barcha stillar va keyframes ── */
+
+:root {
+  --lex-z: 2147483000;
+  --lex-size: 104px;
+  --lex-size-mob: 66px;
+  --lex-glow: 200px;
+  --lex-bottom: 24px;
+  --lex-right: 24px;
+  --lex-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --lex-navy1: #0D1B42;
+  --lex-navy2: #17306E;
+  --lex-navy3: #1E3F8F;
+  --lex-cobalt: #3B8BFF;
+  --lex-cobalt-deep: #2F68E8;
+  --lex-gold: #C99A3B;
+  --lex-gold-deep: #B8862E;
+  --lex-on-navy: #EAF1FF;
+  --lex-sky: #8DB7FF;
+  --lex-success: #5CD49A;
+}
+
+/* ── Container ── */
+.lex-root {
+  position: fixed;
+  right: var(--lex-right);
+  bottom: calc(var(--lex-bottom) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--lex-z);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(40px);
+  animation: lex-enter 800ms var(--lex-ease) 700ms forwards;
+}
+
+@keyframes lex-enter {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.lex-label-wrap {
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(16px) scale(0.9);
+  animation: lex-label-enter 600ms var(--lex-ease) 850ms forwards;
+}
+
+@keyframes lex-label-enter {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Label pill ── */
+.lex-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(13,27,66,0.92), rgba(23,48,110,0.88));
+  border: 1px solid rgba(141,183,255,0.22);
+  box-shadow:
+    0 8px 24px -8px rgba(13,27,66,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: transform 400ms var(--lex-ease), box-shadow 400ms ease;
+  white-space: nowrap;
+}
+
+.lex-pill:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px -8px rgba(13,27,66,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+}
+
+.lex-pill-text {
+  font-family: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  color: var(--lex-on-navy);
+  line-height: 1;
+}
+
+.lex-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lex-success);
+  box-shadow: 0 0 6px rgba(92,212,154,0.7), 0 0 12px rgba(92,212,154,0.3);
+  animation: lex-dot-pulse 2.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes lex-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.lex-pill.pulse {
+  animation: lex-pill-expand 700ms var(--lex-ease);
+}
+
+@keyframes lex-pill-expand {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* ── Robot button ── */
+.lex-robot-btn {
+  position: relative;
+  width: var(--lex-size);
+  height: var(--lex-size);
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  border-radius: 50%;
+  outline: none;
+  perspective: 800px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lex-robot-btn:focus-visible {
+  outline: 2px solid var(--lex-cobalt);
+  outline-offset: 6px;
+  border-radius: 24px;
+}
+
+/* ── Glow (behind robot) ── */
+.lex-glow {
+  position: absolute;
+  inset: -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(47,104,232,0.12), transparent 65%);
+  pointer-events: none;
+  animation: lex-glow-breathe 4s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes lex-glow-breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+/* ── 3D scene ── */
+.lex-scene {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  z-index: 1;
+  will-change: transform;
+}
+
+/* ── Shadow ellipse ── */
+.lex-shadow {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(13,27,66,0.25), transparent 70%);
+  animation: lex-shadow-breathe 3.5s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes lex-shadow-breathe {
+  0%, 100% { transform: translateX(-50%) scale(1, 1); opacity: 0.5; }
+  50% { transform: translateX(-50%) scale(0.82, 0.9); opacity: 0.35; }
+}
+
+/* ── Floating wrapper ── */
+.lex-float {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  animation: lex-float 3.5s ease-in-out infinite;
+}
+
+@keyframes lex-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+/* ── SVG layers ── */
+.lex-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.lex-layer-body { transform: translateZ(0px); }
+.lex-layer-head { transform: translateZ(18px); }
+.lex-layer-eyes { transform: translateZ(28px); }
+.lex-layer-chest { transform: translateZ(12px); }
+.lex-layer-ring { transform: translateZ(34px); }
+
+/* ── Eyes ── */
+.lex-eyes-group {
+  transition: transform 200ms ease-out;
+}
+
+.lex-eye {
+  fill: var(--lex-cobalt);
+  filter: drop-shadow(0 0 3px rgba(59,139,255,0.8));
+  animation: lex-blink 5s ease-in-out infinite;
+}
+
+.lex-eye-r { animation-delay: 0.08s; }
+
+@keyframes lex-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(0.1); }
+}
+
+/* ── Thinking: scale balance sway ── */
+.lex-scale-icon {
+  transform-origin: 50% 30%;
+  transition: transform 600ms var(--lex-ease);
+}
+
+.lex-robot-btn.thinking .lex-scale-icon {
+  animation: lex-scale-sway 1.2s ease-in-out;
+}
+
+@keyframes lex-scale-sway {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(8deg); }
+  50% { transform: rotate(-7deg); }
+  75% { transform: rotate(4deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.lex-robot-btn.thinking .lex-eyes-group {
+  animation: lex-eyes-think 1.2s ease-in-out;
+}
+
+@keyframes lex-eyes-think {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* ── Click respond ── */
+.lex-robot-btn.respond .lex-float {
+  animation: lex-respond 600ms var(--lex-ease), lex-float 3.5s ease-in-out 600ms infinite;
+}
+
+@keyframes lex-respond {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-10px) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* ── Tab hidden: pause animations ── */
+.lex-root.tab-hidden .lex-float,
+.lex-root.tab-hidden .lex-glow,
+.lex-root.tab-hidden .lex-shadow,
+.lex-root.tab-hidden .lex-eye,
+.lex-root.tab-hidden .lex-pill-dot {
+  animation-play-state: paused;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .lex-root {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .lex-label-wrap {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .lex-float,
+  .lex-glow,
+  .lex-shadow,
+  .lex-eye,
+  .lex-pill-dot {
+    animation: none !important;
+  }
+  .lex-robot-btn.respond .lex-float {
+    animation: none;
+  }
+}
+
+/* ── Mobile (≤640px) ── */
+@media (max-width: 640px) {
+  :root {
+    --lex-size: var(--lex-size-mob);
+    --lex-bottom: 12px;
+    --lex-right: 12px;
+  }
+  .lex-pill-text { font-size: 11px; }
+  .lex-pill { padding: 4px 10px 4px 8px; }
+  .lex-robot-btn { perspective: none; }
+  .lex-layer-head,
+  .lex-layer-eyes,
+  .lex-layer-chest,
+  .lex-layer-ring {
+    transform: none;
+  }
+}

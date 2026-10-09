@@ -56,6 +56,7 @@ const LexUzQidiruvchi = lazy(() => import('@/components/features/LexUzQidiruvchi
 import MiniAppBanner, { MiniAppLoginOverlay, isTelegramMiniApp } from '@/components/features/MiniAppBanner';
 const MiniAppLinkConfirm = lazy(() => import('@/components/features/MiniAppLinkConfirm'));
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { LexionAI } from '@/components/features/lexion-ai/LexionAI';
 
 // Admin Context
 interface AdminContextType {
@@ -371,6 +372,7 @@ function AppContent() {
           </div>
         )}
       </AdminContext.Provider>
+      {!isAdmin && user?.rol !== 'ustoz' && activeTab !== 'moot_court' && activeTab !== 'fanfaster_ai_chat' && <LexionAI />}
       <Toaster />
     </>
   );
