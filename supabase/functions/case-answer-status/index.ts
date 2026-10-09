@@ -1,4 +1,4 @@
-// Lexion phase polling support
+// Lexion phase polling support (parser fix: whitespace + New conversation handling)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -75,10 +75,11 @@ async function getLexionConfig(): Promise<{ url: string; key: string }> {
 // ── Lexion URL parser — answer maydonidan lex.uz/docs/<id> havolalarini ajratib oladi ──
 export function parseLexionUrls(answer: string): string[] {
   let urls: string[] = [];
+  const normalizedAnswer = answer.replace(/\s+/g, "");
 
   // 1. JSON.parse urinishi
   try {
-    const parsed = JSON.parse(answer);
+    const parsed = JSON.parse(normalizedAnswer);
     if (Array.isArray(parsed)) {
       for (const item of parsed) {
         if (typeof item === 'string') urls.push(item);
@@ -90,13 +91,13 @@ export function parseLexionUrls(answer: string): string[] {
 
   // 2. Regex fallback
   if (urls.length === 0) {
-    const regex = /https?:\/\/(?:www\.)?lex\.uz\/docs\/-?\d+/g;
-    const matches = answer.match(regex);
+    const regex = /https?:\/\/lex\.uz\/docs\/-?\d+/g;
+    const matches = normalizedAnswer.match(regex);
     if (matches) urls = matches;
   }
 
   // 3. Faqat lex.uz/docs/<raqam> yoki docs/-<raqam> ko'rinishini qoldir
-  const filtered = urls.filter(u => /^https?:\/\/(?:www\.)?lex\.uz\/docs\/-?\d+$/.test(u));
+  const filtered = urls.filter(u => /^https?:\/\/lex\.uz\/docs\/-?\d+$/.test(u));
 
   // 4. Dublikatlarni olib tashla, tartibni saqla, ko'pi bilan 15 ta
   const unique: string[] = [];
