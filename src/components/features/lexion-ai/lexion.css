@@ -1,25 +1,29 @@
 /* ════════════════════════════════════════════════════════════════
-   Lexion AI — "Adolat Orbi"
-   3D qatlamlar faqat HTML elementlarda (SVG'ga translateZ BERILMAYDI).
+   Lexion AI — FanFaster robotcha-qahramoni
+   Ikki yassi rasm qatlami (tana + bosh). "3D" — boshning bo'yin nuqtasi atrofida
+   perspective bilan burilishi; tana deyarli qimirlamaydi, shuning uchun qismlar ajralmaydi.
    ════════════════════════════════════════════════════════════════ */
 
 .lex-root {
-  --d: 132px; /* shar diametri */
+  --w: 176px;
+  --h: calc(var(--w) * 1.098); /* rasm nisbati 580 × 637 */
   --lex-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --lex-gold: #e3b54a;
   --lex-gold-hi: #ffe9a0;
   --lex-on-navy: #eaf1ff;
   --lex-success: #5cd49a;
+  /* bo'yin nuqtasi (bosh aylanish markazi) va tana o'qi */
+  --neck-x: 49.6%;
+  --neck-y: 52.7%;
 
   position: fixed;
-  right: 16px;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: 14px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   z-index: 1000;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 0 34px; /* orbita halqalari viewport'dan chiqib kesilmasligi uchun */
+  gap: 6px;
+  padding: 0 22px;
   pointer-events: none;
   opacity: 0;
   transform: translateY(40px);
@@ -30,65 +34,64 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Shar tugmasi (perspective shu yerda) ── */
-.lex-orb-btn {
+/* ── Tugma ── */
+.lex-btn {
   position: relative;
   display: block;
-  width: var(--d);
-  height: var(--d);
+  width: var(--w);
+  height: var(--h);
   padding: 0;
   margin: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: 40%;
   background: none;
   overflow: visible;
   cursor: pointer;
   pointer-events: auto;
-  perspective: 900px;
   -webkit-tap-highlight-color: transparent;
   outline: none;
 }
 
-.lex-orb-btn:focus-visible {
+.lex-btn:focus-visible {
   outline: 2px solid #8db7ff;
-  outline-offset: 10px;
+  outline-offset: 6px;
 }
 
 /* ── Yer soyasi ── */
 .lex-shadow {
   position: absolute;
   left: 50%;
-  bottom: -14px;
-  width: 62%;
+  bottom: calc(var(--h) * 0.005);
+  width: 54%;
   height: 12px;
-  margin-left: -31%;
+  margin-left: -27%;
   border-radius: 50%;
   background: radial-gradient(ellipse, rgba(10, 24, 80, 0.38), transparent 70%);
   pointer-events: none;
-  animation: lex-shadow 3.8s ease-in-out infinite;
+  animation: lex-shadow 3.6s ease-in-out infinite;
 }
 
 @keyframes lex-shadow {
   0%, 100% { transform: scale(1, 1); opacity: 0.9; }
-  50% { transform: scale(0.78, 0.85); opacity: 0.55; }
+  50% { transform: scale(0.78, 0.85); opacity: 0.5; }
 }
 
-/* ── 3D sahna zanjiri ── */
+/* ── Sahna qatlamlari (hammasi bir xil o'lchamda, bir-birining ustida) ── */
 .lex-scene,
 .lex-float,
-.lex-bump {
+.lex-bump,
+.lex-bodywrap,
+.lex-headwrap,
+.lex-headsway,
+.lex-glow,
+.lex-sparks {
   position: absolute;
   inset: 0;
   display: block;
-  transform-style: preserve-3d;
-}
-
-.lex-scene {
-  transform: rotateX(calc(var(--ry, 0) * 1deg)) rotateY(calc(var(--rx, 0) * 1deg));
 }
 
 .lex-float {
-  animation: lex-float 3.8s ease-in-out infinite;
+  animation: lex-float 3.6s ease-in-out infinite;
 }
 
 @keyframes lex-float {
@@ -96,318 +99,205 @@
   50% { transform: translateY(-8px); }
 }
 
-.lex-layer {
-  position: absolute;
-  inset: 0;
+.lex-part {
   display: block;
-  transform-style: preserve-3d;
-  transform: translateZ(var(--z, 0px));
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 8px rgba(8, 24, 90, 0.22));
+}
+
+/* tana: kursorga qarab juda yengil buriladi (o'q — tananing markaziy chizig'i) */
+.lex-bodywrap {
+  transform-origin: var(--neck-x) 72%;
+  transform: perspective(900px) rotateY(calc(var(--bx, 0) * 1deg));
+}
+
+/* bosh: bo'yin nuqtasi atrofida burilish — chin har doim tanaga tegib turadi */
+.lex-headwrap {
+  transform-origin: var(--neck-x) var(--neck-y);
+  transform: perspective(760px)
+    translateX(calc(var(--hdx, 0) * 1px))
+    rotateY(calc(var(--hx, 0) * 1deg))
+    rotateX(calc(var(--hy, 0) * 1deg))
+    rotateZ(calc(var(--hz, 0) * 1deg));
+}
+
+.lex-headsway {
+  transform-origin: var(--neck-x) var(--neck-y);
+  animation: lex-sway 5s ease-in-out infinite;
+}
+
+@keyframes lex-sway {
+  0%, 100% { transform: rotateZ(0deg); }
+  30% { transform: rotateZ(2deg); }
+  70% { transform: rotateZ(-2deg); }
 }
 
 /* ── Orqa nur ── */
 .lex-glow {
-  inset: -48%;
+  inset: -22% -36%;
   border-radius: 50%;
   background: radial-gradient(
-    circle,
-    rgba(59, 139, 255, 0.55) 0%,
-    rgba(59, 139, 255, 0.28) 34%,
-    rgba(59, 139, 255, 0) 66%
+    ellipse,
+    rgba(59, 139, 255, 0.5) 0%,
+    rgba(59, 139, 255, 0.24) 38%,
+    rgba(59, 139, 255, 0) 68%
   );
   animation: lex-breathe 4s ease-in-out infinite;
 }
 
 @keyframes lex-breathe {
-  0%, 100% { opacity: 0.65; }
+  0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
 
-/* ── "Tinglash" to'lqini ── */
-.lex-ping-ring {
+/* ── Ko'z qovoqlari: vaqti-vaqti bilan pirpiraydi ── */
+.lex-lid {
   position: absolute;
-  inset: 0;
   display: block;
+  width: 21%;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
-  border: 1.5px solid rgba(141, 183, 255, 0.75);
-  opacity: 0;
-  animation: lex-ping 5.2s ease-out 1.8s infinite;
+  transform-origin: 50% 0%;
+  transform: scaleY(0);
+  animation: lex-blink 5.2s ease-in-out infinite;
 }
 
-@keyframes lex-ping {
-  0% { transform: scale(1); opacity: 0; }
-  8% { opacity: 0.7; }
-  100% { transform: scale(1.6); opacity: 0; }
-}
-
-/* ── Shar ── */
-.lex-sphere {
-  border-radius: 50%;
-  overflow: hidden;
-  background: radial-gradient(
-    circle at 33% 26%,
-    #a9c8ff 0%,
-    #5c8cf2 20%,
-    #2a4fb0 48%,
-    #112459 78%,
-    #0a1540 100%
-  );
-  box-shadow:
-    inset 0 0 0 1.5px rgba(255, 255, 255, 0.3),
-    inset -12px -16px 28px rgba(0, 8, 44, 0.55),
-    inset 9px 11px 24px rgba(170, 205, 255, 0.22),
-    0 22px 44px -12px rgba(20, 50, 150, 0.6);
-}
-
-.lex-rim,
-.lex-inner-ring,
-.lex-core,
-.lex-wave,
-.lex-specular {
+.lex-lid::after {
+  content: '';
   position: absolute;
-  display: block;
-  border-radius: 50%;
-  pointer-events: none;
+  left: 22%;
+  right: 22%;
+  top: 46%;
+  height: 16%;
+  border-bottom: 2px solid #0e2a80;
+  border-radius: 0 0 100% 100%;
 }
 
-/* pastki-o'ng teskari rim-light */
-.lex-rim {
-  inset: 0;
-  background: radial-gradient(circle at 80% 88%, rgba(120, 195, 255, 0.5), transparent 42%);
+.lex-lid--l {
+  left: 26.8%;
+  top: 22.6%;
+  background: radial-gradient(circle at 50% 35%, #fcfdff 0%, #f3f7fe 100%);
 }
 
-/* ingichka oltin ichki halqa */
-.lex-inner-ring {
-  inset: 9%;
-  border: 1px solid rgba(227, 181, 74, 0.5);
+.lex-lid--r {
+  left: 53.2%;
+  top: 20.3%;
+  background: radial-gradient(circle at 50% 35%, #f7faff 0%, #e9f0fd 100%);
 }
 
-/* kursor tomonga siljiydigan ichki yorug'lik */
-.lex-core {
-  left: 50%;
-  top: 50%;
-  width: 54%;
-  height: 54%;
-  margin: -27% 0 0 -27%;
-  background: radial-gradient(circle, rgba(140, 200, 255, 0.5), transparent 68%);
-  transform: translate(var(--lx, 0px), var(--ly, 0px));
-  transition: opacity 400ms ease;
-  opacity: 0.75;
+@keyframes lex-blink {
+  0%, 90%, 100% { transform: scaleY(0); }
+  92.5%, 95% { transform: scaleY(1); }
+  97.5% { transform: scaleY(0); }
 }
 
-.lex-orb-btn:hover .lex-core,
-.lex-orb-btn.near .lex-core {
-  opacity: 1;
+/* ── Salomlashish: sakrab, boshini qimirlatadi ── */
+.lex-btn.waving .lex-bump {
+  animation: lex-hop 2s ease-in-out 1;
 }
 
-/* click to'lqini */
-.lex-wave {
-  left: 50%;
-  top: 50%;
-  width: 60%;
-  height: 60%;
-  margin: -30% 0 0 -30%;
-  border: 2px solid rgba(180, 220, 255, 0.9);
-  opacity: 0;
+@keyframes lex-hop {
+  0%, 100% { transform: translateY(0); }
+  14% { transform: translateY(-12px); }
+  28% { transform: translateY(0); }
+  42% { transform: translateY(-12px); }
+  56% { transform: translateY(0); }
 }
 
-.lex-orb-btn.respond .lex-wave {
-  animation: lex-wave 750ms ease-out;
+.lex-btn.waving .lex-headsway {
+  animation: lex-hello 2s ease-in-out 1;
 }
 
-@keyframes lex-wave {
-  0% { opacity: 0; transform: scale(0.3); }
-  25% { opacity: 0.9; }
-  100% { opacity: 0; transform: scale(1.7); }
+@keyframes lex-hello {
+  0% { transform: rotateZ(0deg); }
+  18% { transform: rotateZ(8deg); }
+  38% { transform: rotateZ(-7deg); }
+  58% { transform: rotateZ(7deg); }
+  80% { transform: rotateZ(-3deg); }
+  100% { transform: rotateZ(0deg); }
 }
 
-/* yuqori-chap specular */
-.lex-specular {
-  left: 14%;
-  top: 9%;
-  width: 40%;
-  height: 26%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at 40% 40%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%);
-  transform: rotate(-28deg);
-  animation: lex-spec 6s ease-in-out infinite;
-}
-
-@keyframes lex-spec {
-  0%, 100% { opacity: 0.95; }
-  50% { opacity: 0.65; }
-}
-
-/* ── Orbitalar (haqiqiy 3D: roll → tilt → halqa) ── */
-.lex-orbit--a { --r: calc(var(--d) * 0.64); }
-.lex-orbit--b { --r: calc(var(--d) * 0.72); }
-
-.lex-orbit-tilt {
-  position: absolute;
-  display: block;
-  transform-style: preserve-3d;
-  transform: rotateZ(calc(var(--roll) * 1deg)) rotateX(calc(var(--tilt) * 1deg));
-}
-
-.lex-orbit--a .lex-orbit-tilt { inset: -14%; }
-.lex-orbit--b .lex-orbit-tilt { inset: -22%; }
-
-.lex-orbit-ring {
-  position: absolute;
-  inset: 0;
-  display: block;
-  border-radius: 50%;
-}
-
-.lex-orbit--a .lex-orbit-ring {
-  border: 2px solid rgba(240, 200, 100, 0.9);
-  box-shadow: 0 0 12px rgba(240, 200, 100, 0.45), inset 0 0 10px rgba(240, 200, 100, 0.2);
-}
-
-.lex-orbit--b .lex-orbit-ring {
-  border: 1.5px dashed rgba(240, 200, 100, 0.65);
-  box-shadow: 0 0 10px rgba(240, 200, 100, 0.25);
-}
-
-/* § ¶ belgilari — halqa bo'ylab aylanadi, doim foydalanuvchiga qaragan */
-.lex-glyph-orbit {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 0;
-  height: 0;
-  display: block;
-  transform:
-    rotateZ(calc(var(--a0) * 1deg))
-    translateX(var(--r))
-    rotateZ(calc(var(--a0) * -1deg))
-    rotateX(calc(var(--tilt) * -1deg))
-    rotateZ(calc(var(--roll) * -1deg));
-  animation: lex-orbit var(--dur, 15s) linear infinite;
-}
-
-@keyframes lex-orbit {
-  from {
-    transform:
-      rotateZ(calc(var(--a0) * 1deg))
-      translateX(var(--r))
-      rotateZ(calc(var(--a0) * -1deg))
-      rotateX(calc(var(--tilt) * -1deg))
-      rotateZ(calc(var(--roll) * -1deg));
-  }
-  to {
-    transform:
-      rotateZ(calc((var(--a0) + 360 * var(--dir)) * 1deg))
-      translateX(var(--r))
-      rotateZ(calc((var(--a0) + 360 * var(--dir)) * -1deg))
-      rotateX(calc(var(--tilt) * -1deg))
-      rotateZ(calc(var(--roll) * -1deg));
-  }
-}
-
-.lex-glyph {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: block;
-  transform: translate(-50%, -50%);
-  font-family: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
-  font-style: normal;
-  font-weight: 700;
-  font-size: 17px;
-  line-height: 1;
-  color: var(--lex-gold-hi);
-  text-shadow: 0 0 8px rgba(240, 200, 100, 0.9), 0 0 16px rgba(240, 200, 100, 0.5);
-}
-
-.lex-orb-btn.near .lex-glyph-orbit {
-  animation-duration: calc(var(--dur, 15s) * 0.55);
-}
-
-/* ── Tarozi ── */
-.lex-scale {
-  inset: 19%;
-}
-
-.lex-scale-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  filter: drop-shadow(0 2px 6px rgba(0, 10, 50, 0.55)) drop-shadow(0 0 8px rgba(240, 200, 100, 0.35));
-}
-
-.lex-beam {
-  transform-box: view-box;
-  transform-origin: 50px 26px;
-  animation: lex-sway 4.6s ease-in-out infinite;
-}
-
-.lex-pan--l {
-  transform-box: view-box;
-  transform-origin: 14px 26px;
-  animation: lex-sway-inv 4.6s ease-in-out infinite;
-}
-
-.lex-pan--r {
-  transform-box: view-box;
-  transform-origin: 86px 26px;
-  animation: lex-sway-inv 4.6s ease-in-out infinite;
-}
-
-/* yelka burilsa, pallalar teskari burilib pastga osilib turadi */
-@keyframes lex-sway {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(6deg); }
-  50% { transform: rotate(-4.5deg); }
-  75% { transform: rotate(2.5deg); }
-}
-
-@keyframes lex-sway-inv {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-6deg); }
-  50% { transform: rotate(4.5deg); }
-  75% { transform: rotate(-2.5deg); }
-}
-
-@keyframes lex-think {
-  0% { transform: rotate(0deg); }
-  18% { transform: rotate(15deg); }
-  40% { transform: rotate(-12deg); }
-  62% { transform: rotate(7deg); }
-  82% { transform: rotate(-3deg); }
-  100% { transform: rotate(0deg); }
-}
-
-@keyframes lex-think-inv {
-  0% { transform: rotate(0deg); }
-  18% { transform: rotate(-15deg); }
-  40% { transform: rotate(12deg); }
-  62% { transform: rotate(-7deg); }
-  82% { transform: rotate(3deg); }
-  100% { transform: rotate(0deg); }
-}
-
-.lex-orb-btn.thinking .lex-beam,
-.lex-orb-btn.respond .lex-beam {
-  animation: lex-think 1.5s var(--lex-ease) 1;
-}
-
-.lex-orb-btn.thinking .lex-pan--l,
-.lex-orb-btn.thinking .lex-pan--r,
-.lex-orb-btn.respond .lex-pan--l,
-.lex-orb-btn.respond .lex-pan--r {
-  animation: lex-think-inv 1.5s var(--lex-ease) 1;
-}
-
-/* click: shar sakraydi */
-.lex-orb-btn.respond .lex-bump {
-  animation: lex-bump 650ms var(--lex-ease);
+/* ── Click: sakraydi, bosh irg'aydi, ko'krak emblemasidan oltin to'lqin ── */
+.lex-btn.respond .lex-bump {
+  animation: lex-bump 700ms var(--lex-ease);
 }
 
 @keyframes lex-bump {
   0% { transform: translateY(0) scale(1); }
-  30% { transform: translateY(-12px) scale(1.07); }
+  35% { transform: translateY(-10px) scale(1.05); }
   100% { transform: translateY(0) scale(1); }
+}
+
+.lex-btn.respond .lex-headsway {
+  animation: lex-nod 700ms var(--lex-ease);
+}
+
+@keyframes lex-nod {
+  0% { transform: perspective(700px) rotateX(0deg); }
+  30% { transform: perspective(700px) rotateX(-13deg); }
+  60% { transform: perspective(700px) rotateX(5deg); }
+  100% { transform: perspective(700px) rotateX(0deg); }
+}
+
+.lex-emblem {
+  position: absolute;
+  left: var(--neck-x);
+  top: 68.5%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.lex-impact-ring {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(240, 200, 100, 0.95);
+  box-shadow: 0 0 12px rgba(240, 200, 100, 0.65);
+  opacity: 0;
+}
+
+.lex-btn.respond .lex-impact-ring {
+  animation: lex-impact 650ms ease-out 80ms;
+}
+
+@keyframes lex-impact {
+  0% { opacity: 0.95; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(2.8); }
+}
+
+/* ── Suzuvchi § belgilari ── */
+.lex-sparks {
+  pointer-events: none;
+}
+
+.lex-spark {
+  position: absolute;
+  display: block;
+  font-family: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--lex-gold-hi);
+  text-shadow: 0 0 8px rgba(240, 200, 100, 0.9), 0 0 16px rgba(240, 200, 100, 0.5);
+  opacity: 0;
+  animation: lex-spark 6s ease-out infinite;
+}
+
+@keyframes lex-spark {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  14% { opacity: 0.95; }
+  70% { opacity: 0.55; }
+  100% { opacity: 0; transform: translateY(-48px) scale(1.1); }
 }
 
 /* ── Yozuv pill'i ── */
@@ -436,7 +326,7 @@
   backdrop-filter: blur(12px);
   white-space: nowrap;
   cursor: pointer;
-  transition: transform 400ms var(--lex-ease), box-shadow 400ms ease;
+  transition: transform 400ms var(--lex-ease);
 }
 
 .lex-pill:hover {
@@ -477,13 +367,13 @@
   50% { opacity: 0.5; transform: scale(0.8); }
 }
 
-/* ── Tab yashirin: hamma animatsiya pauza ── */
+/* ── Tab yashirin: pauza ── */
 .lex-root.tab-hidden,
 .lex-root.tab-hidden * {
   animation-play-state: paused !important;
 }
 
-/* ── Kamaytirilgan harakat: hamma statik, lekin to'liq va yorqin ── */
+/* ── Kamaytirilgan harakat: statik, lekin to'liq ko'rinadi ── */
 @media (prefers-reduced-motion: reduce) {
   .lex-root,
   .lex-label-wrap {
@@ -492,21 +382,20 @@
     transform: none;
   }
   .lex-float,
+  .lex-headsway,
   .lex-glow,
   .lex-shadow,
-  .lex-specular,
-  .lex-beam,
-  .lex-pan--l,
-  .lex-pan--r,
-  .lex-glyph-orbit,
+  .lex-lid,
   .lex-pill-dot {
     animation: none !important;
   }
-  .lex-ping-ring {
-    animation: none;
-    opacity: 0;
+  .lex-spark {
+    display: none;
   }
-  .lex-orb-btn.respond .lex-bump {
+  .lex-btn.waving .lex-bump,
+  .lex-btn.waving .lex-headsway,
+  .lex-btn.respond .lex-bump,
+  .lex-btn.respond .lex-headsway {
     animation: none;
   }
 }
@@ -514,14 +403,13 @@
 /* ── Mobil ── */
 @media (max-width: 640px) {
   .lex-root {
-    --d: 84px;
-    right: 6px;
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    padding: 0 24px;
-    gap: 14px;
+    --w: 120px;
+    right: 4px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 0 12px;
   }
-  .lex-glyph { font-size: 12px; }
+  .lex-spark { font-size: 13px; }
   .lex-pill { height: 26px; padding: 0 11px 0 9px; }
   .lex-pill-text { font-size: 11px; }
-  .lex-glyph-orbit { animation-duration: calc(var(--dur, 15s) * 1.5); }
+  .lex-impact-ring { left: -16px; top: -16px; width: 32px; height: 32px; }
 }

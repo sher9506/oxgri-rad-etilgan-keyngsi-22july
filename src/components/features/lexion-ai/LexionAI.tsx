@@ -1,17 +1,16 @@
-// LexionAI — o'ng pastki burchakdagi jonli AI yordamchi ("Adolat Orbi")
+// LexionAI — o'ng pastki burchakdagi jonli robotcha yordamchi
 // Faqat jamoat sahifalarida render qilinadi (istisno sharti App.tsx da).
 import { useCallback, useEffect, useRef } from 'react';
 import './lexion.css';
-import { LexionOrb } from './LexionOrb';
+import { LexionRobot } from './LexionRobot';
 import { LexionLabel } from './LexionLabel';
 
 interface LexionAIProps {
   onOpen?: () => void;
 }
 
-const MAX_TILT = 10; // daraja
-const FAR = 380; // px — shundan uzoqda to'liq tilt
-const NEAR = 240; // px — shundan yaqinda orbitalar tezlashadi
+const FAR = 380; // px — shundan uzoqda to'liq burilish
+const NEAR = 260; // px — shundan yaqinda "hayajon" (quloqchalar tez qimirlaydi)
 const clamp = (v: number) => Math.max(-1, Math.min(1, v));
 
 export function LexionAI({ onOpen }: LexionAIProps) {
@@ -32,36 +31,38 @@ export function LexionAI({ onOpen }: LexionAIProps) {
     const touch = window.matchMedia('(hover: none)').matches;
     const timers: number[] = [];
 
-    // Tab yashirin bo'lsa animatsiyalar pauza (CSS .tab-hidden)
     const onVis = () => root.classList.toggle('tab-hidden', document.hidden);
     document.addEventListener('visibilitychange', onVis);
     onVis();
 
-    // Har ~7s "o'ylash" harakati
-    let thinkId: number | undefined;
+    // Salomlashish: kirishdan keyin bir marta, so'ng har ~9s
+    const wave = () => {
+      if (document.hidden || busyRef.current) return;
+      btn.classList.add('waving');
+      timers.push(window.setTimeout(() => btn.classList.remove('waving'), 2100));
+    };
+    let waveId: number | undefined;
     if (!reduced) {
-      thinkId = window.setInterval(() => {
-        if (document.hidden || busyRef.current) return;
-        btn.classList.add('thinking');
-        timers.push(window.setTimeout(() => btn.classList.remove('thinking'), 1600));
-      }, 7000);
+      timers.push(window.setTimeout(wave, 2000));
+      waveId = window.setInterval(wave, 9000);
     }
 
-    // Pointer tilt + ichki yorug'lik (faqat desktop)
+    // Pointer: bosh kursor tomonga buriladi
     let raf = 0;
     let running = false;
     const target = { x: 0, y: 0 };
     const cur = { x: 0, y: 0 };
 
     const tick = () => {
-      cur.x += (target.x - cur.x) * 0.09;
-      cur.y += (target.y - cur.y) * 0.09;
-      scene.style.setProperty('--rx', (cur.x * MAX_TILT).toFixed(2));
-      scene.style.setProperty('--ry', (-cur.y * MAX_TILT).toFixed(2));
-      scene.style.setProperty('--lx', (cur.x * 10).toFixed(1) + 'px');
-      scene.style.setProperty('--ly', (cur.y * 10).toFixed(1) + 'px');
-      const settled =
-        Math.abs(target.x - cur.x) < 0.002 && Math.abs(target.y - cur.y) < 0.002;
+      cur.x += (target.x - cur.x) * 0.1;
+      cur.y += (target.y - cur.y) * 0.1;
+      // Faqat bosh bo'yin nuqtasi atrofida buriladi; tana deyarli qimirlamaydi — qismlar ajralmaydi
+      scene.style.setProperty('--hx', (cur.x * 14).toFixed(2));
+      scene.style.setProperty('--hy', (-cur.y * 8).toFixed(2));
+      scene.style.setProperty('--hz', (cur.x * 2.5).toFixed(2));
+      scene.style.setProperty('--hdx', (cur.x * 2.5).toFixed(2));
+      scene.style.setProperty('--bx', (cur.x * 4).toFixed(2));
+      const settled = Math.abs(target.x - cur.x) < 0.002 && Math.abs(target.y - cur.y) < 0.002;
       if (settled) {
         running = false;
         return;
@@ -79,7 +80,7 @@ export function LexionAI({ onOpen }: LexionAIProps) {
       if (document.hidden) return;
       const r = btn.getBoundingClientRect();
       const dx = e.clientX - (r.left + r.width / 2);
-      const dy = e.clientY - (r.top + r.height / 2);
+      const dy = e.clientY - (r.top + r.height * 0.4); // bosh sathidan qaraydi
       target.x = clamp(dx / FAR);
       target.y = clamp(dy / FAR);
       btn.classList.toggle('near', Math.hypot(dx, dy) < NEAR);
@@ -100,7 +101,7 @@ export function LexionAI({ onOpen }: LexionAIProps) {
 
     return () => {
       cancelAnimationFrame(raf);
-      if (thinkId) window.clearInterval(thinkId);
+      if (waveId) window.clearInterval(waveId);
       timers.forEach((t) => window.clearTimeout(t));
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('mousemove', onMove);
@@ -115,11 +116,11 @@ export function LexionAI({ onOpen }: LexionAIProps) {
     busyRef.current = true;
     const btn = btnRef.current;
     const pill = pillRef.current;
-    btn?.classList.remove('thinking');
+    btn?.classList.remove('waving');
     btn?.classList.add('respond');
     if (pill) {
       pill.classList.remove('pulse');
-      void pill.offsetWidth; // animatsiyani qayta ishga tushirish
+      void pill.offsetWidth;
       pill.classList.add('pulse');
     }
     onOpen?.();
@@ -127,7 +128,7 @@ export function LexionAI({ onOpen }: LexionAIProps) {
       btn?.classList.remove('respond');
       pill?.classList.remove('pulse');
       busyRef.current = false;
-    }, 800);
+    }, 900);
   }, [onOpen]);
 
   return (
@@ -135,12 +136,12 @@ export function LexionAI({ onOpen }: LexionAIProps) {
       <button
         ref={btnRef}
         type="button"
-        className="lex-orb-btn"
+        className="lex-btn"
         onClick={handleClick}
         aria-label="Lexion AI yordamchisi"
       >
         <span className="lex-shadow" aria-hidden="true" />
-        <LexionOrb sceneRef={sceneRef} />
+        <LexionRobot sceneRef={sceneRef} />
       </button>
       <LexionLabel onClick={handleClick} pulseRef={pillRef} />
     </div>
