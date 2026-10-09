@@ -482,7 +482,10 @@ export default function MootCourtUstoz() {
       if (!jobState.applied && !namunaviyJavob.trim()) {
         // Auto-fill if empty
         setNamunaviyJavob(jobState.answer);
-        toast({ title: 'Javob tayyor. Tahrir qilib, Saqlash bosing.', description: 'Namunaviy javob maydoniga to\'ldirildi.' });
+        const fbNote = jobState.lexionFallback
+          ? 'Lexion topilmadi, umumiy daftar asosida tayyorlandi.'
+          : undefined;
+        toast({ title: 'Javob tayyor. Tahrir qilib, Saqlash bosing.', description: fbNote || 'Namunaviy javob maydoniga to\'ldirildi.' });
         setTimeout(() => {
           const ta = namunaviyRef.current;
           if (ta) {

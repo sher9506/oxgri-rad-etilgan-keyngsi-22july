@@ -1,4 +1,4 @@
-// Lexion phase polling support (parser fix: whitespace + New conversation handling)
+// Lexion phase polling support
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -75,11 +75,10 @@ async function getLexionConfig(): Promise<{ url: string; key: string }> {
 // ── Lexion URL parser — answer maydonidan lex.uz/docs/<id> havolalarini ajratib oladi ──
 export function parseLexionUrls(answer: string): string[] {
   let urls: string[] = [];
-  const normalizedAnswer = answer.replace(/\s+/g, "");
 
   // 1. JSON.parse urinishi
   try {
-    const parsed = JSON.parse(normalizedAnswer);
+    const parsed = JSON.parse(answer);
     if (Array.isArray(parsed)) {
       for (const item of parsed) {
         if (typeof item === 'string') urls.push(item);
@@ -91,13 +90,13 @@ export function parseLexionUrls(answer: string): string[] {
 
   // 2. Regex fallback
   if (urls.length === 0) {
-    const regex = /https?:\/\/lex\.uz\/docs\/-?\d+/g;
-    const matches = normalizedAnswer.match(regex);
+    const regex = /https?:\/\/(?:www\.)?lex\.uz\/docs\/-?\d+/g;
+    const matches = answer.match(regex);
     if (matches) urls = matches;
   }
 
   // 3. Faqat lex.uz/docs/<raqam> yoki docs/-<raqam> ko'rinishini qoldir
-  const filtered = urls.filter(u => /^https?:\/\/lex\.uz\/docs\/-?\d+$/.test(u));
+  const filtered = urls.filter(u => /^https?:\/\/(?:www\.)?lex\.uz\/docs\/-?\d+$/.test(u));
 
   // 4. Dublikatlarni olib tashla, tartibni saqla, ko'pi bilan 15 ta
   const unique: string[] = [];
@@ -205,7 +204,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership — lexion maydonlarini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at")
       .eq("id", id)
       .maybeSingle();
 
@@ -223,6 +222,24 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ── Stale job auto-cleanup: 30 daqiqadan eski queued/running ishlarni timeout qil ──
+    if (job.status === "queued" || job.status === "running") {
+      const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
+      const STALE_JOB_MS = 30 * 60 * 1000;
+      if (jobAgeMs > STALE_JOB_MS) {
+        const errMsg = "Javob tayyorlanmadi (vaqt tugadi). Qayta urinib ko'ring.";
+        await supabaseAdmin
+          .from("case_answer_jobs")
+          .update({ status: "error", error: errMsg, finished_at: new Date().toISOString(), lexion_phase: job.lexion_phase ? "error" : null })
+          .eq("id", id);
+        console.log(`[case-answer-status] Stale job ${id} (${Math.round(jobAgeMs / 60000)}m) -> timeout`);
+        return new Response(
+          JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: job.lexion_phase || null, lexion_fallback: job.lexion_fallback || false }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // If already done or error, return cached state
@@ -286,7 +303,7 @@ Deno.serve(async (req: Request) => {
           if (lexionRes.status === 404) {
             // Lexion job yo'qolgan — fallback
             console.log(`[case-answer-status] Lexion job 404, Umumiy rejimga fallback: job=${id}`);
-            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id);
+            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_job_404");
             if (fallbackResult.ok) {
               return new Response(
                 JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_fallback: true }),
@@ -319,7 +336,7 @@ Deno.serve(async (req: Request) => {
           // URL ro'yxati bo'sh — fallback
           if (urls.length === 0) {
             console.log(`[case-answer-status] Lexion URL ro'yxati bo'sh, Umumiy rejimga fallback: job=${id}`);
-            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id);
+            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_url_topilmadi");
             if (fallbackResult.ok) {
               return new Response(
                 JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_fallback: true }),
@@ -402,7 +419,7 @@ Deno.serve(async (req: Request) => {
 
           // 2-bosqich yuborilmadi — fallback
           console.log(`[case-answer-status] Lexion 2-bosqich yuborilmadi, Umumiy rejimga fallback: job=${id}`);
-          const fallbackResult = await startFallbackGeneral(id, job, ustoz_id);
+          const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_2_yuborilmadi");
           if (fallbackResult.ok) {
             return new Response(
               JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_fallback: true }),
@@ -421,7 +438,7 @@ Deno.serve(async (req: Request) => {
 
         if (lexionStatus === "error" || lexionStatus === "failed") {
           console.log(`[case-answer-status] Lexion 1-bosqich xatosi, Umumiy rejimga fallback: job=${id}`);
-          const fallbackResult = await startFallbackGeneral(id, job, ustoz_id);
+          const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_1_xato");
           if (fallbackResult.ok) {
             return new Response(
               JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_fallback: true }),
@@ -500,7 +517,7 @@ Deno.serve(async (req: Request) => {
           // Lexion 2-bosqichda 404 — bir marta fallback
           if (job.answer_mode === 'lexion' && job.lexion_phase === 'answering' && !job.lexion_fallback) {
             console.log(`[case-answer-status] Lexion 2-bosqich 404, fallback: job=${id}`);
-            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id);
+            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_2_404");
             if (fallbackResult.ok) {
               return new Response(
                 JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_fallback: true }),
@@ -566,7 +583,7 @@ Deno.serve(async (req: Request) => {
           // Lexion 2-bosqichda xato — bir marta fallback
           if (job.answer_mode === 'lexion' && job.lexion_phase === 'answering' && !job.lexion_fallback) {
             console.log(`[case-answer-status] Lexion 2-bosqich xatosi, fallback: job=${id}`);
-            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id);
+            const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_2_xato");
             if (fallbackResult.ok) {
               return new Response(
                 JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_fallback: true }),
@@ -695,7 +712,8 @@ Deno.serve(async (req: Request) => {
 async function startFallbackGeneral(
   jobId: string,
   job: { case_id: string | null; answer_mode: string | null; lexion_phase: string | null },
-  _ustoz_id: string
+  _ustoz_id: string,
+  reason: string
 ): Promise<{ ok: boolean; error?: string }> {
   const cfg = await getAnswerServiceConfig();
   if (!cfg.url || !cfg.key) {
@@ -732,6 +750,8 @@ async function startFallbackGeneral(
         lexion_fallback: true,
         lexion_phase: "answering",
         answer_mode: "general",
+        lexion_fallback_reason: reason,
+        fallback_count: 1,
       })
       .eq("id", jobId);
     return { ok: true };

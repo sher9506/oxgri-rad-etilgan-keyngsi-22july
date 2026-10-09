@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Server, RefreshCw, CheckCircle, XCircle, Clock, Loader2,
-  Activity, AlertTriangle, TrendingUp, Zap
+  Activity, AlertTriangle, TrendingUp, Zap, Search, FileText, AlertCircle, ArrowDownCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
@@ -18,6 +18,14 @@ interface JobRow {
   finished_at: string | null;
   error: string | null;
   answer: string | null;
+  answer_mode: string | null;
+  lexion_job_id: string | null;
+  lexion_urls: string | null;
+  lexion_fallback: boolean | null;
+  lexion_phase: string | null;
+  lexion_fallback_reason: string | null;
+  fallback_count: number | null;
+  moot_court_cases?: { sarlavha: string } | null;
 }
 
 interface BackendStats {
@@ -63,6 +71,61 @@ function statusBadge(status: string) {
   }
 }
 
+function modeLabel(mode: string | null): { label: string; color: string; icon: React.ReactNode } | null {
+  if (!mode) return null;
+  switch (mode) {
+    case 'lexion':
+      return { label: 'Lexion', color: 'text-amber-700 bg-amber-50 border-amber-300', icon: <Search className="h-3 w-3" /> };
+    case 'sources':
+      return { label: 'Manbali', color: 'text-indigo-700 bg-indigo-50 border-indigo-300', icon: <FileText className="h-3 w-3" /> };
+    case 'general':
+      return { label: 'Umumiy', color: 'text-gray-600 bg-gray-50 border-gray-300', icon: <FileText className="h-3 w-3" /> };
+    default:
+      return null;
+  }
+}
+
+function lexionPhaseLabel(phase: string | null): { label: string; color: string } | null {
+  if (!phase) return null;
+  switch (phase) {
+    case 'lexion_searching':
+      return { label: 'Lexion qidiruv', color: 'text-amber-700 bg-amber-50 border-amber-300' };
+    case 'answering':
+      return { label: 'Javob tayyorlanmoqda', color: 'text-blue-700 bg-blue-50 border-blue-300' };
+    case 'done':
+      return { label: 'Yakunlandi', color: 'text-green-700 bg-green-50 border-green-300' };
+    case 'error':
+      return { label: 'Xato', color: 'text-red-700 bg-red-50 border-red-300' };
+    default:
+      return null;
+  }
+}
+
+function fallbackReasonLabel(reason: string | null): string | null {
+  if (!reason) return null;
+  const map: Record<string, string> = {
+    'lexion_1_xato': 'Lexion 1-bosqich xatosi',
+    'lexion_url_topilmadi': 'Lexion URL topilmadi',
+    'lexion_2_yuborilmadi': 'Lexion 2-bosqich yuborilmadi',
+    'lexion_2_404': 'Lexion 2-bosqich 404',
+    'lexion_2_xato': 'Lexion 2-bosqich xatosi',
+    'lexion_job_404': 'Lexion job topilmadi (404)',
+  };
+  for (const [key, val] of Object.entries(map)) {
+    if (reason.startsWith(key)) return val;
+  }
+  return reason.slice(0, 80);
+}
+
+function parseLexionUrls(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((u: unknown) => typeof u === 'string');
+  } catch { /* ignore */ }
+  return [];
+}
+
 function durationLabel(created: string, finished: string | null): string {
   if (!finished) return '—';
   const ms = new Date(finished).getTime() - new Date(created).getTime();
@@ -90,8 +153,9 @@ export default function LmStudioPanel() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [settings, setSettings] = useState<SettingsInfo>({ url1: '', url2: '', url2Configured: false });
-  const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'error'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'error' | 'lexion' | 'fallback'>('all');
   const [error, setError] = useState<string | null>(null);
+  const [expandedJob, setExpandedJob] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setError(null);
@@ -99,7 +163,7 @@ export default function LmStudioPanel() {
       const [jobsRes, settingsRes] = await Promise.all([
         supabase
           .from('case_answer_jobs')
-          .select('id, case_id, teacher_id, status, backend, service_job_id, source_count, created_at, finished_at, error, answer')
+          .select('id, case_id, teacher_id, status, backend, service_job_id, source_count, created_at, finished_at, error, answer, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, moot_court_cases(case_id:sarlavha)')
           .order('created_at', { ascending: false })
           .limit(100),
         supabase
@@ -160,12 +224,16 @@ export default function LmStudioPanel() {
   const totalActive = jobs.filter(j => j.status === 'queued' || j.status === 'running').length;
   const totalDone = jobs.filter(j => j.status === 'done').length;
   const totalError = jobs.filter(j => j.status === 'error').length;
+  const totalLexion = jobs.filter(j => j.answer_mode === 'lexion').length;
+  const totalFallback = jobs.filter(j => j.lexion_fallback).length;
 
   const filteredJobs = (() => {
     switch (filter) {
       case 'active': return jobs.filter(j => j.status === 'queued' || j.status === 'running');
       case 'done': return jobs.filter(j => j.status === 'done');
       case 'error': return jobs.filter(j => j.status === 'error');
+      case 'lexion': return jobs.filter(j => j.answer_mode === 'lexion' || j.lexion_fallback);
+      case 'fallback': return jobs.filter(j => j.lexion_fallback);
       default: return jobs;
     }
   })();
@@ -183,7 +251,7 @@ export default function LmStudioPanel() {
               <div>
                 <h1 className="text-2xl font-bold">LM Studio</h1>
                 <p className="text-slate-300 text-sm mt-1">
-                  Render backend monitoring — so'rovlar, javoblar va xatolar
+                  Render backend monitoring — Lexion, fallback va javob pipeline
                 </p>
               </div>
             </div>
@@ -207,6 +275,57 @@ export default function LmStudioPanel() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Pipeline umumiy statistikasi ── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card className="border border-gray-200">
+          <CardContent className="py-3 flex items-center gap-3">
+            <div className="bg-blue-100 p-2 rounded-lg"><Activity className="h-5 w-5 text-blue-600" /></div>
+            <div>
+              <p className="text-xl font-black text-gray-700">{totalActive}</p>
+              <p className="text-[10px] text-gray-500 font-bold uppercase">Faol ish</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-200">
+          <CardContent className="py-3 flex items-center gap-3">
+            <div className="bg-green-100 p-2 rounded-lg"><CheckCircle className="h-5 w-5 text-green-600" /></div>
+            <div>
+              <p className="text-xl font-black text-gray-700">{totalDone}</p>
+              <p className="text-[10px] text-gray-500 font-bold uppercase">Tayyor</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-200">
+          <CardContent className="py-3 flex items-center gap-3">
+            <div className="bg-red-100 p-2 rounded-lg"><XCircle className="h-5 w-5 text-red-600" /></div>
+            <div>
+              <p className="text-xl font-black text-gray-700">{totalError}</p>
+              <p className="text-[10px] text-gray-500 font-bold uppercase">Xato</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-200">
+          <CardContent className="py-3 flex items-center gap-3">
+            <div className="bg-amber-100 p-2 rounded-lg"><Search className="h-5 w-5 text-amber-600" /></div>
+            <div>
+              <p className="text-xl font-black text-gray-700">{totalLexion}</p>
+              <p className="text-[10px] text-gray-500 font-bold uppercase">Lexion rejim</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={`border ${totalFallback > 0 ? 'border-orange-300' : 'border-gray-200'}`}>
+          <CardContent className="py-3 flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${totalFallback > 0 ? 'bg-orange-100' : 'bg-gray-100'}`}>
+              <ArrowDownCircle className={`h-5 w-5 ${totalFallback > 0 ? 'text-orange-600' : 'text-gray-400'}`} />
+            </div>
+            <div>
+              <p className="text-xl font-black text-gray-700">{totalFallback}</p>
+              <p className="text-[10px] text-gray-500 font-bold uppercase">Fallback (umumiyga o'tgan)</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ── Backend kartalari ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -264,37 +383,6 @@ export default function LmStudioPanel() {
         ))}
       </div>
 
-      {/* ── Umumiy statistika ── */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="border border-gray-200">
-          <CardContent className="py-3 flex items-center gap-3">
-            <div className="bg-blue-100 p-2 rounded-lg"><Activity className="h-5 w-5 text-blue-600" /></div>
-            <div>
-              <p className="text-xl font-black text-gray-700">{totalActive}</p>
-              <p className="text-[10px] text-gray-500 font-bold uppercase">Faol ish</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="py-3 flex items-center gap-3">
-            <div className="bg-green-100 p-2 rounded-lg"><CheckCircle className="h-5 w-5 text-green-600" /></div>
-            <div>
-              <p className="text-xl font-black text-gray-700">{totalDone}</p>
-              <p className="text-[10px] text-gray-500 font-bold uppercase">Tayyor</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="py-3 flex items-center gap-3">
-            <div className="bg-red-100 p-2 rounded-lg"><XCircle className="h-5 w-5 text-red-600" /></div>
-            <div>
-              <p className="text-xl font-black text-gray-700">{totalError}</p>
-              <p className="text-[10px] text-gray-500 font-bold uppercase">Xato</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* ── Backend konfiguratsiya ── */}
       <Card className="border border-gray-200">
         <CardHeader className="pb-2">
@@ -329,6 +417,8 @@ export default function LmStudioPanel() {
           { key: 'active', label: 'Faol', count: totalActive },
           { key: 'done', label: 'Tayyor', count: totalDone },
           { key: 'error', label: 'Xato', count: totalError },
+          { key: 'lexion', label: 'Lexion', count: totalLexion },
+          { key: 'fallback', label: 'Fallback', count: totalFallback },
         ] as const).map(f => (
           <button
             key={f.key}
@@ -360,8 +450,19 @@ export default function LmStudioPanel() {
         <div className="space-y-2">
           {filteredJobs.map(job => {
             const b = job.backend ?? 1;
+            const mode = modeLabel(job.answer_mode);
+            const phase = lexionPhaseLabel(job.lexion_phase);
+            const fbReason = fallbackReasonLabel(job.lexion_fallback_reason);
+            const lexionUrls = parseLexionUrls(job.lexion_urls);
+            const isExpanded = expandedJob === job.id;
+            const sarlavha = job.moot_court_cases?.sarlavha;
+
             return (
-              <Card key={job.id} className={`border ${job.status === 'error' ? 'border-red-200' : job.status === 'done' ? 'border-green-200' : 'border-gray-200'} hover:shadow-md transition-shadow`}>
+              <Card
+                key={job.id}
+                className={`border ${job.status === 'error' ? 'border-red-200' : job.status === 'done' ? 'border-green-200' : 'border-gray-200'} hover:shadow-md transition-shadow cursor-pointer`}
+                onClick={() => setExpandedJob(isExpanded ? null : job.id)}
+              >
                 <CardContent className="py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0 space-y-1.5">
@@ -370,20 +471,96 @@ export default function LmStudioPanel() {
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${backendColor(job.backend)}`}>
                           {backendLabel(job.backend)}
                         </span>
+                        {mode && (
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${mode.color}`}>
+                            {mode.icon}{mode.label}
+                          </span>
+                        )}
+                        {job.lexion_fallback && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border text-orange-700 bg-orange-50 border-orange-300">
+                            <ArrowDownCircle className="h-3 w-3" />Fallback
+                          </span>
+                        )}
                         {job.source_count > 0 && (
                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                             {job.source_count} manba
                           </span>
                         )}
+                        {lexionUrls.length > 0 && (
+                          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                            {lexionUrls.length} lex.uz URL
+                          </span>
+                        )}
                         <span className="text-xs text-gray-400">{ageLabel(job.created_at)}</span>
                       </div>
+
+                      {sarlavha && (
+                        <p className="text-xs font-medium text-gray-700 truncate">{sarlavha}</p>
+                      )}
+
+                      {/* Fallback sababi */}
+                      {job.lexion_fallback && fbReason && (
+                        <div className="flex items-start gap-2 text-xs text-orange-700 bg-orange-50 p-2 rounded-lg border border-orange-200">
+                          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                          <span>Fallback sababi: {fbReason}</span>
+                        </div>
+                      )}
+
+                      {/* Lexion bosqich indikatori */}
+                      {phase && !job.lexion_fallback && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className={`px-2 py-0.5 rounded-full border font-bold ${phase.color}`}>
+                            {phase.label}
+                          </span>
+                        </div>
+                      )}
+
                       {job.error && (
                         <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 p-2 rounded-lg">
                           <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                           <span className="break-words">{job.error}</span>
                         </div>
                       )}
-                      {job.done && job.answer && (
+
+                      {/* Kengaytirilgan ko'rinish */}
+                      {isExpanded && (
+                        <div className="mt-2 space-y-2 border-t border-gray-100 pt-2">
+                          {job.lexion_job_id && (
+                            <div className="text-xs text-gray-500">
+                              <span className="font-bold">Lexion Job ID:</span>{' '}
+                              <span className="font-mono">{job.lexion_job_id.slice(0, 16)}</span>
+                            </div>
+                          )}
+                          {lexionUrls.length > 0 && (
+                            <div className="text-xs space-y-1">
+                              <p className="font-bold text-gray-600">Lexion URL'lar:</p>
+                              {lexionUrls.map((url, i) => (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block text-blue-600 hover:underline truncate"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {url}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                          {job.answer && (
+                            <div className="text-xs text-gray-500">
+                              <p className="font-bold text-gray-600 mb-1">Javob (birinchi 300 belgi):</p>
+                              <p className="bg-gray-50 p-2 rounded-lg whitespace-pre-wrap">{job.answer.slice(0, 300)}...</p>
+                            </div>
+                          )}
+                          <div className="text-[10px] text-gray-400 font-mono">
+                            Job ID: {job.id} | Service: {job.service_job_id?.slice(0, 12) || '—'}
+                          </div>
+                        </div>
+                      )}
+
+                      {!isExpanded && job.answer && job.status === 'done' && (
                         <p className="text-xs text-gray-400 truncate">Javob: {job.answer.slice(0, 120)}...</p>
                       )}
                     </div>
@@ -391,6 +568,9 @@ export default function LmStudioPanel() {
                       <p className="text-xs text-gray-500">{durationLabel(job.created_at, job.finished_at)}</p>
                       {job.service_job_id && (
                         <p className="text-[10px] text-gray-400 font-mono mt-1">#{job.service_job_id.slice(0, 8)}</p>
+                      )}
+                      {job.fallback_count && job.fallback_count > 0 && (
+                        <p className="text-[10px] text-orange-500 font-bold mt-1">fallback x{job.fallback_count}</p>
                       )}
                     </div>
                   </div>

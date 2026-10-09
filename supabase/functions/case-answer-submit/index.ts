@@ -360,13 +360,14 @@ Deno.serve(async (req: Request) => {
       }
 
       // Lexion 1-bosqich xato — Umumiy rejimga fallback
-      console.log(`[case-answer-submit] Lexion 1-bosqich xatosi, Umumiy rejimga o'tilmoqda: external_id=${jobId}`);
+      const fbReason = `lexion_1_xato: ${(lexionResult.errorMsg || 'noma\'lum').slice(0, 200)}`;
+      console.log(`[case-answer-submit] Lexion 1-bosqich xatosi, Umumiy rejimga o'tilmoqda: external_id=${jobId} sabab=${fbReason}`);
 
       const cfg = await getAnswerServiceConfig();
       if (!cfg.url || !cfg.key) {
         await supabaseAdmin
           .from("case_answer_jobs")
-          .update({ status: "error", error: "Javob tayyorlash xizmati hozir mavjud emas", lexion_phase: "error" })
+          .update({ status: "error", error: "Javob tayyorlash xizmati hozir mavjud emas", lexion_phase: "error", lexion_fallback_reason: fbReason })
           .eq("id", jobId);
         return new Response(
           JSON.stringify({ error: "Javob tayyorlash xizmati hozir mavjud emas" }),
@@ -395,6 +396,8 @@ Deno.serve(async (req: Request) => {
             lexion_fallback: true,
             lexion_phase: "answering",
             answer_mode: "general",
+            lexion_fallback_reason: fbReason,
+            fallback_count: 1,
           })
           .eq("id", jobId);
         return new Response(
