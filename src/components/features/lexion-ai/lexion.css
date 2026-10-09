@@ -1,0 +1,411 @@
+/* ════════════════════════════════════════════════════════════════
+   Lexion AI — FanFaster robotcha-qahramoni
+   11 ta alohida qatlam (bosh, quloqlar, qorachiqlar, tana, qo'llar, panja, oyoqlar).
+   Barcha harakat LexionAI.tsx ichidagi "rig" tomonidan har kadrda yoziladi;
+   bu faylda faqat tuzilma, chuqurlik (Z), chang/§ effektlari va yozuv pill'i bor.
+   ════════════════════════════════════════════════════════════════ */
+
+.lex-root {
+  --w: 176px;
+  --h: calc(var(--w) * 1.098); /* sahna nisbati 580 × 637 */
+  --zu: calc(var(--w) / 580); /* sahnadagi 1 px ning ekrandagi o'lchami */
+  --lex-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --lex-gold-hi: #ffe9a0;
+  --lex-on-navy: #eaf1ff;
+  --lex-success: #5cd49a;
+
+  position: fixed;
+  right: 14px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index: 1000;
+  padding: 0 22px;
+  pointer-events: none;
+}
+
+/* Sayr qilganda robot va yozuv birga yuradi */
+.lex-walker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Tugma ── */
+.lex-btn {
+  position: relative;
+  display: block;
+  width: var(--w);
+  height: var(--h);
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 40%;
+  background: none;
+  overflow: visible;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.lex-btn:focus-visible {
+  outline: 2px solid #8db7ff;
+  outline-offset: 6px;
+}
+
+/* ── Sahna ── */
+.lex-scene {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.lex-lay,
+.lex-rig,
+.lex-glow {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.lex-rig {
+  transform-origin: 50% 98%;
+  opacity: 0; /* birinchi kadrda JS ochadi */
+  filter: drop-shadow(0 6px 8px rgba(8, 24, 90, 0.22));
+  will-change: transform;
+}
+
+.lex-lay {
+  will-change: transform;
+}
+
+.lex-sp {
+  position: absolute;
+  display: block;
+}
+
+.lex-sp img,
+.lex-iris img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* ── Bosh: haqiqiy 3D kontekst. Quloqlar orqada (Z<0), ko'zlar yuz ustida ── */
+.lex-head {
+  transform-style: preserve-3d;
+}
+
+.lex-ear {
+  backface-visibility: visible;
+}
+
+.lex-eye {
+  position: absolute;
+  display: block;
+  clip-path: circle(48.5% at 50% 50%);
+  transform: translateZ(calc(var(--zu) * 2));
+}
+
+.lex-iris {
+  position: absolute;
+  display: block;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+/* Ko'z qovog'i (pirpirash): tepadan pastga tushadi, pastki chetida kipriq chizig'i */
+.lex-lid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: linear-gradient(180deg, #f6f9ff 0%, #e8effc 100%);
+  transform-origin: 50% 0%;
+  transform: scaleY(0);
+  will-change: transform;
+}
+
+.lex-lid::after {
+  content: '';
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 0;
+  height: 22%;
+  border-bottom: 3px solid #0e2a80;
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+}
+
+/* ── Orqa nur ── */
+.lex-glow {
+  inset: -22% -36%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    rgba(59, 139, 255, 0.5) 0%,
+    rgba(59, 139, 255, 0.24) 38%,
+    rgba(59, 139, 255, 0) 68%
+  );
+  animation: lex-breathe 4s ease-in-out infinite;
+}
+
+@keyframes lex-breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ── Yer soyasi (o'lchamini JS boshqaradi: balandlikka qarab) ── */
+.lex-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--h) * 0.005);
+  width: 54%;
+  height: 12px;
+  margin-left: -27%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(10, 24, 80, 0.4), transparent 70%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* ── Ko'krak emblemasi: bosilganda oltin to'lqin ── */
+.lex-emblem {
+  position: absolute;
+  left: 49.6%;
+  top: 68.5%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.lex-impact-ring {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(240, 200, 100, 0.95);
+  box-shadow: 0 0 12px rgba(240, 200, 100, 0.65);
+  opacity: 0;
+}
+
+.lex-btn.respond .lex-impact-ring {
+  animation: lex-impact 650ms ease-out 80ms;
+}
+
+@keyframes lex-impact {
+  0% { opacity: 0.95; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(2.8); }
+}
+
+/* ── Qo'nganda chang ── */
+.lex-dust {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 14%;
+  pointer-events: none;
+}
+
+.lex-dust i {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  width: 16%;
+  aspect-ratio: 1 / 0.62;
+  margin-left: -8%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.85), rgba(196, 214, 255, 0.55) 45%, rgba(196, 214, 255, 0) 72%);
+  opacity: 0;
+}
+
+.lex-dust.go i {
+  animation: lex-puff 760ms ease-out var(--d, 0ms) both;
+}
+
+@keyframes lex-puff {
+  0% { opacity: 0; transform: translateX(0) scale(0.3); }
+  18% { opacity: 0.95; }
+  100% { opacity: 0; transform: translate(var(--dx), -22%) scale(1.5); }
+}
+
+/* ── Qo'nganda va diqqat tortganda otilib chiqadigan § ¶ ── */
+.lex-burst {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.lex-burst i {
+  position: absolute;
+  display: block;
+  font-family: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--lex-gold-hi);
+  text-shadow: 0 0 8px rgba(240, 200, 100, 0.9), 0 0 16px rgba(240, 200, 100, 0.5);
+  opacity: 0;
+}
+
+.lex-burst.go i {
+  animation: lex-burst 1100ms cubic-bezier(0.2, 0.8, 0.3, 1) var(--bd, 0ms) both;
+}
+
+@keyframes lex-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4) rotate(0deg); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--bx), var(--by)) scale(1.1) rotate(18deg); }
+}
+
+/* ── Suzuvchi § belgilari ── */
+.lex-sparks {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.lex-spark {
+  position: absolute;
+  display: block;
+  font-family: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--lex-gold-hi);
+  text-shadow: 0 0 8px rgba(240, 200, 100, 0.9), 0 0 16px rgba(240, 200, 100, 0.5);
+  opacity: 0;
+  animation: lex-spark 6s ease-out infinite;
+}
+
+@keyframes lex-spark {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  14% { opacity: 0.95; }
+  70% { opacity: 0.55; }
+  100% { opacity: 0; transform: translateY(-48px) scale(1.1); }
+}
+
+/* ── Yozuv pill'i: robot qo'nganidan keyin chiqadi (.ready klassini JS qo'shadi) ── */
+.lex-label-wrap {
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(14px) scale(0.92);
+}
+
+.lex-root.ready .lex-label-wrap {
+  animation: lex-label-in 600ms var(--lex-ease) forwards;
+}
+
+@keyframes lex-label-in {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.lex-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(13, 27, 66, 0.94), rgba(26, 52, 120, 0.9));
+  border: 1px solid rgba(141, 183, 255, 0.3);
+  box-shadow: 0 10px 26px -8px rgba(13, 27, 66, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 400ms var(--lex-ease);
+}
+
+.lex-pill:hover {
+  transform: translateY(-2px);
+}
+
+.lex-pill.pulse {
+  animation: lex-pill-pop 700ms var(--lex-ease);
+}
+
+@keyframes lex-pill-pop {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+.lex-pill-text {
+  font-family: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: var(--lex-on-navy);
+}
+
+.lex-pill-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lex-success);
+  box-shadow: 0 0 6px rgba(92, 212, 154, 0.8), 0 0 12px rgba(92, 212, 154, 0.35);
+  animation: lex-dot 2.4s ease-in-out infinite;
+}
+
+@keyframes lex-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ── Tab yashirin: pauza ── */
+.lex-root.tab-hidden,
+.lex-root.tab-hidden * {
+  animation-play-state: paused !important;
+}
+
+/* ── Kamaytirilgan harakat: statik, lekin to'liq ko'rinadi ── */
+@media (prefers-reduced-motion: reduce) {
+  .lex-rig {
+    opacity: 1;
+  }
+  .lex-label-wrap {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .lex-glow,
+  .lex-pill-dot {
+    animation: none !important;
+  }
+  .lex-spark,
+  .lex-dust,
+  .lex-burst {
+    display: none;
+  }
+}
+
+/* ── Mobil ── */
+@media (max-width: 640px) {
+  .lex-root {
+    --w: 120px;
+    right: 4px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 0 12px;
+  }
+  .lex-spark,
+  .lex-burst i { font-size: 13px; }
+  .lex-pill { height: 26px; padding: 0 11px 0 9px; }
+  .lex-pill-text { font-size: 11px; }
+  .lex-impact-ring { left: -16px; top: -16px; width: 32px; height: 32px; }
+}
