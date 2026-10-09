@@ -1,96 +1,135 @@
-// LexionOrb — shishasomon shar ichida adolat tarozisi
-// Qatlamlar: orqa glow, orbita-orqa, shar, tarozi, orbita-old
+// LexionOrb — "Adolat Orbi"
+// Barcha 3D qatlamlar HTML <span>; SVG faqat tarozi chizmasi sifatida (yassi) ishlatiladi.
+// Sahna zanjiri: scene (pointer tilt) > float (suzish) > bump (click) > qatlamlar.
+import type { CSSProperties, RefObject } from 'react';
 
 interface LexionOrbProps {
-  sceneRef: React.RefObject<HTMLDivElement>;
-  floatRef: React.RefObject<HTMLDivElement>;
-  innerLightRef: React.RefObject<SVGCircleElement>;
+  sceneRef: RefObject<HTMLSpanElement>;
 }
 
-export function LexionOrb({ sceneRef, floatRef, innerLightRef }: LexionOrbProps) {
+interface GlyphDef {
+  ch: string;
+  a0: number; // boshlang'ich burchak (deg)
+  dur: number; // bir aylanish (s)
+}
+
+const RING_A: GlyphDef[] = [
+  { ch: '§', a0: 25, dur: 15 },
+  { ch: '¶', a0: 145, dur: 15 },
+  { ch: '§', a0: 265, dur: 15 },
+];
+
+const RING_B: GlyphDef[] = [
+  { ch: '§', a0: 70, dur: 21 },
+  { ch: '§', a0: 250, dur: 21 },
+];
+
+type Vars = CSSProperties & Record<`--${string}`, string | number>;
+
+function Orbit({
+  variant,
+  roll,
+  tilt,
+  dir,
+  glyphs,
+}: {
+  variant: 'a' | 'b';
+  roll: number;
+  tilt: number;
+  dir: 1 | -1;
+  glyphs: GlyphDef[];
+}) {
+  const style: Vars = { '--roll': roll, '--tilt': tilt, '--dir': dir };
   return (
-    <div ref={sceneRef} className="lex-scene" aria-hidden="true">
-      <div ref={floatRef} className="lex-float">
-        {/* ── Orbit back (behind orb) ── */}
-        <svg className="lex-svg lex-layer-orbit-back" viewBox="0 0 120 120" fill="none">
-          {/* Ring 1 — tilted ellipse */}
-          <g className="lex-orbit-ring lex-orbit-ring-1" style={{ transformOrigin: '60px 60px' }}>
-            <ellipse cx="60" cy="60" rx="52" ry="18" stroke="rgba(201,154,59,0.28)" strokeWidth="0.7" fill="none" transform="rotate(-15 60 60)" />
-            {/* § symbols on ring 1 */}
-            <text x="108" y="63" fontSize="6" fill="rgba(201,154,59,0.5)" fontFamily="Georgia, serif">§</text>
-            <text x="12" y="58" fontSize="6" fill="rgba(201,154,59,0.35)" fontFamily="Georgia, serif">§</text>
-          </g>
-        </svg>
+    <span className={`lex-layer lex-orbit lex-orbit--${variant}`} style={style}>
+      <span className="lex-orbit-tilt">
+        <span className="lex-orbit-ring" />
+        {glyphs.map((g, i) => {
+          const gs: Vars = { '--a0': g.a0, '--dur': `${g.dur}s` };
+          return (
+            <span key={i} className="lex-glyph-orbit" style={gs}>
+              <i className="lex-glyph">{g.ch}</i>
+            </span>
+          );
+        })}
+      </span>
+    </span>
+  );
+}
 
-        {/* ── Orb body ── */}
-        <svg className="lex-svg lex-layer-orb" viewBox="0 0 120 120" fill="none">
-          <defs>
-            <radialGradient id="lex-orb-grad" cx="42" cy="36" r="58" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#2E5BB8" />
-              <stop offset="40%" stopColor="#1A3470" />
-              <stop offset="80%" stopColor="#0D1B42" />
-              <stop offset="100%" stopColor="#080F28" />
-            </radialGradient>
-            <radialGradient id="lex-orb-hl" cx="38" cy="32" r="24" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="rgba(141,183,255,0.35)" />
-              <stop offset="100%" stopColor="rgba(141,183,255,0)" />
-            </radialGradient>
-          </defs>
-          {/* Glass sphere */}
-          <circle cx="60" cy="60" r="44" fill="url(#lex-orb-grad)" />
-          <circle cx="60" cy="60" r="44" fill="url(#lex-orb-hl)" />
-          {/* Inner gold ring */}
-          <circle cx="60" cy="60" r="38" stroke="rgba(201,154,59,0.2)" strokeWidth="0.6" fill="none" />
-          {/* Specular highlight */}
-          <ellipse className="lex-specular" cx="44" cy="42" rx="12" ry="8" fill="rgba(255,255,255,0.12)" transform="rotate(-30 44 42)" />
-          {/* Inner light (follows pointer) */}
-          <circle ref={innerLightRef} className="lex-inner-light" cx="60" cy="60" r="6" fill="rgba(59,139,255,0.15)" />
-          {/* Light wave (click) */}
-          <circle className="lex-light-wave" cx="60" cy="60" r="20" fill="none" stroke="rgba(59,139,255,0.4)" strokeWidth="1.5" opacity="0" />
-        </svg>
+export function LexionOrb({ sceneRef }: LexionOrbProps) {
+  return (
+    <span ref={sceneRef} className="lex-scene" aria-hidden="true">
+      <span className="lex-float">
+        <span className="lex-bump">
+          {/* 1. Orqa nur */}
+          <span className="lex-layer lex-glow" style={{ '--z': '-70px' } as Vars} />
 
-        {/* ── Scale of justice (inside orb) ── */}
-        <svg className="lex-svg lex-layer-scale" viewBox="0 0 120 120" fill="none">
-          <defs>
-            <linearGradient id="lex-scale-gold" x1="48" y1="44" x2="72" y2="78">
-              <stop offset="0%" stopColor="#D9AC42" />
-              <stop offset="100%" stopColor="#B8862E" />
-            </linearGradient>
-          </defs>
-          <g className="lex-scale-group" style={{ transformOrigin: '60px 32px' }}>
-            {/* Vertical post */}
-            <line x1="60" y1="34" x2="60" y2="72" stroke="url(#lex-scale-gold)" strokeWidth="1.6" strokeLinecap="round" />
-            {/* Top knob */}
-            <circle cx="60" cy="32" r="2.2" fill="url(#lex-scale-gold)" />
-            {/* Horizontal beam */}
-            <line x1="44" y1="38" x2="76" y2="38" stroke="url(#lex-scale-gold)" strokeWidth="1.4" strokeLinecap="round" />
-            {/* Left chain */}
-            <line x1="44" y1="38" x2="42" y2="50" stroke="url(#lex-scale-gold)" strokeWidth="0.7" opacity="0.7" />
-            {/* Right chain */}
-            <line x1="76" y1="38" x2="78" y2="50" stroke="url(#lex-scale-gold)" strokeWidth="0.7" opacity="0.7" />
-            {/* Left pan */}
-            <path d="M36 50 Q36 56 42 57 Q48 56 48 50" stroke="url(#lex-scale-gold)" strokeWidth="1.2" fill="rgba(201,154,59,0.08)" strokeLinecap="round" />
-            {/* Right pan */}
-            <path d="M72 50 Q72 56 78 57 Q84 56 84 50" stroke="url(#lex-scale-gold)" strokeWidth="1.2" fill="rgba(201,154,59,0.08)" strokeLinecap="round" />
-            {/* Base */}
-            <line x1="54" y1="72" x2="66" y2="72" stroke="url(#lex-scale-gold)" strokeWidth="1.8" strokeLinecap="round" />
-            <line x1="57" y1="72" x2="57" y2="76" stroke="url(#lex-scale-gold)" strokeWidth="0.8" opacity="0.6" />
-            <line x1="63" y1="72" x2="63" y2="76" stroke="url(#lex-scale-gold)" strokeWidth="0.8" opacity="0.6" />
-          </g>
-        </svg>
+          {/* 2. Sezilmas "tinglash" to'lqini (har ~5s) */}
+          <span className="lex-layer lex-ping" style={{ '--z': '-10px' } as Vars}>
+            <span className="lex-ping-ring" />
+          </span>
 
-        {/* ── Orbit front (in front of orb) ── */}
-        <svg className="lex-svg lex-layer-orbit-front" viewBox="0 0 120 120" fill="none">
-          {/* Ring 2 — different tilt */}
-          <g className="lex-orbit-ring lex-orbit-ring-2" style={{ transformOrigin: '60px 60px' }}>
-            <ellipse cx="60" cy="60" rx="48" ry="14" stroke="rgba(201,154,59,0.2)" strokeWidth="0.6" fill="none" transform="rotate(20 60 60)" />
-            {/* § symbols on ring 2 */}
-            <text x="8" y="64" fontSize="5" fill="rgba(201,154,59,0.4)" fontFamily="Georgia, serif">§</text>
-            <text x="66" y="12" fontSize="5" fill="rgba(201,154,59,0.3)" fontFamily="Georgia, serif">§</text>
-            <text x="86" y="104" fontSize="5" fill="rgba(201,154,59,0.25)" fontFamily="Georgia, serif">§</text>
-          </g>
-        </svg>
-      </div>
-    </div>
+          {/* 3. Shar + ikki orbita (sharni o'rab o'tadi: old yarmi oldida, orqa yarmi orqasida) */}
+          <span className="lex-layer lex-sphere" style={{ '--z': '0px' } as Vars}>
+            <span className="lex-rim" />
+            <span className="lex-inner-ring" />
+            <span className="lex-core" />
+            <span className="lex-wave" />
+            <span className="lex-specular" />
+          </span>
+
+          <Orbit variant="a" roll={-22} tilt={72} dir={1} glyphs={RING_A} />
+          <Orbit variant="b" roll={26} tilt={76} dir={-1} glyphs={RING_B} />
+
+          {/* 4. Tarozi — shar markazida, oldinda */}
+          <span className="lex-layer lex-scale" style={{ '--z': '26px' } as Vars}>
+            <svg className="lex-scale-svg" viewBox="0 0 100 100" fill="none">
+              <defs>
+                <linearGradient id="lex-gold-v" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FFE9A0" />
+                  <stop offset="45%" stopColor="#E3B54A" />
+                  <stop offset="100%" stopColor="#9A6B22" />
+                </linearGradient>
+                <linearGradient id="lex-gold-h" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#B07F2A" />
+                  <stop offset="40%" stopColor="#FFE9A0" />
+                  <stop offset="100%" stopColor="#B07F2A" />
+                </linearGradient>
+              </defs>
+
+              {/* Asos */}
+              <path d="M28 93 L72 93 L63 84 L37 84 Z" fill="url(#lex-gold-v)" />
+              {/* Ustun */}
+              <rect x="46.5" y="22" width="7" height="64" rx="3.5" fill="url(#lex-gold-h)" />
+              {/* Tepa tugma */}
+              <circle cx="50" cy="16" r="5" fill="url(#lex-gold-v)" />
+
+              {/* Yelka + pallalar (tebranadi) */}
+              <g className="lex-beam">
+                <rect x="10" y="23" width="80" height="6" rx="3" fill="url(#lex-gold-h)" />
+                <circle cx="50" cy="26" r="6" fill="url(#lex-gold-v)" />
+                <circle cx="14" cy="26" r="3.4" fill="url(#lex-gold-v)" />
+                <circle cx="86" cy="26" r="3.4" fill="url(#lex-gold-v)" />
+
+                <g className="lex-pan lex-pan--l">
+                  <line x1="14" y1="27" x2="2" y2="60" stroke="#E7BE55" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1="14" y1="27" x2="26" y2="60" stroke="#E7BE55" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M1 60 L27 60 A13 13 0 0 1 1 60 Z" fill="url(#lex-gold-v)" />
+                  <path d="M1 60 L27 60" stroke="#FFF1BC" strokeWidth="1.6" strokeLinecap="round" />
+                </g>
+
+                <g className="lex-pan lex-pan--r">
+                  <line x1="86" y1="27" x2="74" y2="60" stroke="#E7BE55" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1="86" y1="27" x2="98" y2="60" stroke="#E7BE55" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M73 60 L99 60 A13 13 0 0 1 73 60 Z" fill="url(#lex-gold-v)" />
+                  <path d="M73 60 L99 60" stroke="#FFF1BC" strokeWidth="1.6" strokeLinecap="round" />
+                </g>
+              </g>
+            </svg>
+          </span>
+        </span>
+      </span>
+    </span>
   );
 }

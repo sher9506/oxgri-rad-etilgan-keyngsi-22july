@@ -1,138 +1,148 @@
-// LexionAI — "Adolat Orbi" — shishasomon shar ichida tarozi
-// O'ng pastki burchakda turadigan jonli AI yordamchisi
-// Faqat jamoat (public) sahifalarda ko'rinadi
-
-import { useState, useRef, useEffect, useCallback } from 'react';
+// LexionAI — o'ng pastki burchakdagi jonli AI yordamchi ("Adolat Orbi")
+// Faqat jamoat sahifalarida render qilinadi (istisno sharti App.tsx da).
+import { useCallback, useEffect, useRef } from 'react';
 import './lexion.css';
 import { LexionOrb } from './LexionOrb';
 import { LexionLabel } from './LexionLabel';
-
-const REDUCED_MOTION =
-  typeof window !== 'undefined' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const IS_TOUCH =
-  typeof window !== 'undefined' &&
-  window.matchMedia('(hover: none)').matches;
 
 interface LexionAIProps {
   onOpen?: () => void;
 }
 
+const MAX_TILT = 10; // daraja
+const FAR = 380; // px — shundan uzoqda to'liq tilt
+const NEAR = 240; // px — shundan yaqinda orbitalar tezlashadi
+const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+
 export function LexionAI({ onOpen }: LexionAIProps) {
-  const [responding, setResponding] = useState(false);
-  const [thinking, setThinking] = useState(false);
-  const [tabHidden, setTabHidden] = useState(false);
-  const [tiltActive, setTiltActive] = useState(false);
-
-  const sceneRef = useRef<HTMLDivElement>(null);
-  const floatRef = useRef<HTMLDivElement>(null);
-  const innerLightRef = useRef<SVGCircleElement>(null);
-  const pillRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const sceneRef = useRef<HTMLSpanElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(false);
+  const clickTimerRef = useRef<number>();
 
-  const pointerTarget = useRef({ x: 0, y: 0 });
-  const pointerCurrent = useRef({ x: 0, y: 0 });
-  const rafRef = useRef<number>(0);
-
-  // ── Tab visibility: pause animations ──
   useEffect(() => {
-    const onVis = () => setTabHidden(document.hidden);
+    const root = rootRef.current;
+    const btn = btnRef.current;
+    const scene = sceneRef.current;
+    if (!root || !btn || !scene) return;
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const touch = window.matchMedia('(hover: none)').matches;
+    const timers: number[] = [];
+
+    // Tab yashirin bo'lsa animatsiyalar pauza (CSS .tab-hidden)
+    const onVis = () => root.classList.toggle('tab-hidden', document.hidden);
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, []);
+    onVis();
 
-  // ── Pointer tilt + inner light tracking (desktop only) ──
-  useEffect(() => {
-    if (REDUCED_MOTION || IS_TOUCH) return;
+    // Har ~7s "o'ylash" harakati
+    let thinkId: number | undefined;
+    if (!reduced) {
+      thinkId = window.setInterval(() => {
+        if (document.hidden || busyRef.current) return;
+        btn.classList.add('thinking');
+        timers.push(window.setTimeout(() => btn.classList.remove('thinking'), 1600));
+      }, 7000);
+    }
+
+    // Pointer tilt + ichki yorug'lik (faqat desktop)
+    let raf = 0;
+    let running = false;
+    const target = { x: 0, y: 0 };
+    const cur = { x: 0, y: 0 };
 
     const tick = () => {
-      pointerCurrent.current.x += (pointerTarget.current.x - pointerCurrent.current.x) * 0.06;
-      pointerCurrent.current.y += (pointerTarget.current.y - pointerCurrent.current.y) * 0.06;
-
-      if (sceneRef.current) {
-        const tx = pointerCurrent.current.y * -0.1;
-        const ty = pointerCurrent.current.x * 0.1;
-        sceneRef.current.style.transform = `rotateX(${tx.toFixed(2)}deg) rotateY(${ty.toFixed(2)}deg)`;
+      cur.x += (target.x - cur.x) * 0.09;
+      cur.y += (target.y - cur.y) * 0.09;
+      scene.style.setProperty('--rx', (cur.x * MAX_TILT).toFixed(2));
+      scene.style.setProperty('--ry', (-cur.y * MAX_TILT).toFixed(2));
+      scene.style.setProperty('--lx', (cur.x * 10).toFixed(1) + 'px');
+      scene.style.setProperty('--ly', (cur.y * 10).toFixed(1) + 'px');
+      const settled =
+        Math.abs(target.x - cur.x) < 0.002 && Math.abs(target.y - cur.y) < 0.002;
+      if (settled) {
+        running = false;
+        return;
       }
-
-      if (innerLightRef.current) {
-        const lx = pointerCurrent.current.x * 0.35;
-        const ly = pointerCurrent.current.y * 0.35;
-        innerLightRef.current.style.transform = `translate(${lx.toFixed(1)}px, ${ly.toFixed(1)}px)`;
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
+      raf = requestAnimationFrame(tick);
     };
 
-    rafRef.current = requestAnimationFrame(tick);
+    const start = () => {
+      if (running) return;
+      running = true;
+      raf = requestAnimationFrame(tick);
+    };
 
     const onMove = (e: MouseEvent) => {
-      const btn = btnRef.current;
-      if (!btn) return;
-      const rect = btn.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dx = (e.clientX - cx) / (rect.width / 2);
-      const dy = (e.clientY - cy) / (rect.height / 2);
-      pointerTarget.current.x = Math.max(-10, Math.min(10, dx * 10));
-      pointerTarget.current.y = Math.max(-10, Math.min(10, dy * 10));
-      setTiltActive(true);
+      if (document.hidden) return;
+      const r = btn.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2);
+      const dy = e.clientY - (r.top + r.height / 2);
+      target.x = clamp(dx / FAR);
+      target.y = clamp(dy / FAR);
+      btn.classList.toggle('near', Math.hypot(dx, dy) < NEAR);
+      start();
     };
 
     const onLeave = () => {
-      pointerTarget.current.x = 0;
-      pointerTarget.current.y = 0;
-      setTiltActive(false);
+      target.x = 0;
+      target.y = 0;
+      btn.classList.remove('near');
+      start();
     };
 
-    window.addEventListener('mousemove', onMove, { passive: true });
-    window.addEventListener('mouseleave', onLeave);
+    if (!reduced && !touch) {
+      window.addEventListener('mousemove', onMove, { passive: true });
+      document.addEventListener('mouseleave', onLeave);
+    }
+
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(raf);
+      if (thinkId) window.clearInterval(thinkId);
+      timers.forEach((t) => window.clearTimeout(t));
+      document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseleave', onLeave);
+      document.removeEventListener('mouseleave', onLeave);
     };
   }, []);
 
-  // ── Periodic "thinking" gesture (~7s) ──
-  useEffect(() => {
-    if (REDUCED_MOTION) return;
-    const interval = setInterval(() => {
-      if (document.hidden) return;
-      setThinking(true);
-      setTimeout(() => setThinking(false), 1400);
-    }, 7000);
-    return () => clearInterval(interval);
-  }, []);
+  useEffect(() => () => window.clearTimeout(clickTimerRef.current), []);
 
-  // ── Click handler ──
   const handleClick = useCallback(() => {
-    if (responding) return;
-    setResponding(true);
-    if (pillRef.current) {
-      pillRef.current.classList.remove('pulse');
-      void pillRef.current.offsetWidth;
-      pillRef.current.classList.add('pulse');
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const btn = btnRef.current;
+    const pill = pillRef.current;
+    btn?.classList.remove('thinking');
+    btn?.classList.add('respond');
+    if (pill) {
+      pill.classList.remove('pulse');
+      void pill.offsetWidth; // animatsiyani qayta ishga tushirish
+      pill.classList.add('pulse');
     }
     onOpen?.();
-    setTimeout(() => setResponding(false), 700);
-  }, [responding, onOpen]);
+    clickTimerRef.current = window.setTimeout(() => {
+      btn?.classList.remove('respond');
+      pill?.classList.remove('pulse');
+      busyRef.current = false;
+    }, 800);
+  }, [onOpen]);
 
   return (
-    <div className={`lex-root${tabHidden ? ' tab-hidden' : ''}`}>
-      <LexionLabel onClick={handleClick} pulseRef={pillRef} />
+    <div ref={rootRef} className="lex-root">
       <button
         ref={btnRef}
-        className={`lex-orb-btn${responding ? ' respond' : ''}${thinking ? ' thinking' : ''}${tiltActive ? ' tilt-active' : ''}`}
+        type="button"
+        className="lex-orb-btn"
         onClick={handleClick}
         aria-label="Lexion AI yordamchisi"
-        type="button"
       >
-        <div className="lex-glow" />
-        <LexionOrb sceneRef={sceneRef} floatRef={floatRef} innerLightRef={innerLightRef} />
-        <div className="lex-shadow" />
+        <span className="lex-shadow" aria-hidden="true" />
+        <LexionOrb sceneRef={sceneRef} />
       </button>
+      <LexionLabel onClick={handleClick} pulseRef={pillRef} />
     </div>
   );
 }
