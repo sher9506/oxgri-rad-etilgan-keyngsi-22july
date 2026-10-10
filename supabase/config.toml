@@ -114,3 +114,6 @@ verify_jwt = false
 
 [functions.hukm-api]
 verify_jwt = false
+
+[functions.lexion-chat]
+verify_jwt = false
