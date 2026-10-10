@@ -82,6 +82,7 @@ function buildNavGroups(
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },
         ]
       : [
+          { id: 'nexus_ai', label: 'Nexus AI', icon: Scale, desc: 'AI huquq yordamchisi' },
           { id: 'savol_javob', label: 'Savol–javoblar', icon: Layers, desc: "Savollarga javoblar kutubxonasi" },
           { id: 'reyting', label: 'Reyting', icon: TrendingUp, desc: "O'quvchilar reytingi" },
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },

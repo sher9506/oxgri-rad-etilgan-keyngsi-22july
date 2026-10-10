@@ -57,6 +57,7 @@ const MiniAppLinkConfirm = lazy(() => import('@/components/features/MiniAppLinkC
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { LexionAI } from '@/components/features/lexion-ai/LexionAI';
 const LexionAiSahifa = lazy(() => import('@/components/features/lexion-ai/LexionAiSahifa'));
+const NexusAI = lazy(() => import('@/components/features/NexusAI'));
 
 // Admin Context
 interface AdminContextType {
@@ -270,6 +271,7 @@ function AppContent() {
       case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
       case 'lex_uz_qidiruvchi': return <Suspense fallback={<LazyFallback />}><LexUzQidiruvchi /></Suspense>;
+      case 'nexus_ai': return <Suspense fallback={<LazyFallback />}><NexusAI userId={user?.talaba_id || user?.ustoz_id || ''} /></Suspense>;
       case 'yordam': return <Suspense fallback={<LazyFallback />}><YordamSahifa /></Suspense>;
       case 'faceid': return <Suspense fallback={<LazyFallback />}><FaceIdPanel /></Suspense>;
       default: return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;

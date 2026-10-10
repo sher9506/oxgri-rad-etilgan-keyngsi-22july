@@ -16,6 +16,9 @@ const supabaseAdmin = createClient(
 const INSTRUCTION =
   "Siz professional O'zbekiston huquqshunosisiz. Quyida berilgan manbalar (qonun hujjatlari) asosida kazusni IRAC (Issue, Rule, Application, Conclusion) usulida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
 
+const CHAT_INSTRUCTION =
+  "Siz professional O'zbekiston huquqshunosisiz. Quyidagi huquqiy savolga O'zbekiston qonunchiligi bo'yicha aniq va tushunarli javob bering: avval qisqa xulosa, keyin tegishli moddalar va tushuntirish. Manbada javob bo'lmasa, buni ayting. Javob oxirida hech qanday savol bermang va taklif qilmang.";
+
 function sanitizeAnswer(text: string): string {
   if (!text) return text;
   return text
@@ -298,6 +301,8 @@ Deno.serve(async (req: Request) => {
 
     // If already done or error, return cached state
     if (job.status === "done") {
+      const isChatJob = !job.case_id;
+      const lexionUrls = isChatJob && job.lexion_urls ? parseLexionUrls(job.lexion_urls) : [];
       return new Response(
         JSON.stringify({
           status: "done",
@@ -305,6 +310,7 @@ Deno.serve(async (req: Request) => {
           error: null,
           lexion_phase: job.lexion_phase || null,
           lexion_fallback: job.lexion_fallback || false,
+          lexion_urls: lexionUrls.length > 0 ? lexionUrls : undefined,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -450,11 +456,12 @@ Deno.serve(async (req: Request) => {
             kazusText = job.chat_kazus_text || "";
           }
 
+          const isChat = !job.case_id;
           const serviceBody: Record<string, unknown> = {
             title,
             kazus_text: kazusText,
             external_id: `${id}-ans`,
-            instruction: INSTRUCTION,
+            instruction: isChat ? CHAT_INSTRUCTION : INSTRUCTION,
             sources: serviceSources,
           };
 
@@ -794,11 +801,12 @@ async function startFallbackGeneral(
     kazusText = job.chat_kazus_text || "";
   }
 
+  const isChat = !job.case_id;
   const serviceBody: Record<string, unknown> = {
     title,
     kazus_text: kazusText,
     external_id: `${jobId}-ans`,
-    instruction: INSTRUCTION,
+    instruction: isChat ? CHAT_INSTRUCTION : INSTRUCTION,
     sources: [],
   };
 
@@ -825,3 +833,4 @@ async function startFallbackGeneral(
 
   return { ok: false, error: "Javob tayyorlanmadi. Qayta urinib ko'ring." };
 }
+// deploy-trigger Sat Oct 10 21:11:36 UTC 2026

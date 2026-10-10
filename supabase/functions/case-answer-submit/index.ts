@@ -23,6 +23,14 @@ const STORAGE_BUCKET = "case-sources";
 const INSTRUCTION =
   "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
 
+const CHAT_INSTRUCTION =
+  "Siz professional O'zbekiston huquqshunosisiz. Quyidagi huquqiy savolga O'zbekiston qonunchiligi bo'yicha aniq va tushunarli javob bering: avval qisqa xulosa, keyin tegishli moddalar va tushuntirish. Manbada javob bo'lmasa, buni ayting. Javob oxirida hech qanday savol bermang va taklif qilmang.";
+
+const MAX_CHAT_INPUT = 2500;
+const MIN_CHAT_INPUT = 10;
+const CHAT_LIMIT_COUNT = 8;
+const CHAT_LIMIT_WINDOW_HOURS = 5;
+
 interface SourceInput {
   type: 'text' | 'url' | 'file';
   title?: string;
@@ -299,6 +307,7 @@ Deno.serve(async (req: Request) => {
     const library_title: string | undefined = body.library_title;
     const answer_mode: string = body.answer_mode || (Array.isArray(sources) && sources.length > 0 ? 'sources' : 'general');
     const isStandaloneChat = !case_id;
+    const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
 
     if (!kazus_text || !title || !ustoz_id) {
       return new Response(
@@ -307,11 +316,81 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (kazus_text.length > MAX_KAZUS_LENGTH) {
+    if (isStandaloneChat && kazus_text.length > MAX_CHAT_INPUT) {
+      return new Response(
+        JSON.stringify({ error: `Savol matni ${MAX_CHAT_INPUT} belgidan oshmasligi kerak`, code: "too_long" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (isStandaloneChat && kazus_text.trim().length < MIN_CHAT_INPUT) {
+      return new Response(
+        JSON.stringify({ error: `Savol kamida ${MIN_CHAT_INPUT} belgi bo'lishi kerak`, code: "too_short" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!isStandaloneChat && kazus_text.length > MAX_KAZUS_LENGTH) {
       return new Response(
         JSON.stringify({ error: "Kazus matni 12000 belgidan oshmasligi kerak" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ── Standalone chat: 5 soatlik sirpanuvchi oyna limiti + faol so'rov tekshiruvi ──
+    if (isStandaloneChat) {
+      const windowMs = CHAT_LIMIT_WINDOW_HOURS * 60 * 60 * 1000;
+      const windowStart = new Date(Date.now() - windowMs).toISOString();
+
+      // Ustozlar uchun limit yo'q — talabalar jadvalidan tekshiramiz
+      const { data: talabaRow } = await supabaseAdmin
+        .from("talabalar")
+        .select("id")
+        .eq("id", ustoz_id)
+        .maybeSingle();
+
+      if (talabaRow) {
+        // Faol so'rov tekshiruvi: queued/running chat job bormi?
+        const { count: activeCount } = await supabaseAdmin
+          .from("case_answer_jobs")
+          .select("id", { count: "exact", head: true })
+          .eq("job_kind", "chat")
+          .eq("teacher_id", ustoz_id)
+          .in("status", ["queued", "running"]);
+        if ((activeCount ?? 0) > 0) {
+          return new Response(
+            JSON.stringify({ error: "Oldingi so'rovingiz hali bajarilmoqda. Iltimos javobni kuting.", code: "active_job" }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // 5 soatlik sirpanuvchi oynada done/queued/running chat joblar soni
+        const { count: windowCount } = await supabaseAdmin
+          .from("case_answer_jobs")
+          .select("id", { count: "exact", head: true })
+          .eq("job_kind", "chat")
+          .eq("teacher_id", ustoz_id)
+          .in("status", ["queued", "running", "done"])
+          .gte("created_at", windowStart);
+        if ((windowCount ?? 0) >= CHAT_LIMIT_COUNT) {
+          // Tiklanish vaqtini hisoblash: eng eski job created_at + window
+          const { data: oldestJob } = await supabaseAdmin
+            .from("case_answer_jobs")
+            .select("created_at")
+            .eq("job_kind", "chat")
+            .eq("teacher_id", ustoz_id)
+            .in("status", ["queued", "running", "done"])
+            .gte("created_at", windowStart)
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          const nextResetAt = oldestJob
+            ? new Date(new Date(oldestJob.created_at).getTime() + windowMs).toISOString()
+            : null;
+          return new Response(
+            JSON.stringify({ error: `Savol limiti tugadi. ${CHAT_LIMIT_WINDOW_HOURS} soatdan keyin yana yozishingiz mumkin.`, code: "quota_exceeded", next_reset_at: nextResetAt }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
     }
 
     // Standalone chat (Lexion AI sahifasi) — case_id yo'q, ownership tekshiruv o'tkazib yuboriladi
@@ -359,6 +438,7 @@ Deno.serve(async (req: Request) => {
         source_file_paths: '[]',
           answer_mode: 'lexion',
           lexion_phase: 'lexion_searching',
+          job_kind: jobKind,
         };
       if (case_id) insertPayload.case_id = case_id;
       if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
@@ -446,7 +526,7 @@ Deno.serve(async (req: Request) => {
         title,
         kazus_text,
         external_id: `${jobId}-ans`,
-        instruction: INSTRUCTION,
+        instruction: isStandaloneChat ? CHAT_INSTRUCTION : INSTRUCTION,
         sources: [],
       };
 
@@ -661,6 +741,7 @@ Deno.serve(async (req: Request) => {
       source_count: validSources.length,
       source_file_paths: storagePaths.length > 0 ? JSON.stringify(storagePaths) : '[]',
       answer_mode: answer_mode === 'sources' ? 'sources' : 'general',
+      job_kind: jobKind,
     };
     if (case_id) insertPayload.case_id = case_id;
     if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
@@ -695,7 +776,7 @@ Deno.serve(async (req: Request) => {
       title,
       kazus_text,
       external_id: jobId,
-      instruction: INSTRUCTION,
+      instruction: isStandaloneChat ? CHAT_INSTRUCTION : INSTRUCTION,
       sources: serviceSources,
     };
 
@@ -775,3 +856,4 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+// deploy-trigger Sat Oct 10 21:11:36 UTC 2026

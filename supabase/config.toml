@@ -120,3 +120,6 @@ verify_jwt = false
 
 [functions.render-stats]
 verify_jwt = false
+
+[functions.nexus-quota]
+verify_jwt = false

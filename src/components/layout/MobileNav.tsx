@@ -69,6 +69,7 @@ export function buildNavGroups(
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },
         ]
       : [
+          { id: 'nexus_ai', label: 'Nexus AI', icon: Scale, desc: 'AI huquq yordamchisi' },
           { id: 'savol_javob', label: 'Savol–javoblar', icon: Layers, desc: "Savollarga javoblar kutubxonasi" },
           { id: 'reyting', label: 'Reyting', icon: TrendingUp, desc: "O'quvchilar reytingi" },
           { id: 'blog', label: 'Blog', icon: Newspaper, desc: 'Yuridik maqolalar va tahlillar' },
@@ -111,7 +112,7 @@ const LANG_OPTIONS: { code: Lang; flag: string; label: string }[] = [
 
 /* ═══ Sinov guruhidagi tab id'lar ═══ */
 const SINOV_TABS = ['sinov', 'mavjud_testlar', 'mavjud_kazuslar', 'moot_court'];
-const YANA_TABS = ['savol_javob', 'reyting', 'blog', 'yordam'];
+const YANA_TABS = ['nexus_ai', 'savol_javob', 'reyting', 'blog', 'yordam'];
 
 /* ═════════════════════════════════════════════════════════════════
    MobileSheet — bottom-sheet dialog
