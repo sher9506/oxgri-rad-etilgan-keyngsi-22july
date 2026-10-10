@@ -257,21 +257,21 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { case_id, kazuz_text, title, ustoz_id, sources } = body;
+    const { case_id, kazus_text, title, ustoz_id, sources } = body;
     const library_id: string | undefined = body.library_id;
     const save_library: boolean = !!body.save_library;
     const library_title: string | undefined = body.library_title;
     const answer_mode: string = body.answer_mode || (Array.isArray(sources) && sources.length > 0 ? 'sources' : 'general');
     const isStandaloneChat = !case_id;
 
-    if (!kazuz_text || !title || !ustoz_id) {
+    if (!kazus_text || !title || !ustoz_id) {
       return new Response(
         JSON.stringify({ error: "Majburiy maydonlar yetishmayapti" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (kazuz_text.length > MAX_KAZUS_LENGTH) {
+    if (kazus_text.length > MAX_KAZUS_LENGTH) {
       return new Response(
         JSON.stringify({ error: "Kazus matni 12000 belgidan oshmasligi kerak" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -325,7 +325,7 @@ Deno.serve(async (req: Request) => {
           lexion_phase: 'lexion_searching',
         };
       if (case_id) insertPayload.case_id = case_id;
-      if (isStandaloneChat) { insertPayload.chat_kazus_text = kazuz_text; insertPayload.chat_title = title; }
+      if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
 
       const { data: jobRow, error: jobError } = await supabaseAdmin
         .from("case_answer_jobs")
@@ -359,6 +359,32 @@ Deno.serve(async (req: Request) => {
             status: "queued",
           })
           .eq("id", jobId);
+
+        // ── Prewarm: 2-bosqichda ishlatiladigan backend'ni oldindan uyg'otish ──
+        try {
+          const preCfg = await getAnswerServiceConfig();
+          if (preCfg.url) {
+            const preBackend = await pickBackend(preCfg);
+            const preUrl = getBackendUrl(preCfg, preBackend);
+            const preStart = Date.now();
+            const prewarmPromise = fetch(`${preUrl}/ping`, {
+              signal: AbortSignal.timeout(75000),
+            }).then((res) => {
+              console.log(`[prewarm] job=${jobId} backend=${preBackend} status=${res.status} ms=${Date.now() - preStart}`);
+            }).catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              console.log(`[prewarm] job=${jobId} backend=${preBackend} status=error ms=${Date.now() - preStart} err=${msg.slice(0, 100)}`);
+            });
+            const er = (globalThis as Record<string, unknown>).EdgeRuntime as
+              { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+            if (er?.waitUntil) {
+              er.waitUntil(prewarmPromise);
+            }
+          }
+        } catch (preErr) {
+          const msg = preErr instanceof Error ? preErr.message : String(preErr);
+          console.log(`[prewarm] job=${jobId} skipped: ${msg.slice(0, 100)}`);
+        }
 
         return new Response(
           JSON.stringify({ id: jobId }),
@@ -595,7 +621,7 @@ Deno.serve(async (req: Request) => {
       answer_mode: answer_mode === 'sources' ? 'sources' : 'general',
     };
     if (case_id) insertPayload.case_id = case_id;
-    if (isStandaloneChat) { insertPayload.chat_kazus_text = kazuz_text; insertPayload.chat_title = title; }
+    if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
 
     const { data: jobRow, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
