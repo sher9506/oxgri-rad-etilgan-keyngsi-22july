@@ -204,7 +204,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership — lexion maydonlarini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, chat_kazus_text, chat_title")
       .eq("id", id)
       .maybeSingle();
 
@@ -380,15 +380,21 @@ Deno.serve(async (req: Request) => {
 
           const serviceSources = urls.map(u => ({ title: "Lex.uz hujjati", url: u }));
 
-          // Kazus matnini olish
-          const { data: caseRow } = await supabaseAdmin
-            .from("moot_court_cases")
-            .select("sarlavha, tavsif")
-            .eq("id", job.case_id)
-            .maybeSingle();
-
-          const title = caseRow?.sarlavha || "Kazus";
-          const kazusText = caseRow?.tavsif || "";
+          // Kazus matnini olish (standalone chat uchun chat_kazus_text)
+          let title: string = "Kazus";
+          let kazusText: string = "";
+          if (job.case_id) {
+            const { data: caseRow } = await supabaseAdmin
+              .from("moot_court_cases")
+              .select("sarlavha, tavsif")
+              .eq("id", job.case_id)
+              .maybeSingle();
+            title = caseRow?.sarlavha || "Kazus";
+            kazusText = caseRow?.tavsif || "";
+          } else {
+            title = job.chat_title || "Lexion";
+            kazusText = job.chat_kazus_text || "";
+          }
 
           const serviceBody: Record<string, unknown> = {
             title,
@@ -711,7 +717,7 @@ Deno.serve(async (req: Request) => {
 // ── Fallback: Lexion ishlamasa, "Umumiy" rejim bilan yuborish ──
 async function startFallbackGeneral(
   jobId: string,
-  job: { case_id: string | null; answer_mode: string | null; lexion_phase: string | null },
+  job: { case_id: string | null; answer_mode: string | null; lexion_phase: string | null; chat_kazus_text?: string | null; chat_title?: string | null },
   _ustoz_id: string,
   reason: string
 ): Promise<{ ok: boolean; error?: string }> {
@@ -726,8 +732,12 @@ async function startFallbackGeneral(
     .eq("id", job.case_id)
     .maybeSingle();
 
-  const title = caseRow?.sarlavha || "Kazus";
-  const kazusText = caseRow?.tavsif || "";
+  let title: string = caseRow?.sarlavha || "Kazus";
+  let kazusText: string = caseRow?.tavsif || "";
+  if (!job.case_id) {
+    title = job.chat_title || "Lexion";
+    kazusText = job.chat_kazus_text || "";
+  }
 
   const serviceBody: Record<string, unknown> = {
     title,

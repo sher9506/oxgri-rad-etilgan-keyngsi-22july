@@ -257,46 +257,50 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { case_id, kazus_text, title, ustoz_id, sources } = body;
+    const { case_id, kazuz_text, title, ustoz_id, sources } = body;
     const library_id: string | undefined = body.library_id;
     const save_library: boolean = !!body.save_library;
     const library_title: string | undefined = body.library_title;
     const answer_mode: string = body.answer_mode || (Array.isArray(sources) && sources.length > 0 ? 'sources' : 'general');
+    const isStandaloneChat = !case_id;
 
-    if (!case_id || !kazus_text || !title || !ustoz_id) {
+    if (!kazuz_text || !title || !ustoz_id) {
       return new Response(
         JSON.stringify({ error: "Majburiy maydonlar yetishmayapti" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (kazus_text.length > MAX_KAZUS_LENGTH) {
+    if (kazuz_text.length > MAX_KAZUS_LENGTH) {
       return new Response(
         JSON.stringify({ error: "Kazus matni 12000 belgidan oshmasligi kerak" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { data: caseData, error: caseError } = await supabaseAdmin
-      .from("moot_court_cases")
-      .select("ustoz_id")
-      .eq("id", case_id)
-      .maybeSingle();
+    // Standalone chat (Lexion AI sahifasi) — case_id yo'q, ownership tekshiruv o'tkazib yuboriladi
+    if (!isStandaloneChat) {
+      const { data: caseData, error: caseError } = await supabaseAdmin
+        .from("moot_court_cases")
+        .select("ustoz_id")
+        .eq("id", case_id)
+        .maybeSingle();
 
-    if (caseError || !caseData) {
-      console.error("[case-answer-submit] Kazus topilmadi:", case_id);
-      return new Response(
-        JSON.stringify({ error: "Kazus topilmadi" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+      if (caseError || !caseData) {
+        console.error("[case-answer-submit] Kazus topilmadi:", case_id);
+        return new Response(
+          JSON.stringify({ error: "Kazus topilmadi" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-    if (caseData.ustoz_id !== ustoz_id) {
-      console.error("[case-answer-submit] Ruxsat yo'q:", ustoz_id, "!= case owner", caseData.ustoz_id);
-      return new Response(
-        JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (caseData.ustoz_id !== ustoz_id) {
+        console.error("[case-answer-submit] Ruxsat yo'q:", ustoz_id, "!= case owner", caseData.ustoz_id);
+        return new Response(
+          JSON.stringify({ error: "Bu amal uchun ruxsat yo'q" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -312,17 +316,20 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const { data: jobRow, error: jobError } = await supabaseAdmin
-        .from("case_answer_jobs")
-        .insert({
-          case_id,
-          teacher_id: ustoz_id,
-          status: "queued",
-          source_count: 0,
-          source_file_paths: '[]',
+      const insertPayload: Record<string, unknown> = {
+        teacher_id: ustoz_id,
+        status: "queued",
+        source_count: 0,
+        source_file_paths: '[]',
           answer_mode: 'lexion',
           lexion_phase: 'lexion_searching',
-        })
+        };
+      if (case_id) insertPayload.case_id = case_id;
+      if (isStandaloneChat) { insertPayload.chat_kazus_text = kazuz_text; insertPayload.chat_title = title; }
+
+      const { data: jobRow, error: jobError } = await supabaseAdmin
+        .from("case_answer_jobs")
+        .insert(insertPayload)
         .select("id")
         .single();
 
@@ -580,16 +587,19 @@ Deno.serve(async (req: Request) => {
     }
 
     // Create a job record first
+    const insertPayload: Record<string, unknown> = {
+      teacher_id: ustoz_id,
+      status: "queued",
+      source_count: validSources.length,
+      source_file_paths: storagePaths.length > 0 ? JSON.stringify(storagePaths) : '[]',
+      answer_mode: answer_mode === 'sources' ? 'sources' : 'general',
+    };
+    if (case_id) insertPayload.case_id = case_id;
+    if (isStandaloneChat) { insertPayload.chat_kazus_text = kazuz_text; insertPayload.chat_title = title; }
+
     const { data: jobRow, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .insert({
-        case_id,
-        teacher_id: ustoz_id,
-        status: "queued",
-        source_count: validSources.length,
-        source_file_paths: storagePaths.length > 0 ? JSON.stringify(storagePaths) : '[]',
-        answer_mode: answer_mode === 'sources' ? 'sources' : 'general',
-      })
+      .insert(insertPayload)
       .select("id")
       .single();
 

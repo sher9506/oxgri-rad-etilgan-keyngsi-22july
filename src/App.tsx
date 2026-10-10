@@ -56,7 +56,7 @@ import MiniAppBanner, { MiniAppLoginOverlay, isTelegramMiniApp } from '@/compone
 const MiniAppLinkConfirm = lazy(() => import('@/components/features/MiniAppLinkConfirm'));
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { LexionAI } from '@/components/features/lexion-ai/LexionAI';
-const LexionChatPanel = lazy(() => import('@/components/features/lexion-ai/LexionChatPanel').then(m => ({ default: m.LexionChatPanel })));
+const LexionAiSahifa = lazy(() => import('@/components/features/lexion-ai/LexionAiSahifa'));
 
 // Admin Context
 interface AdminContextType {
@@ -92,8 +92,8 @@ function AppContent() {
     return null;
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isLexionOpen, setIsLexionOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [lexionChatOpen, setLexionChatOpen] = useState(false);
 
   useEffect(() => {
     const handler = () => setIsLoginModalOpen(true);
@@ -369,15 +369,13 @@ function AppContent() {
                 </AnimatePresence>
               </div>
             </main>
-            {!user && (
-              <>
-                <LexionAI onOpen={() => setLexionChatOpen(true)} />
-                <Suspense fallback={null}>
-                  <LexionChatPanel open={lexionChatOpen} onClose={() => setLexionChatOpen(false)} />
-                </Suspense>
-              </>
-            )}
+            {!user && <LexionAI onOpen={() => setIsLexionOpen(true)} />}
           </div>
+        )}
+        {isLexionOpen && (
+          <Suspense fallback={null}>
+            <LexionAiSahifa onClose={() => setIsLexionOpen(false)} />
+          </Suspense>
         )}
       </AdminContext.Provider>
       <Toaster />
