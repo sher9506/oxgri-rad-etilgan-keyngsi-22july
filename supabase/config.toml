@@ -117,3 +117,6 @@ verify_jwt = false
 
 [functions.lexion-chat]
 verify_jwt = false
+
+[functions.render-stats]
+verify_jwt = false

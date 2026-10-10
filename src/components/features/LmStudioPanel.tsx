@@ -42,16 +42,27 @@ interface SettingsInfo {
   url1: string;
   url2: string;
   url2Configured: boolean;
+  url3: string;
+  url3Configured: boolean;
+}
+
+interface RenderStats {
+  backend: number;
+  status: 'ok' | 'unavailable' | 'unconfigured';
+  http_status: number | null;
+  stats: Record<string, unknown> | null;
 }
 
 const POLL_MS = 10000;
 
 function backendLabel(b: number | null): string {
+  if (b === 3) return 'Render #3';
   if (b === 2) return 'Render #2';
   return 'Render #1';
 }
 
 function backendColor(b: number | null): string {
+  if (b === 3) return 'text-emerald-600 bg-emerald-50 border-emerald-300';
   if (b === 2) return 'text-cyan-600 bg-cyan-50 border-cyan-300';
   return 'text-blue-600 bg-blue-50 border-blue-300';
 }
@@ -152,7 +163,8 @@ export default function LmStudioPanel() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [settings, setSettings] = useState<SettingsInfo>({ url1: '', url2: '', url2Configured: false });
+  const [settings, setSettings] = useState<SettingsInfo>({ url1: '', url2: '', url2Configured: false, url3: '', url3Configured: false });
+  const [renderStats, setRenderStats] = useState<RenderStats[]>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'error' | 'lexion' | 'fallback'>('all');
   const [error, setError] = useState<string | null>(null);
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
@@ -169,7 +181,7 @@ export default function LmStudioPanel() {
         supabase
           .from('settings')
           .select('key, text_value')
-          .in('key', ['ANSWER_SERVICE_URL', 'ANSWER_SERVICE_URL_2']),
+          .in('key', ['ANSWER_SERVICE_URL', 'ANSWER_SERVICE_URL_2', 'ANSWER_SERVICE_URL_3']),
       ]);
 
       if (jobsRes.error) throw jobsRes.error;
@@ -177,13 +189,32 @@ export default function LmStudioPanel() {
       const sMap: Record<string, string> = {};
       (settingsRes.data || []).forEach((r: any) => { if (r.text_value) sMap[r.key] = r.text_value; });
       const url2 = (sMap['ANSWER_SERVICE_URL_2'] || '').trim();
+      const url3 = (sMap['ANSWER_SERVICE_URL_3'] || '').trim();
       setSettings({
         url1: sMap['ANSWER_SERVICE_URL'] || '',
         url2,
         url2Configured: !!url2,
+        url3,
+        url3Configured: !!url3,
       });
 
       setJobs((jobsRes.data || []) as JobRow[]);
+
+      try {
+        const statsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/render-stats`;
+        const statsRes = await fetch(statsUrl, {
+          headers: {
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          if (statsData?.backends && Array.isArray(statsData.backends)) {
+            setRenderStats(statsData.backends as RenderStats[]);
+          }
+        }
+      } catch { /* render-stats xatosi panelga ta'sir qilmasin */ }
     } catch (e: any) {
       setError(e.message || 'Ma\'lumot yuklanmadi');
     } finally {
@@ -205,7 +236,7 @@ export default function LmStudioPanel() {
 
   // ── Statistikalar ──
   const stats: BackendStats[] = (() => {
-    const backends = [1, 2];
+    const backends = [1, 2, 3];
     return backends.map(b => {
       const bJobs = jobs.filter(j => (j.backend ?? 1) === b);
       const done = bJobs.filter(j => j.status === 'done');
@@ -218,7 +249,7 @@ export default function LmStudioPanel() {
         .filter(d => d > 0 && d < 3600);
       const avgDurationSec = durations.length > 0 ? Math.round(durations.reduce((a, b2) => a + b2, 0) / durations.length) : null;
       return { backend: b, total: bJobs.length, done: done.length, error: errored.length, queued: queued.length, running: running.length, avgDurationSec };
-    }).filter(s => settings.url2Configured || s.backend === 1);
+    }).filter(s => (s.backend === 1) || (s.backend === 2 && settings.url2Configured) || (s.backend === 3 && settings.url3Configured));
   })();
 
   const totalActive = jobs.filter(j => j.status === 'queued' || j.status === 'running').length;
@@ -328,18 +359,26 @@ export default function LmStudioPanel() {
       </div>
 
       {/* ── Backend kartalari ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {stats.map(s => (
-          <Card key={s.backend} className={`border-2 ${s.backend === 2 ? 'border-cyan-300' : 'border-blue-300'} shadow-md`}>
+      <div className={`grid gap-4 ${stats.length >= 3 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
+        {stats.map(s => {
+          const rs = renderStats.find(r => r.backend === s.backend);
+          const isBackend3 = s.backend === 3;
+          const borderColor = isBackend3 ? 'border-emerald-300' : s.backend === 2 ? 'border-cyan-300' : 'border-blue-300';
+          const iconBg = isBackend3 ? 'bg-emerald-100 text-emerald-700' : s.backend === 2 ? 'bg-cyan-100 text-cyan-700' : 'bg-blue-100 text-blue-700';
+          return (
+          <Card key={s.backend} className={`border-2 ${borderColor} shadow-md`}>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className={`p-2 rounded-lg ${s.backend === 2 ? 'bg-cyan-100 text-cyan-700' : 'bg-blue-100 text-blue-700'}`}>
+                  <div className={`p-2 rounded-lg ${iconBg}`}>
                     <Server className="h-5 w-5" />
                   </div>
                   {backendLabel(s.backend)}
                 </CardTitle>
                 {s.backend === 2 && !settings.url2Configured && (
+                  <span className="text-xs text-gray-400 font-medium">Sozlanmagan</span>
+                )}
+                {s.backend === 3 && !settings.url3Configured && (
                   <span className="text-xs text-gray-400 font-medium">Sozlanmagan</span>
                 )}
               </div>
@@ -363,6 +402,32 @@ export default function LmStudioPanel() {
                   <p className="text-[10px] text-yellow-600 font-bold uppercase">Faol</p>
                 </div>
               </div>
+              {/* Render /api/stats ma'lumotlari */}
+              {rs && rs.status === 'ok' && rs.stats && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {typeof rs.stats.queue_size === 'number' && (
+                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                      Navbat: {rs.stats.queue_size as number}
+                    </span>
+                  )}
+                  {typeof rs.stats.active_profiles === 'number' && (
+                    <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
+                      Aktiv profil: {rs.stats.active_profiles as number}
+                    </span>
+                  )}
+                  {typeof rs.stats.accounts === 'number' && (
+                    <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full font-medium">
+                      Akkauntlar: {rs.stats.accounts as number}
+                    </span>
+                  )}
+                </div>
+              )}
+              {rs && rs.status === 'unavailable' && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <XCircle className="h-3.5 w-3.5" />
+                  <span>Ulanmagan / javob yo'q{rs.http_status ? ` (${rs.http_status})` : ''}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500 flex items-center gap-1">
                   <Clock className="h-4 w-4" />
@@ -380,7 +445,8 @@ export default function LmStudioPanel() {
               )}
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Backend konfiguratsiya ── */}
@@ -402,9 +468,15 @@ export default function LmStudioPanel() {
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">Render #3 (yangi):</span>
+            <span className={`font-mono text-xs px-2 py-0.5 rounded ${settings.url3Configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+              {settings.url3Configured ? 'faol' : 'sozlanmagan'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500">Yuklamani taqsimlash:</span>
-            <span className={`font-mono text-xs px-2 py-0.5 rounded ${settings.url2Configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-              {settings.url2Configured ? 'ikki backend' : 'faqat #1'}
+            <span className={`font-mono text-xs px-2 py-0.5 rounded ${(settings.url2Configured || settings.url3Configured) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+              {[settings.url1 && 1, settings.url2Configured && 2, settings.url3Configured && 3].filter(Boolean).length} ta backend
             </span>
           </div>
         </CardContent>

@@ -1,4 +1,4 @@
-// Lexion phase polling support
+// Lexion phase polling support — backend 3 failover qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -32,14 +32,15 @@ interface BackendConfig {
   url: string;
   key: string;
   url2: string;
+  url3: string;
 }
 
 async function getAnswerServiceConfig(): Promise<BackendConfig> {
   const { data, error } = await supabaseAdmin
     .from("settings")
     .select("key, text_value")
-    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY", "ANSWER_SERVICE_URL_2"]);
-  if (error || !data) return { url: "", key: "", url2: "" };
+    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY", "ANSWER_SERVICE_URL_2", "ANSWER_SERVICE_URL_3"]);
+  if (error || !data) return { url: "", key: "", url2: "", url3: "" };
   const map: Record<string, string> = {};
   for (const row of data) {
     if (row.text_value) map[row.key] = row.text_value;
@@ -48,12 +49,21 @@ async function getAnswerServiceConfig(): Promise<BackendConfig> {
     url: map["ANSWER_SERVICE_URL"] || "",
     key: map["ANSWER_SERVICE_KEY"] || "",
     url2: (map["ANSWER_SERVICE_URL_2"] || "").trim(),
+    url3: (map["ANSWER_SERVICE_URL_3"] || "").trim(),
   };
 }
 
 function getBackendUrl(cfg: BackendConfig, backend: number): string {
-  if (backend === 2 && cfg.url2) return cfg.url2;
+  if (backend === 2) return cfg.url2;
+  if (backend === 3) return cfg.url3;
   return cfg.url;
+}
+
+function getAvailableBackends(cfg: BackendConfig): number[] {
+  return [cfg.url, cfg.url2, cfg.url3].reduce<number[]>((result, url, index) => {
+    if (url) result.push(index + 1);
+    return result;
+  }, []);
 }
 
 async function getLexionConfig(): Promise<{ url: string; key: string }> {
@@ -156,33 +166,77 @@ function isServerError(status: number): boolean {
 const ACTIVE_STATUSES = ["queued", "running"];
 const STALE_MS = 10 * 60 * 1000;
 
-async function pickBackend(cfg: BackendConfig): Promise<number> {
-  if (!cfg.url2) return 1;
+async function getBackendLoads(cfg: BackendConfig): Promise<{ available: number[]; counts: Map<number, number>; lastBackend: number }> {
+  const available = getAvailableBackends(cfg);
+  const counts = new Map(available.map((backend) => [backend, 0]));
+  let lastBackend = 1;
+  if (available.length <= 1) return { available, counts, lastBackend };
 
   const cutoff = new Date(Date.now() - STALE_MS).toISOString();
-
   const { data, error } = await supabaseAdmin
     .from("case_answer_jobs")
     .select("backend, created_at")
     .in("status", ACTIVE_STATUSES)
     .gte("created_at", cutoff);
 
-  if (error || !data) return 1;
-
-  let count1 = 0;
-  let count2 = 0;
-  let lastBackend = 1;
-
-  for (const row of data) {
-    const b = row.backend ?? 1;
-    if (b === 2) count2++;
-    else count1++;
-    lastBackend = b;
+  if (!error && data) {
+    for (const row of data) {
+      const backend = row.backend ?? 1;
+      if (counts.has(backend)) counts.set(backend, (counts.get(backend) ?? 0) + 1);
+      else counts.set(1, (counts.get(1) ?? 0) + 1);
+      lastBackend = backend;
+    }
   }
 
-  if (count1 < count2) return 1;
-  if (count2 < count1) return 2;
-  return lastBackend === 1 ? 2 : 1;
+  return { available, counts, lastBackend };
+}
+
+function nextBackendInSet(backends: number[], lastBackend: number, candidates: Set<number>): number {
+  const lastIndex = backends.indexOf(lastBackend);
+  const start = lastIndex >= 0 ? lastIndex : 0;
+  for (let offset = 1; offset <= backends.length; offset++) {
+    const backend = backends[(start + offset) % backends.length];
+    if (candidates.has(backend)) return backend;
+  }
+  return backends[0];
+}
+
+async function pickBackend(cfg: BackendConfig): Promise<number> {
+  const { available, counts, lastBackend } = await getBackendLoads(cfg);
+  if (available.length === 0) return 1;
+  const minimum = Math.min(...available.map((backend) => counts.get(backend) ?? 0));
+  const candidates = new Set(available.filter((backend) => (counts.get(backend) ?? 0) === minimum));
+  return nextBackendInSet(available, lastBackend, candidates);
+}
+
+async function getFailoverBackends(cfg: BackendConfig, selected: number): Promise<number[]> {
+  const { available, counts } = await getBackendLoads(cfg);
+  const remaining = available.filter((backend) => backend !== selected);
+  const selectedIndex = available.indexOf(selected);
+  return remaining.sort((a, b) => {
+    const loadDifference = (counts.get(a) ?? 0) - (counts.get(b) ?? 0);
+    if (loadDifference !== 0) return loadDifference;
+    const distance = (backend: number) => (available.indexOf(backend) - selectedIndex + available.length) % available.length;
+    return distance(a) - distance(b);
+  });
+}
+
+async function sendWithFailover(
+  backend: number,
+  cfg: BackendConfig,
+  serviceBody: Record<string, unknown>
+): Promise<{ result: ServiceResult; backend: number }> {
+  let result = await sendToBackend(backend, cfg, serviceBody);
+  let resultBackend = backend;
+  if (!result.serviceJobId && isServerError(result.errorStatus ?? 0)) {
+    for (const fallbackBackend of await getFailoverBackends(cfg, backend)) {
+      console.log(`[case-answer-status] backend=${resultBackend} yiqildi, failover -> backend=${fallbackBackend}`);
+      result = await sendToBackend(fallbackBackend, cfg, serviceBody);
+      resultBackend = fallbackBackend;
+      if (result.serviceJobId || !isServerError(result.errorStatus ?? 0)) break;
+    }
+  }
+  return { result, backend: resultBackend };
 }
 
 Deno.serve(async (req: Request) => {
@@ -405,13 +459,14 @@ Deno.serve(async (req: Request) => {
           };
 
           const backend = await pickBackend(cfg);
-          const result = await sendToBackend(backend, cfg, serviceBody);
+          const dispatched = await sendWithFailover(backend, cfg, serviceBody);
+          const result = dispatched.result;
 
           if (result.serviceJobId) {
             await supabaseAdmin
               .from("case_answer_jobs")
               .update({
-                backend,
+                backend: dispatched.backend,
                 service_job_id: result.serviceJobId,
                 status: "queued",
               })
@@ -748,13 +803,14 @@ async function startFallbackGeneral(
   };
 
   const backend = await pickBackend(cfg);
-  const result = await sendToBackend(backend, cfg, serviceBody);
+  const dispatched = await sendWithFailover(backend, cfg, serviceBody);
+  const result = dispatched.result;
 
   if (result.serviceJobId) {
     await supabaseAdmin
       .from("case_answer_jobs")
       .update({
-        backend,
+        backend: dispatched.backend,
         service_job_id: result.serviceJobId,
         status: "queued",
         lexion_fallback: true,

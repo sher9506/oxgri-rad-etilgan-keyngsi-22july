@@ -83,14 +83,15 @@ interface BackendConfig {
   url: string;
   key: string;
   url2: string;
+  url3: string;
 }
 
 async function getAnswerServiceConfig(): Promise<BackendConfig> {
   const { data, error } = await supabaseAdmin
     .from("settings")
     .select("key, text_value")
-    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY", "ANSWER_SERVICE_URL_2"]);
-  if (error || !data) return { url: "", key: "", url2: "" };
+    .in("key", ["ANSWER_SERVICE_URL", "ANSWER_SERVICE_KEY", "ANSWER_SERVICE_URL_2", "ANSWER_SERVICE_URL_3"]);
+  if (error || !data) return { url: "", key: "", url2: "", url3: "" };
   const map: Record<string, string> = {};
   for (const row of data) {
     if (row.text_value) map[row.key] = row.text_value;
@@ -99,44 +100,79 @@ async function getAnswerServiceConfig(): Promise<BackendConfig> {
     url: map["ANSWER_SERVICE_URL"] || "",
     key: map["ANSWER_SERVICE_KEY"] || "",
     url2: (map["ANSWER_SERVICE_URL_2"] || "").trim(),
+    url3: (map["ANSWER_SERVICE_URL_3"] || "").trim(),
   };
 }
 
 function getBackendUrl(cfg: BackendConfig, backend: number): string {
-  if (backend === 2 && cfg.url2) return cfg.url2;
+  if (backend === 2) return cfg.url2;
+  if (backend === 3) return cfg.url3;
   return cfg.url;
+}
+
+function getAvailableBackends(cfg: BackendConfig): number[] {
+  return [cfg.url, cfg.url2, cfg.url3].reduce<number[]>((result, url, index) => {
+    if (url) result.push(index + 1);
+    return result;
+  }, []);
 }
 
 const ACTIVE_STATUSES = ["queued", "running"];
 const STALE_MS = 10 * 60 * 1000;
 
-async function pickBackend(cfg: BackendConfig): Promise<number> {
-  if (!cfg.url2) return 1;
+async function getBackendLoads(cfg: BackendConfig): Promise<{ available: number[]; counts: Map<number, number>; lastBackend: number }> {
+  const available = getAvailableBackends(cfg);
+  const counts = new Map(available.map((backend) => [backend, 0]));
+  let lastBackend = 1;
+  if (available.length <= 1) return { available, counts, lastBackend };
 
   const cutoff = new Date(Date.now() - STALE_MS).toISOString();
-
   const { data, error } = await supabaseAdmin
     .from("case_answer_jobs")
     .select("backend, created_at")
     .in("status", ACTIVE_STATUSES)
     .gte("created_at", cutoff);
 
-  if (error || !data) return 1;
-
-  let count1 = 0;
-  let count2 = 0;
-  let lastBackend = 1;
-
-  for (const row of data) {
-    const b = row.backend ?? 1;
-    if (b === 2) count2++;
-    else count1++;
-    lastBackend = b;
+  if (!error && data) {
+    for (const row of data) {
+      const backend = row.backend ?? 1;
+      if (counts.has(backend)) counts.set(backend, (counts.get(backend) ?? 0) + 1);
+      else counts.set(1, (counts.get(1) ?? 0) + 1);
+      lastBackend = backend;
+    }
   }
 
-  if (count1 < count2) return 1;
-  if (count2 < count1) return 2;
-  return lastBackend === 1 ? 2 : 1;
+  return { available, counts, lastBackend };
+}
+
+function nextBackendInSet(backends: number[], lastBackend: number, candidates: Set<number>): number {
+  const lastIndex = backends.indexOf(lastBackend);
+  const start = lastIndex >= 0 ? lastIndex : 0;
+  for (let offset = 1; offset <= backends.length; offset++) {
+    const backend = backends[(start + offset) % backends.length];
+    if (candidates.has(backend)) return backend;
+  }
+  return backends[0];
+}
+
+async function pickBackend(cfg: BackendConfig): Promise<number> {
+  const { available, counts, lastBackend } = await getBackendLoads(cfg);
+  if (available.length === 0) return 1;
+  const minimum = Math.min(...available.map((backend) => counts.get(backend) ?? 0));
+  const candidates = new Set(available.filter((backend) => (counts.get(backend) ?? 0) === minimum));
+  return nextBackendInSet(available, lastBackend, candidates);
+}
+
+async function getFailoverBackends(cfg: BackendConfig, selected: number): Promise<number[]> {
+  const { available, counts } = await getBackendLoads(cfg);
+  const remaining = available.filter((backend) => backend !== selected);
+  const selectedIndex = available.indexOf(selected);
+  return remaining.sort((a, b) => {
+    const loadDifference = (counts.get(a) ?? 0) - (counts.get(b) ?? 0);
+    if (loadDifference !== 0) return loadDifference;
+    const distance = (backend: number) => (available.indexOf(backend) - selectedIndex + available.length) % available.length;
+    return distance(a) - distance(b);
+  });
 }
 
 async function createSignedUrl(path: string): Promise<string | null> {
@@ -342,6 +378,30 @@ Deno.serve(async (req: Request) => {
       }
 
       const jobId = jobRow.id;
+
+      // ── Prewarm: faqat javob Render'laridan bittasini oldindan uyg'otish ──
+      try {
+        const preCfg = await getAnswerServiceConfig();
+        const preBackend = await pickBackend(preCfg);
+        const preUrl = getBackendUrl(preCfg, preBackend);
+        if (preUrl) {
+          const preStart = Date.now();
+          const prewarmPromise = fetch(`${preUrl}/ping`, {
+            signal: AbortSignal.timeout(75000),
+          }).then((res) => {
+            console.log(`[prewarm] job=${jobId} backend=${preBackend} status=${res.status} ms=${Date.now() - preStart}`);
+          }).catch(() => {
+            console.log(`[prewarm] job=${jobId} backend=${preBackend} status=error ms=${Date.now() - preStart}`);
+          });
+          const runtime = (globalThis as Record<string, unknown>).EdgeRuntime as
+            { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
+          if (runtime?.waitUntil) runtime.waitUntil(prewarmPromise);
+          else void prewarmPromise;
+        }
+      } catch {
+        console.log(`[prewarm] job=${jobId} backend=0 status=error ms=0`);
+      }
+
       const lexionBody: Record<string, unknown> = {
         title: "Lexion",
         kazus_text,
@@ -359,32 +419,6 @@ Deno.serve(async (req: Request) => {
             status: "queued",
           })
           .eq("id", jobId);
-
-        // ── Prewarm: 2-bosqichda ishlatiladigan backend'ni oldindan uyg'otish ──
-        try {
-          const preCfg = await getAnswerServiceConfig();
-          if (preCfg.url) {
-            const preBackend = await pickBackend(preCfg);
-            const preUrl = getBackendUrl(preCfg, preBackend);
-            const preStart = Date.now();
-            const prewarmPromise = fetch(`${preUrl}/ping`, {
-              signal: AbortSignal.timeout(75000),
-            }).then((res) => {
-              console.log(`[prewarm] job=${jobId} backend=${preBackend} status=${res.status} ms=${Date.now() - preStart}`);
-            }).catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              console.log(`[prewarm] job=${jobId} backend=${preBackend} status=error ms=${Date.now() - preStart} err=${msg.slice(0, 100)}`);
-            });
-            const er = (globalThis as Record<string, unknown>).EdgeRuntime as
-              { waitUntil?: (p: Promise<unknown>) => void } | undefined;
-            if (er?.waitUntil) {
-              er.waitUntil(prewarmPromise);
-            }
-          }
-        } catch (preErr) {
-          const msg = preErr instanceof Error ? preErr.message : String(preErr);
-          console.log(`[prewarm] job=${jobId} skipped: ${msg.slice(0, 100)}`);
-        }
 
         return new Response(
           JSON.stringify({ id: jobId }),
@@ -416,14 +450,22 @@ Deno.serve(async (req: Request) => {
         sources: [],
       };
 
-      const backend = await pickBackend(cfg);
-      const fallbackResult = await sendToBackend(backend, cfg, fallbackBody);
+      const fbBackend = await pickBackend(cfg);
+      let fallbackResult = await sendToBackend(fbBackend, cfg, fallbackBody);
+      let fbResultBackend = fbBackend;
+      if (!fallbackResult.serviceJobId && isServerError(fallbackResult.errorStatus ?? 0)) {
+        for (const foBackend of await getFailoverBackends(cfg, fbBackend)) {
+          fallbackResult = await sendToBackend(foBackend, cfg, fallbackBody);
+          fbResultBackend = foBackend;
+          if (fallbackResult.serviceJobId || !isServerError(fallbackResult.errorStatus ?? 0)) break;
+        }
+      }
 
       if (fallbackResult.serviceJobId) {
         await supabaseAdmin
           .from("case_answer_jobs")
           .update({
-            backend,
+            backend: fbResultBackend,
             service_job_id: fallbackResult.serviceJobId,
             status: "queued",
             lexion_fallback: true,
@@ -665,24 +707,23 @@ Deno.serve(async (req: Request) => {
       serviceBody.library_title = (library_title || validSources[0]?.title || "Manba").slice(0, 80);
     }
 
-    // ── Birinchi urinish ──
+    // ── Birinchi urinish va 5xx/tarmoq xatosida failover ──
     let result = await sendToBackend(backend, cfg, serviceBody);
-
-    // ── Failover: faqat 5xx / tarmoq xatosi bo'lsa, ikkinchi backend'ga ──
-    if (!result.serviceJobId && isServerError(result.errorStatus ?? 0) && cfg.url2) {
-      const fallbackBackend = backend === 1 ? 2 : 1;
-      console.log(`[case-answer-submit] backend=${backend} yiqildi, failover -> backend=${fallbackBackend}, external_id=${jobId}`);
-      result = await sendToBackend(fallbackBackend, cfg, serviceBody);
-      if (result.serviceJobId) {
-        await supabaseAdmin
-          .from("case_answer_jobs")
-          .update({ backend: fallbackBackend, service_job_id: result.serviceJobId, status: "queued" })
-          .eq("id", jobId);
+    let resultBackend = backend;
+    if (!result.serviceJobId && isServerError(result.errorStatus ?? 0)) {
+      for (const fallbackBackend of await getFailoverBackends(cfg, backend)) {
+        console.log(`[case-answer-submit] backend=${resultBackend} yiqildi, failover -> backend=${fallbackBackend}, external_id=${jobId}`);
+        const fallbackResult = await sendToBackend(fallbackBackend, cfg, serviceBody);
+        result = fallbackResult;
+        resultBackend = fallbackBackend;
+        if (result.serviceJobId || !isServerError(result.errorStatus ?? 0)) break;
       }
-    } else if (result.serviceJobId) {
+    }
+
+    if (result.serviceJobId) {
       await supabaseAdmin
         .from("case_answer_jobs")
-        .update({ backend, service_job_id: result.serviceJobId, status: "queued" })
+        .update({ backend: resultBackend, service_job_id: result.serviceJobId, status: "queued" })
         .eq("id", jobId);
     }
 
