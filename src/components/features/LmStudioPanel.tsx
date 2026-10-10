@@ -25,6 +25,8 @@ interface JobRow {
   lexion_phase: string | null;
   lexion_fallback_reason: string | null;
   fallback_count: number | null;
+  job_kind: string | null;
+  chat_kazus_text: string | null;
   moot_court_cases?: { sarlavha: string } | null;
 }
 
@@ -165,7 +167,7 @@ export default function LmStudioPanel() {
   const [refreshing, setRefreshing] = useState(false);
   const [settings, setSettings] = useState<SettingsInfo>({ url1: '', url2: '', url2Configured: false, url3: '', url3Configured: false });
   const [renderStats, setRenderStats] = useState<RenderStats[]>([]);
-  const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'error' | 'lexion' | 'fallback'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'error' | 'lexion' | 'fallback' | 'chat'>('all');
   const [error, setError] = useState<string | null>(null);
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
 
@@ -175,7 +177,7 @@ export default function LmStudioPanel() {
       const [jobsRes, settingsRes] = await Promise.all([
         supabase
           .from('case_answer_jobs')
-          .select('id, case_id, teacher_id, status, backend, service_job_id, source_count, created_at, finished_at, error, answer, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, moot_court_cases(case_id:sarlavha)')
+          .select('id, case_id, teacher_id, status, backend, service_job_id, source_count, created_at, finished_at, error, answer, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, job_kind, chat_kazus_text, moot_court_cases(case_id:sarlavha)')
           .order('created_at', { ascending: false })
           .limit(100),
         supabase
@@ -255,6 +257,7 @@ export default function LmStudioPanel() {
   const totalActive = jobs.filter(j => j.status === 'queued' || j.status === 'running').length;
   const totalDone = jobs.filter(j => j.status === 'done').length;
   const totalError = jobs.filter(j => j.status === 'error').length;
+  const totalChat = jobs.filter(j => j.job_kind === 'chat').length;
   const totalLexion = jobs.filter(j => j.answer_mode === 'lexion').length;
   const totalFallback = jobs.filter(j => j.lexion_fallback).length;
 
@@ -265,6 +268,7 @@ export default function LmStudioPanel() {
       case 'error': return jobs.filter(j => j.status === 'error');
       case 'lexion': return jobs.filter(j => j.answer_mode === 'lexion' || j.lexion_fallback);
       case 'fallback': return jobs.filter(j => j.lexion_fallback);
+      case 'chat': return jobs.filter(j => j.job_kind === 'chat');
       default: return jobs;
     }
   })();
@@ -489,6 +493,7 @@ export default function LmStudioPanel() {
           { key: 'active', label: 'Faol', count: totalActive },
           { key: 'done', label: 'Tayyor', count: totalDone },
           { key: 'error', label: 'Xato', count: totalError },
+          { key: 'chat', label: 'Chat', count: totalChat },
           { key: 'lexion', label: 'Lexion', count: totalLexion },
           { key: 'fallback', label: 'Fallback', count: totalFallback },
         ] as const).map(f => (
@@ -540,6 +545,11 @@ export default function LmStudioPanel() {
                     <div className="flex-1 min-w-0 space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         {statusBadge(job.status)}
+                        {job.job_kind === 'chat' && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border text-cyan-700 bg-cyan-50 border-cyan-300">
+                            Chat
+                          </span>
+                        )}
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${backendColor(job.backend)}`}>
                           {backendLabel(job.backend)}
                         </span>
@@ -568,6 +578,9 @@ export default function LmStudioPanel() {
 
                       {sarlavha && (
                         <p className="text-xs font-medium text-gray-700 truncate">{sarlavha}</p>
+                      )}
+                      {job.job_kind === 'chat' && job.chat_kazus_text && !sarlavha && (
+                        <p className="text-xs font-medium text-gray-600 truncate">{job.chat_kazus_text.slice(0, 80)}</p>
                       )}
 
                       {/* Fallback sababi */}

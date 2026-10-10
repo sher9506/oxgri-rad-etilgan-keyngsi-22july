@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, AlertCircle, Scale, RotateCcw, Copy, Check, Trash2, ExternalLink, Sparkles } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Scale, RotateCcw, Copy, Check, Trash2, ExternalLink, Sparkles, FileText } from 'lucide-react';
 import { useNexusAiChat } from '@/hooks/useNexusAiChat';
 import { AI_NAME, AI_TAGLINE, SAMPLE_QUESTIONS, NEXUS_NOTES } from '@/constants/nexus';
 
@@ -18,12 +18,36 @@ function formatResetTime(nextResetAt: string | null): string | null {
   return `${mins} daqiqadan keyin (${timeStr})`;
 }
 
+function normalizeUrl(url: string): string {
+  if (url.startsWith('http://')) return url.replace(/^http:\/\//, 'https://');
+  if (!url.startsWith('https://')) return `https://${url}`;
+  return url;
+}
+
+function formatElapsed(created_at: string | undefined, server_now: string | undefined): string {
+  if (!created_at || !server_now) return '0:00';
+  const start = new Date(created_at).getTime();
+  const now = new Date(server_now).getTime();
+  const diff = Math.max(0, Math.floor((now - start) / 1000));
+  const min = Math.floor(diff / 60);
+  const sec = diff % 60;
+  return `${min}:${sec.toString().padStart(2, '0')}`;
+}
+
 export default function NexusAI({ userId }: { userId: string }) {
   const { messages, isProcessing, quota, sendMessage, retry, clearChat, minInput, maxInput } = useNexusAiChat(userId);
   const [input, setInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const [elapsedTick, setElapsedTick] = useState(0);
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    const t = setInterval(() => setElapsedTick(t2 => t2 + 1), 1000);
+    return () => clearInterval(t);
+  }, [isProcessing]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -172,13 +196,47 @@ export default function NexusAI({ userId }: { userId: string }) {
                 </div>
               )}
               {msg.role === 'assistant' && msg.status === 'running' && (
-                <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-muted)' }}>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>
-                    {msg.lexionPhase === 'lexion_searching'
-                      ? 'Qonun hujjatlari qidirilmoqda...'
-                      : 'Javob tayyorlanmoqda...'}
-                  </span>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-muted)' }}>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>
+                      {msg.lexionPhase === 'lexion_searching'
+                        ? 'Qonunchilik qidirilmoqda...'
+                        : msg.lexionPhase === 'answering'
+                          ? 'Javob tayyorlanmoqda...'
+                          : 'Javob tayyorlanmoqda...'}
+                    </span>
+                    {msg.jobCreatedAt && (
+                      <span className="text-xs font-mono ml-1" style={{ color: 'var(--ink-muted)' }}>
+                        {formatElapsed(msg.jobCreatedAt, msg.serverNow || new Date().toISOString())}
+                      </span>
+                    )}
+                  </div>
+                  {msg.lexionPhase === 'answering' && msg.lexionUrls && msg.lexionUrls.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold" style={{ color: 'var(--cobalt-2)' }}>
+                        Tegishli hujjatlar topildi ({msg.lexionUrls.length} ta)
+                      </p>
+                      <div className="flex flex-col gap-1">
+                        {msg.lexionUrls.slice(0, 8).map((url, i) => (
+                          <a
+                            key={url}
+                            href={normalizeUrl(url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-80"
+                            style={{ color: 'var(--cobalt-2)' }}
+                          >
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{normalizeUrl(url)}</span>
+                          </a>
+                        ))}
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                        Shu qonunchilik asosida tahlil qilinmoqda...
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               {msg.role === 'assistant' && msg.status === 'timeout' && (
@@ -221,6 +279,30 @@ export default function NexusAI({ userId }: { userId: string }) {
                       (Umumiy rejimda javob berildi)
                     </p>
                   )}
+                  {/* Foydalanilgan manbalar */}
+                  {msg.lexionUrls && msg.lexionUrls.length > 0 && (
+                    <div className="mt-3 pt-2 border-t" style={{ borderColor: 'var(--line)' }}>
+                      <p className="text-xs font-bold mb-1.5 flex items-center gap-1" style={{ color: 'var(--ink-muted)' }}>
+                        <FileText className="h-3 w-3" />
+                        Foydalanilgan manbalar ({msg.lexionUrls.length})
+                      </p>
+                      <div className="flex flex-col gap-1">
+                        {msg.lexionUrls.slice(0, 10).map((url, i) => (
+                          <a
+                            key={url}
+                            href={normalizeUrl(url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-80"
+                            style={{ color: 'var(--cobalt-2)' }}
+                          >
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{normalizeUrl(url)}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {/* Action row */}
                   <div className="flex items-center gap-3 mt-2 pt-2 border-t" style={{ borderColor: 'var(--line)' }}>
                     <button
@@ -232,25 +314,6 @@ export default function NexusAI({ userId }: { userId: string }) {
                       {copiedId === msg.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                       {copiedId === msg.id ? 'Nusxalandi' : 'Nusxalash'}
                     </button>
-                    {msg.lexionUrls && msg.lexionUrls.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Manbalar:</span>
-                        {msg.lexionUrls.slice(0, 5).map((url, i) => (
-                          <a
-                            key={url}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-0.5 text-xs font-semibold transition-colors hover:opacity-80"
-                            style={{ color: 'var(--cobalt-2)' }}
-                            aria-label={`Manba ${i + 1}`}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            {i + 1}
-                          </a>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               )}

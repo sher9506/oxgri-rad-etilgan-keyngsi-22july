@@ -15,6 +15,8 @@ export interface ChatMessage {
   lexionFallback?: boolean;
   lexionUrls?: string[];
   createdAt: number;
+  jobCreatedAt?: string;
+  serverNow?: string;
 }
 
 export interface QuotaInfo {
@@ -194,7 +196,9 @@ export function useNexusAiChat(userId: string | undefined) {
                   error: undefined,
                   lexionPhase: data.lexion_phase || null,
                   lexionFallback: data.lexion_fallback || false,
-                  lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : undefined,
+                  lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : undefined,
+                  jobCreatedAt: data.created_at || m.jobCreatedAt,
+                  serverNow: data.server_now,
                 }
               : m
           ));
@@ -203,13 +207,21 @@ export function useNexusAiChat(userId: string | undefined) {
           setIsProcessing(false);
           setMessages(prev => prev.map(m =>
             m.jobId === jobId
-              ? { ...m, status: 'error', error: data.error || 'Xatolik', content: data.error || 'Xatolik yuz berdi' }
+              ? { ...m, status: 'error', error: data.error || 'Xatolik', content: data.error || 'Xatolik yuz berdi', lexionPhase: data.lexion_phase ?? null }
               : m
           ));
         } else {
           setMessages(prev => prev.map(m =>
             m.jobId === jobId
-              ? { ...m, status: data.status as ChatJobStatus, lexionPhase: data.lexion_phase ?? null, lexionFallback: data.lexion_fallback ?? false }
+              ? {
+                  ...m,
+                  status: data.status as ChatJobStatus,
+                  lexionPhase: data.lexion_phase ?? data.phase ?? null,
+                  lexionFallback: data.lexion_fallback ?? false,
+                  lexionUrls: Array.isArray(data.urls) ? data.urls : Array.isArray(data.lexion_urls) ? data.lexion_urls : m.lexionUrls,
+                  jobCreatedAt: data.created_at || m.jobCreatedAt,
+                  serverNow: data.server_now,
+                }
               : m
           ));
         }

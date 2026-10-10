@@ -166,6 +166,16 @@ function isServerError(status: number): boolean {
   return status === 0 || (status >= 500);
 }
 
+function isQuotaError(status: number, errorMsg?: string): boolean {
+  if (status === 429) return true;
+  if (errorMsg && /quota|rate.?limit|resource.?exhausted|too.?many.?requests/i.test(errorMsg)) return true;
+  return false;
+}
+
+function isRetryableSendError(status: number, errorMsg?: string): boolean {
+  return isServerError(status) || isQuotaError(status, errorMsg);
+}
+
 const ACTIVE_STATUSES = ["queued", "running"];
 const STALE_MS = 10 * 60 * 1000;
 
@@ -231,12 +241,12 @@ async function sendWithFailover(
 ): Promise<{ result: ServiceResult; backend: number }> {
   let result = await sendToBackend(backend, cfg, serviceBody);
   let resultBackend = backend;
-  if (!result.serviceJobId && isServerError(result.errorStatus ?? 0)) {
+  if (!result.serviceJobId && isRetryableSendError(result.errorStatus ?? 0, result.errorMsg)) {
     for (const fallbackBackend of await getFailoverBackends(cfg, backend)) {
-      console.log(`[case-answer-status] backend=${resultBackend} yiqildi, failover -> backend=${fallbackBackend}`);
+      console.log(`[case-answer-status] backend=${resultBackend} yiqildi (${result.errorStatus}), failover -> backend=${fallbackBackend}`);
       result = await sendToBackend(fallbackBackend, cfg, serviceBody);
       resultBackend = fallbackBackend;
-      if (result.serviceJobId || !isServerError(result.errorStatus ?? 0)) break;
+      if (result.serviceJobId || !isRetryableSendError(result.errorStatus ?? 0, result.errorMsg)) break;
     }
   }
   return { result, backend: resultBackend };
@@ -361,7 +371,26 @@ Deno.serve(async (req: Request) => {
 
         if (!lexionRes.ok) {
           if (lexionRes.status === 404) {
-            // Lexion job yo'qolgan — fallback
+            const isChat = !job.case_id;
+            if (isChat) {
+              console.log(`[case-answer-status] Qidiruv 404, qayta urinish: job=${id}`);
+              const retry = await retryLexionSearch(id, job);
+              if (retry.retrySent) {
+                return new Response(
+                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "lexion_searching" }),
+                  { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
+              const errMsg = "Bu savol bo'yicha mos qonunchilik manbasi topilmadi. Savolni aniqroq yozib ko'ring.";
+              await supabaseAdmin
+                .from("case_answer_jobs")
+                .update({ status: "error", error: errMsg, lexion_phase: "error", lexion_fallback_reason: "lexion_job_404", finished_at: new Date().toISOString() })
+                .eq("id", id);
+              return new Response(
+                JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: "error" }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
             console.log(`[case-answer-status] Lexion job 404, Umumiy rejimga fallback: job=${id}`);
             const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_job_404");
             if (fallbackResult.ok) {
@@ -393,8 +422,28 @@ Deno.serve(async (req: Request) => {
           const lexionAnswer = typeof lexionData.answer === "string" ? lexionData.answer : "";
           const urls = parseLexionUrls(lexionAnswer);
 
-          // URL ro'yxati bo'sh — fallback
+          // URL ro'yxati bo'sh
           if (urls.length === 0) {
+            const isChat = !job.case_id;
+            if (isChat) {
+              console.log(`[case-answer-status] URL topilmadi, qayta urinish: job=${id}`);
+              const retry = await retryLexionSearch(id, job);
+              if (retry.retrySent) {
+                return new Response(
+                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "lexion_searching" }),
+                  { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
+              const errMsg = "Bu savol bo'yicha mos qonunchilik manbasi topilmadi. Savolni aniqroq yozib ko'ring.";
+              await supabaseAdmin
+                .from("case_answer_jobs")
+                .update({ status: "error", error: errMsg, lexion_phase: "error", lexion_fallback_reason: "lexion_url_topilmadi", finished_at: new Date().toISOString() })
+                .eq("id", id);
+              return new Response(
+                JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: "error" }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
             console.log(`[case-answer-status] Lexion URL ro'yxati bo'sh, Umumiy rejimga fallback: job=${id}`);
             const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_url_topilmadi");
             if (fallbackResult.ok) {
@@ -485,7 +534,19 @@ Deno.serve(async (req: Request) => {
             );
           }
 
-          // 2-bosqich yuborilmadi — fallback
+          // 2-bosqich yuborilmadi
+          const isChatSend = !job.case_id;
+          if (isChatSend) {
+            const errMsg = "Xizmat vaqtincha band, birozdan keyin qayta urinib ko'ring.";
+            await supabaseAdmin
+              .from("case_answer_jobs")
+              .update({ status: "error", error: errMsg, lexion_phase: "error", lexion_fallback_reason: "lexion_2_yuborilmadi", last_render_error: (dispatched.result.errorMsg || "").slice(0, 300), finished_at: new Date().toISOString() })
+              .eq("id", id);
+            return new Response(
+              JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: "error" }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
           console.log(`[case-answer-status] Lexion 2-bosqich yuborilmadi, Umumiy rejimga fallback: job=${id}`);
           const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_2_yuborilmadi");
           if (fallbackResult.ok) {
@@ -505,6 +566,26 @@ Deno.serve(async (req: Request) => {
         }
 
         if (lexionStatus === "error" || lexionStatus === "failed") {
+          const isChatErr = !job.case_id;
+          if (isChatErr) {
+            console.log(`[case-answer-status] Qidiruv xatosi, qayta urinish: job=${id}`);
+            const retry = await retryLexionSearch(id, job);
+            if (retry.retrySent) {
+              return new Response(
+                JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "lexion_searching" }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+            const errMsg = "Bu savol bo'yicha mos qonunchilik manbasi topilmadi. Savolni aniqroq yozib ko'ring.";
+            await supabaseAdmin
+              .from("case_answer_jobs")
+              .update({ status: "error", error: errMsg, lexion_phase: "error", lexion_fallback_reason: "lexion_1_xato", finished_at: new Date().toISOString() })
+              .eq("id", id);
+            return new Response(
+              JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: "error" }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
           console.log(`[case-answer-status] Lexion 1-bosqich xatosi, Umumiy rejimga fallback: job=${id}`);
           const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_1_xato");
           if (fallbackResult.ok) {
@@ -582,8 +663,28 @@ Deno.serve(async (req: Request) => {
         const errText = await serviceRes.text().catch(() => "");
         console.error("[case-answer-status] Tashqi xizmat xatosi:", serviceRes.status);
         if (serviceRes.status === 404) {
-          // Lexion 2-bosqichda 404 — bir marta fallback
+          // 2-bosqich 404
           if (job.answer_mode === 'lexion' && job.lexion_phase === 'answering' && !job.lexion_fallback) {
+            const isChat404 = !job.case_id;
+            if (isChat404) {
+              console.log(`[case-answer-status] 2-bosqich 404, boshqa Render'ga qayta yuborish: job=${id}`);
+              const redispatch = await redispatchChatWithSources(id, job);
+              if (redispatch.ok) {
+                return new Response(
+                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering" }),
+                  { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
+              const errMsg = "Xizmat vaqtincha band, birozdan keyin qayta urinib ko'ring.";
+              await supabaseAdmin
+                .from("case_answer_jobs")
+                .update({ status: "error", error: errMsg, lexion_phase: "error", lexion_fallback_reason: "lexion_2_404", last_render_error: (errText || "404").slice(0, 300), finished_at: new Date().toISOString() })
+                .eq("id", id);
+              return new Response(
+                JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: "error" }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
             console.log(`[case-answer-status] Lexion 2-bosqich 404, fallback: job=${id}`);
             const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_2_404");
             if (fallbackResult.ok) {
@@ -648,8 +749,28 @@ Deno.serve(async (req: Request) => {
             ? jobFiles.source_file_paths.length > 0
             : (typeof jobFiles?.source_file_paths === 'string' && JSON.parse(jobFiles.source_file_paths).length > 0);
 
-          // Lexion 2-bosqichda xato — bir marta fallback
+          // 2-bosqich xato
           if (job.answer_mode === 'lexion' && job.lexion_phase === 'answering' && !job.lexion_fallback) {
+            const isChatErr2 = !job.case_id;
+            if (isChatErr2) {
+              console.log(`[case-answer-status] 2-bosqich xato, boshqa Render'ga qayta yuborish: job=${id}`);
+              const redispatch = await redispatchChatWithSources(id, job);
+              if (redispatch.ok) {
+                return new Response(
+                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering" }),
+                  { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
+              const errMsg = "Xizmat vaqtincha band, birozdan keyin qayta urinib ko'ring.";
+              await supabaseAdmin
+                .from("case_answer_jobs")
+                .update({ status: "error", error: errMsg, lexion_phase: "error", lexion_fallback_reason: "lexion_2_xato", last_render_error: (rawErr || "").slice(0, 300), finished_at: new Date().toISOString() })
+                .eq("id", id);
+              return new Response(
+                JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: "error" }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
             console.log(`[case-answer-status] Lexion 2-bosqich xatosi, fallback: job=${id}`);
             const fallbackResult = await startFallbackGeneral(id, job, ustoz_id, "lexion_2_xato");
             if (fallbackResult.ok) {
@@ -775,6 +896,145 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+// ── Chat: Lexion 1-bosqichda qayta qidirish (max 1 marta) ──
+async function retryLexionSearch(
+  jobId: string,
+  job: { case_id: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null }
+): Promise<{ retrySent: boolean }> {
+  const retryCount = job.fallback_count ?? 0;
+  if (retryCount >= 1) {
+    console.log(`[case-answer-status] retryLexionSearch: urinish chegarasi (${retryCount}), job=${jobId}`);
+    return { retrySent: false };
+  }
+
+  const lexionCfg = await getLexionConfig();
+  if (!lexionCfg.url || !lexionCfg.key) {
+    return { retrySent: false };
+  }
+
+  const kazusText = job.chat_kazus_text || "";
+  const title = job.chat_title || "Lexion";
+
+  const lexionBody: Record<string, unknown> = {
+    title: "Lexion",
+    kazus_text: kazusText,
+    external_id: `${jobId}-lex2`,
+  };
+
+  console.log(`[case-answer-status] retryLexionSearch: qayta yuborilmoqda, job=${jobId}`);
+  const lexionResult = await sendToLexionSearch(lexionCfg, lexionBody);
+
+  if (lexionResult.serviceJobId) {
+    await supabaseAdmin
+      .from("case_answer_jobs")
+      .update({
+        lexion_job_id: lexionResult.serviceJobId,
+        lexion_phase: "lexion_searching",
+        fallback_count: retryCount + 1,
+        status: "queued",
+      })
+      .eq("id", jobId);
+    return { retrySent: true };
+  }
+
+  return { retrySent: false };
+}
+
+// ── Chat: 2-bosqichda boshqa Render'ga qayta yuborish (max 1 marta) ──
+async function redispatchChatWithSources(
+  jobId: string,
+  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null }
+): Promise<{ ok: boolean }> {
+  const retryCount = job.fallback_count ?? 0;
+  if (retryCount >= 1) {
+    console.log(`[case-answer-status] redispatchChat: urinish chegarasi (${retryCount}), job=${jobId}`);
+    return { ok: false };
+  }
+
+  const cfg = await getAnswerServiceConfig();
+  if (!cfg.url || !cfg.key) return { ok: false };
+
+  const urls = job.lexion_urls ? parseLexionUrls(job.lexion_urls) : [];
+  if (urls.length === 0) return { ok: false };
+
+  const serviceSources = urls.map(u => ({ title: "Lex.uz hujjati", url: u }));
+  const title = job.chat_title || "Lexion";
+  const kazusText = job.chat_kazus_text || "";
+
+  const serviceBody: Record<string, unknown> = {
+    title,
+    kazus_text: kazusText,
+    external_id: `${jobId}-ans2`,
+    instruction: CHAT_INSTRUCTION,
+    sources: serviceSources,
+  };
+
+  const oldBackend = job.backend ?? 1;
+  const failoverBackends = await getFailoverBackends(cfg, oldBackend);
+  if (failoverBackends.length === 0) return { ok: false };
+
+  const newBackend = failoverBackends[0];
+  console.log(`[case-answer-status] redispatchChat: backend=${oldBackend} -> backend=${newBackend}, job=${jobId}`);
+
+  const result = await sendToBackend(newBackend, cfg, serviceBody);
+  if (result.serviceJobId) {
+    await supabaseAdmin
+      .from("case_answer_jobs")
+      .update({
+        backend: newBackend,
+        service_job_id: result.serviceJobId,
+        status: "queued",
+        fallback_count: retryCount + 1,
+        last_render_error: null,
+      })
+      .eq("id", jobId);
+    return { ok: true };
+  }
+
+  if (result.errorMsg) {
+    await supabaseAdmin
+      .from("case_answer_jobs")
+      .update({ last_render_error: result.errorMsg.slice(0, 300) })
+      .eq("id", jobId);
+  }
+
+  return { ok: false };
+}
+
+// ── Lexion search uchun yuborish (retryLexionSearch ishlatadi) ──
+async function sendToLexionSearch(
+  lexionCfg: { url: string; key: string },
+  serviceBody: Record<string, unknown>
+): Promise<ServiceResult> {
+  try {
+    const serviceRes = await fetch(`${lexionCfg.url}/api/jobs`, {
+      method: "POST",
+      headers: {
+        "X-API-Key": lexionCfg.key,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(serviceBody),
+    });
+
+    if (!serviceRes.ok) {
+      const errText = await serviceRes.text().catch(() => "");
+      let errMsg = "Lexion xizmati javob bermadi";
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson?.error) errMsg = String(errJson.error).slice(0, 300);
+        else if (errJson?.detail) errMsg = String(errJson.detail).slice(0, 300);
+      } catch { if (errText) errMsg = errText.slice(0, 300); }
+      return { serviceJobId: null, errorStatus: serviceRes.status, errorMsg: errMsg };
+    }
+
+    const serviceData = await serviceRes.json();
+    return { serviceJobId: serviceData.job_id ?? null };
+  } catch (fetchErr) {
+    console.error("[case-answer-status] Lexion tarmoq xatosi:", fetchErr);
+    return { serviceJobId: null, errorStatus: 0, errorMsg: "Tarmoq xatosi" };
+  }
+}
 
 // ── Fallback: Lexion ishlamasa, "Umumiy" rejim bilan yuborish ──
 async function startFallbackGeneral(
