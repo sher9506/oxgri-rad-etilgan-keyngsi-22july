@@ -397,6 +397,52 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Faol suhbatlar limiti (chat_limit): memory yoqilgan, chat_id bor,
+    //    shu chat uchun faol xotira YO'Q va faol qatorlar >= limit bo'lsa → 429 ──
+    if (isStandaloneChat && chatId) {
+      const keepCfg = await getKeepCfg();
+      if (keepCfg.on) {
+        // Shu chat uchun faol xotira bormi?
+        const nowIso = new Date().toISOString();
+        const { data: existingNb } = await supabaseAdmin
+          .from("nexus_chat_notebooks")
+          .select("id")
+          .eq("user_id", ustoz_id)
+          .eq("chat_id", chatId)
+          .eq("status", "active")
+          .gt("expires_at", nowIso)
+          .maybeSingle();
+
+        if (!existingNb) {
+          // Faol xotira yo'q — faol qatorlar sonini tekshir
+          const { data: maxRow } = await supabaseAdmin
+            .from("settings")
+            .select("text_value")
+            .eq("key", "NEXUS_MAX_ACTIVE_CHATS_PER_USER")
+            .maybeSingle();
+          const maxActive = Math.max(1, parseInt(maxRow?.text_value ?? "15", 10) || 15);
+
+          const { count: activeRows } = await supabaseAdmin
+            .from("nexus_chat_notebooks")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", ustoz_id)
+            .eq("status", "active")
+            .gt("expires_at", nowIso);
+
+          if ((activeRows ?? 0) >= maxActive) {
+            return new Response(
+              JSON.stringify({
+                error: `Faol suhbatlar soni ${maxActive} taga yetdi. Birortasi tugashini kuting yoki eskisini o'chiring.`,
+                code: "chat_limit",
+                max: maxActive,
+              }),
+              { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+      }
+    }
+
     // Standalone chat (Lexion AI sahifasi) — case_id yo'q, ownership tekshiruv o'tkazib yuboriladi
     if (!isStandaloneChat) {
       const { data: caseData, error: caseError } = await supabaseAdmin

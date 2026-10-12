@@ -126,3 +126,9 @@ verify_jwt = false
 
 [functions.nexus-notebook-cleanup]
 verify_jwt = false
+
+[functions.nexus-chats-status]
+verify_jwt = false
+
+[functions.nexus-chat-delete]
+verify_jwt = false
