@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  ArrowUp, Scale, Sparkles, Trash2, RotateCcw, Copy, Check,
+  ArrowUp, Sparkles, Trash2, RotateCcw, Copy, Check,
   FileText, ExternalLink, AlertCircle, Clock, ChevronDown, Loader2,
   Plus, MessageCircle, Info, X, PanelLeft,
 } from 'lucide-react';
@@ -8,14 +8,13 @@ import { useNexusAiChat } from '@/hooks/useNexusAiChat';
 import type { ChatMeta } from '@/hooks/useNexusAiChat';
 import { useNow } from '@/hooks/useNow';
 import {
-  AI_NAME, AI_TAGLINE, SAMPLE_QUESTIONS, NEXUS_NOTES,
+  AI_NAME, SAMPLE_QUESTIONS, NEXUS_NOTES,
   MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS,
   formatRemainingShort, getTimerTone, formatRelativeDate,
   COPY_LABEL, COPIED_LABEL,
 } from '@/constants/nexus';
 import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
-import BgShapes from './nexus/BgShapes';
 import AnswerText from './nexus/AnswerText';
 import './nexus-claude.css';
 
@@ -97,17 +96,16 @@ interface NexusShellProps {
   onToggleChats: () => void;
   activeChatCount: number;
   timerPill: React.ReactNode;
-  headerLeft: boolean;
-  onToggleHeaderLeft: () => void;
+  panelCollapsed: boolean;
+  onTogglePanel: () => void;
 }
 
 function NexusShell({
   children, onClear, showClear, quotaPill, resetLine,
   onToggleChats, activeChatCount, timerPill,
-  headerLeft, onToggleHeaderLeft,
+  panelCollapsed, onTogglePanel,
 }: NexusShellProps) {
   const shellRef = useRef<HTMLDivElement>(null);
-  const reducedMotion = usePrefersReducedMotion();
   const prevOverflowRef = useRef<string>('');
 
   useEffect(() => {
@@ -149,48 +147,43 @@ function NexusShell({
   }, []);
 
   return (
-    <div className={`nexus-claude ${headerLeft ? 'nc-header-left-mode' : ''}`} ref={shellRef}>
-      <BgShapes reducedMotion={reducedMotion} />
-      {!headerLeft && (
-        <div className="nc-header">
-          <div className="nc-header-left">
-            <button
-              className="nc-chats-toggle lg:hidden"
-              onClick={onToggleChats}
-              aria-label="Suhbatlar ro'yxati"
-            >
-              <MessageCircle style={{ width: 18, height: 18 }} />
-              {activeChatCount > 0 && (
-                <span className="nc-chats-badge">{activeChatCount}</span>
-              )}
-            </button>
-            <div className="nc-header-icon-tile" aria-hidden="true">
-              <Scale className="nc-header-icon" />
-            </div>
-            <div>
-              <h1 className="nc-header-title">{AI_NAME}</h1>
-              <p className="nc-header-sub">{AI_TAGLINE}</p>
-            </div>
-          </div>
-          <div className="nc-header-right">
-            <button
-              onClick={onToggleHeaderLeft}
-              className="nc-icon-btn nc-header-move-btn"
-              aria-label="Sarlavhani chap panelga ko'chirish"
-              title="Sarlavhani chap panelga ko'chirish"
-            >
-              <PanelLeft style={{ width: 16, height: 16 }} />
-            </button>
-            {timerPill}
-            {quotaPill}
-            {showClear && (
-              <button onClick={onClear} className="nc-icon-btn" aria-label="Shu suhbatni o'chirish" title="Shu suhbatni o'chirish">
-                <Trash2 style={{ width: 16, height: 16 }} />
-              </button>
+    <div className="nexus-claude" ref={shellRef}>
+      <h1 className="sr-only">{AI_NAME}</h1>
+      <div className="nc-header">
+        <div className="nc-header-left">
+          <button
+            className="nc-chats-toggle lg:hidden"
+            onClick={onToggleChats}
+            aria-label="Suhbatlar ro'yxati"
+          >
+            <MessageCircle style={{ width: 18, height: 18 }} />
+            {activeChatCount > 0 && (
+              <span className="nc-chats-badge">{activeChatCount}</span>
             )}
-          </div>
+          </button>
+          <button
+            className="nc-icon-btn nc-panel-toggle hidden lg:flex"
+            onClick={onTogglePanel}
+            aria-label={panelCollapsed ? "Suhbatlar ro'yxatini ochish" : "Suhbatlar ro'yxatini yig'ish"}
+            title={panelCollapsed ? "Suhbatlar ro'yxatini ochish" : "Suhbatlar ro'yxatini yig'ish"}
+            aria-expanded={!panelCollapsed}
+          >
+            <PanelLeft style={{ width: 18, height: 18 }} />
+            {!panelCollapsed && activeChatCount > 0 && (
+              <span className="nc-chats-badge">{activeChatCount}</span>
+            )}
+          </button>
         </div>
-      )}
+        <div className="nc-header-right">
+          {timerPill}
+          {quotaPill}
+          {showClear && (
+            <button onClick={onClear} className="nc-icon-btn" aria-label="Shu suhbatni o'chirish" title="Shu suhbatni o'chirish">
+              <Trash2 style={{ width: 16, height: 16 }} />
+            </button>
+          )}
+        </div>
+      </div>
       {resetLine}
       {children}
     </div>
@@ -1016,17 +1009,17 @@ function NexusAIInner({ userId }: { userId: string }) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nowOverride, setNowOverride] = useState(0);
-  const [headerLeft, setHeaderLeft] = useState(() => {
+  const [panelCollapsed, setPanelCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     if (window.innerWidth < 1024) return false;
-    return localStorage.getItem('nexus_header_left_v1') === '1';
+    return localStorage.getItem('nexus_chats_panel_collapsed_v1') === '1';
   });
 
-  const toggleHeaderLeft = useCallback(() => {
-    setHeaderLeft(prev => {
+  const togglePanel = useCallback(() => {
+    setPanelCollapsed(prev => {
       const next = !prev;
       if (typeof window !== 'undefined') {
-        localStorage.setItem('nexus_header_left_v1', next ? '1' : '0');
+        localStorage.setItem('nexus_chats_panel_collapsed_v1', next ? '1' : '0');
       }
       return next;
     });
@@ -1183,48 +1176,14 @@ function NexusAIInner({ userId }: { userId: string }) {
           nowOverride={nowOverride}
         />
       }
-      headerLeft={headerLeft}
-      onToggleHeaderLeft={toggleHeaderLeft}
+      panelCollapsed={panelCollapsed}
+      onTogglePanel={togglePanel}
     >
       <div className="nc-layout">
         {/* Desktop chat list panel */}
-        <aside className="nc-chat-sidebar">
-          {headerLeft && (
-            <div className="nc-panel-header">
-              <div className="nc-panel-header-top">
-                <div className="nc-panel-header-icon" aria-hidden="true">
-                  <Scale style={{ width: 18, height: 18 }} />
-                </div>
-                <div className="nc-panel-header-info">
-                  <h2 className="nc-panel-header-title">{AI_NAME}</h2>
-                  <p className="nc-panel-header-sub">{AI_TAGLINE}</p>
-                </div>
-                <button
-                  onClick={toggleHeaderLeft}
-                  className="nc-icon-btn nc-panel-header-back"
-                  aria-label="Sarlavhani yuqoriga qaytarish"
-                  title="Sarlavhani yuqoriga qaytarish"
-                >
-                  <PanelLeft style={{ width: 16, height: 16 }} />
-                </button>
-              </div>
-              <div className="nc-panel-header-controls">
-                <TimerPill
-                  getChatTimer={getChatTimer}
-                  chatId={activeChatId}
-                  memoryEnabled={memoryEnabled}
-                  nowOverride={nowOverride}
-                />
-                {quotaPill}
-                {messages.length > 0 && (
-                  <button onClick={handleClear} className="nc-icon-btn" aria-label="Shu suhbatni o'chirish" title="Shu suhbatni o'chirish">
-                    <Trash2 style={{ width: 16, height: 16 }} />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          <ChatListPanel
+        <aside className={`nc-chat-sidebar ${panelCollapsed ? 'nc-chat-sidebar-collapsed' : ''}`}>
+          <div className="nc-chat-sidebar-inner">
+            <ChatListPanel
             chats={chats}
             activeChatId={activeChatId}
             getChatTimer={getChatTimer}
@@ -1238,6 +1197,7 @@ function NexusAIInner({ userId }: { userId: string }) {
             chatsHydrated={chatsHydrated}
             nowOverride={nowOverride}
           />
+          </div>
         </aside>
 
         {/* Mobile drawer */}

@@ -6,11 +6,11 @@
    TOKENS
    ════════════════════════════════════════════════════════════════ */
 .nexus-claude {
-  --nc-bg: #FAF9F5;
+  --nc-bg: #FFFFFF;
   --nc-surface: #FFFFFF;
-  --nc-surface-2: #F0EEE6;
-  --nc-surface-glass: rgba(255, 255, 255, .62);
-  --nc-surface-glass-strong: rgba(255, 255, 255, .82);
+  --nc-surface-2: #F4F3EF;
+  --nc-surface-glass: #FFFFFF;
+  --nc-surface-glass-strong: #FFFFFF;
   --nc-text: #1F1E1D;
   --nc-text-2: #5E5D59;
   --nc-text-3: #6B6A64;
@@ -52,11 +52,7 @@
    BACKGROUND SHAPES (decorative drift)
    ════════════════════════════════════════════════════════════════ */
 .nc-bg-shapes {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
+  display: none;
 }
 
 .nc-bg-shape {
@@ -108,15 +104,13 @@
   position: relative;
   z-index: 10;
   flex-shrink: 0;
-  padding: 14px 20px;
+  padding: 6px 16px;
   border-bottom: 1px solid var(--nc-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  background: var(--nc-surface-glass);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  gap: 8px;
+  background: #FFFFFF;
 }
 
 .nc-header-left {
@@ -124,48 +118,6 @@
   align-items: center;
   gap: 12px;
   min-width: 0;
-}
-
-.nc-header-icon-tile {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, .12), rgba(37, 99, 235, .04));
-  border: 1px solid rgba(37, 99, 235, .14);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, .10);
-  transition: transform 400ms var(--nc-ease);
-}
-
-.nc-header-icon-tile:hover {
-  transform: translateY(-1px);
-}
-
-.nc-header-icon {
-  width: 26px;
-  height: 26px;
-  color: var(--nc-accent);
-}
-
-.nc-header-title {
-  font-family: var(--nc-serif);
-  font-size: 20px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--nc-text);
-  line-height: 1.2;
-  margin: 0;
-}
-
-.nc-header-sub {
-  font-size: 12px;
-  color: var(--nc-text-2);
-  margin: 0;
-  line-height: 1.3;
 }
 
 .nc-header-right {
@@ -225,9 +177,7 @@
   font-size: 11px;
   color: var(--nc-text-3);
   border-bottom: 1px solid var(--nc-border);
-  background: var(--nc-surface-glass);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: #FFFFFF;
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -346,9 +296,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 16px 18px;
-  background: var(--nc-surface-glass);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: #FFFFFF;
   border: 1px solid var(--nc-border);
   border-radius: var(--nc-radius-sm);
   text-align: left;
@@ -627,9 +575,7 @@ ol.nc-answer-list {
   flex-direction: column;
   gap: 0;
   min-height: 230px;
-  background: var(--nc-surface-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: #FFFFFF;
   border: 1px solid var(--nc-border);
   border-radius: var(--nc-radius);
   box-shadow: var(--nc-shadow-lg);
@@ -1013,9 +959,7 @@ ol.nc-answer-list {
 .nc-composer {
   max-width: 44rem;
   margin: 0 auto;
-  background: var(--nc-surface-glass-strong);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: #FFFFFF;
   border: 1px solid var(--nc-border);
   border-radius: var(--nc-radius);
   box-shadow: var(--nc-shadow);
@@ -1175,105 +1119,6 @@ ol.nc-answer-list {
   }
 }
 
-/* ── Header move-to-panel button ── */
-.nc-header-move-btn {
-  display: none;
-}
-
-@media (min-width: 1024px) {
-  .nc-header-move-btn {
-    display: flex;
-  }
-}
-
-/* ── Panel header (header-left mode) ── */
-.nc-panel-header {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-bottom: 1px solid var(--nc-border);
-  flex-shrink: 0;
-}
-
-.nc-panel-header-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.nc-panel-header-icon {
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, .12), rgba(37, 99, 235, .04));
-  border: 1px solid rgba(37, 99, 235, .14);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--nc-accent);
-}
-
-.nc-panel-header-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.nc-panel-header-title {
-  font-family: var(--nc-serif);
-  font-size: 16px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--nc-text);
-  line-height: 1.2;
-  margin: 0;
-}
-
-.nc-panel-header-sub {
-  font-size: 11px;
-  color: var(--nc-text-2);
-  margin: 0;
-  line-height: 1.3;
-}
-
-.nc-panel-header-back {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-}
-
-.nc-panel-header-controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.nc-panel-header-controls .nc-quota-pill {
-  font-size: 10px;
-  padding: 3px 8px;
-}
-
-.nc-panel-header-controls .nc-timer-pill {
-  font-size: 11px;
-  padding: 4px 8px;
-}
-
-.nc-panel-header-controls .nc-timer-pill-prefix {
-  display: none;
-}
-
-/* Popover in panel mode opens left-aligned */
-.nc-panel-header-controls .nc-timer-popover {
-  right: auto;
-  left: 0;
-}
-
-.nc-header-left-mode .nc-chat-list-panel {
-  padding-top: 0;
-}
-
 .nc-input-warning {
   max-width: 44rem;
   margin: 0 auto 6px;
@@ -1300,12 +1145,27 @@ ol.nc-answer-list {
     display: block;
     width: 320px;
     flex-shrink: 0;
-    background: var(--nc-surface-glass);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    background: #FAFAFA;
     border-right: 1px solid var(--nc-border);
     overflow: hidden;
     z-index: 3;
+    transition: width 250ms var(--nc-ease);
+  }
+  .nc-chat-sidebar-collapsed {
+    width: 0;
+    border-right: none;
+  }
+  .nc-chat-sidebar-inner {
+    width: 320px;
+    height: 100%;
+    overflow-y: auto;
+  }
+  .nc-chat-sidebar-collapsed .nc-chat-sidebar-inner {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .nc-chat-sidebar-inner {
+    transition: opacity 200ms var(--nc-ease);
   }
 }
 
@@ -1669,7 +1529,7 @@ ol.nc-answer-list {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 12px;
+  padding: 3px 10px;
   border-radius: 999px;
   border: 1px solid var(--nc-border);
   background: var(--nc-surface);
@@ -1887,6 +1747,32 @@ ol.nc-answer-list {
   align-items: center;
   justify-content: center;
   padding: 0 4px;
+}
+
+/* ── Panel toggle (desktop) ── */
+.nc-panel-toggle {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nc-text-3);
+  cursor: pointer;
+  transition: background 200ms var(--nc-ease), color 200ms var(--nc-ease);
+}
+
+.nc-panel-toggle:hover {
+  background: var(--nc-surface-2);
+  color: var(--nc-text);
+}
+
+.nc-panel-toggle:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
 }
 
 /* ── Mobile drawer ── */
@@ -2170,7 +2056,7 @@ ol.nc-answer-list {
    RESPONSIVE
    ════════════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
-  .nc-header { padding: 10px 16px; }
+  .nc-header { padding: 6px 12px; }
   .nc-scroll { padding: 16px 16px; }
   .nc-composer-wrap { padding: 6px 16px calc(8px + env(safe-area-inset-bottom)); }
   .nc-suggestions { grid-template-columns: 1fr; }
@@ -2184,7 +2070,6 @@ ol.nc-answer-list {
   .nc-thinking { min-height: 200px; padding: 14px; }
   .nc-docstack-viewport { width: 160px; height: 130px; }
   .nc-doc-layer { width: 110px; height: 88px; margin-top: -44px; margin-left: -55px; }
-  .nc-bg-shape { filter: blur(60px); }
   .nc-lexion-text { display: none; }
   .nc-counter-sm { display: none; }
   .nc-counter-warn.nc-counter-sm { display: inline; }
@@ -2224,4 +2109,6 @@ ol.nc-answer-list {
   .nc-doc-layer { transition: none !important; }
   .nc-panel-head-expanded.nc-panel-anim { transition: none; }
   .nc-expired-group-chevron { transition: none; }
+  .nc-chat-sidebar { transition: none !important; }
+  .nc-chat-sidebar-inner { transition: none !important; }
 }
