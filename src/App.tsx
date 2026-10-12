@@ -57,7 +57,18 @@ const MiniAppLinkConfirm = lazy(() => import('@/components/features/MiniAppLinkC
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { LexionAI } from '@/components/features/lexion-ai/LexionAI';
 const LexionAiSahifa = lazy(() => import('@/components/features/lexion-ai/LexionAiSahifa'));
-const NexusAI = lazy(() => import('@/components/features/NexusAI'));
+const NexusAI = lazy(() =>
+  import('@/components/features/NexusAI').catch((err) => {
+    const key = 'nexus_lazy_retry';
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1');
+      window.location.reload();
+      throw err;
+    }
+    sessionStorage.removeItem(key);
+    throw err;
+  })
+);
 
 // Admin Context
 interface AdminContextType {
@@ -316,7 +327,7 @@ function AppContent() {
                   <MenuIcon className="h-5 w-5" />
                 </button>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-bold" style={{ color: 'var(--on-navy)', fontFamily: 'Source Serif 4, Georgia, serif' }}>FanFaster</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--on-navy)', fontFamily: "'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif" }}>FanFaster</span>
                 </div>
                 {user ? (
                   <button

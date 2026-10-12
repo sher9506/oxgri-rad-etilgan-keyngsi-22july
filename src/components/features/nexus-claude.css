@@ -1,7 +1,7 @@
 /* Nexus AI — Claude.ai uslubidagi sokin muhit */
 /* Barcha stillar .nexus-claude wrapper ichida qamralgan */
+/* Shriftlar: @fontsource-variable orqali self-hosted (main.tsx'da import qilinadi) */
 
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
 
 .nexus-claude {
   /* Rang tokenlari (light only — dark mode yo'q) */
@@ -20,8 +20,8 @@
   --nc-shadow-focus: 0 0 0 3px rgba(201, 100, 66, .12);
   --nc-radius: 24px;
   --nc-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --nc-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --nc-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --nc-serif: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --nc-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
 
   display: flex;
   flex-direction: column;
