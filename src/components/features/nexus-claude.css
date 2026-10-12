@@ -2053,14 +2053,35 @@ ol.nc-answer-list {
 }
 
 /* ════════════════════════════════════════════════════════════════
+   FAVICON IN EMPTY STATE
+   ════════════════════════════════════════════════════════════════ */
+.nc-empty-favicon {
+  display: none;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   QUOTA PILL — short/long text variants
+   ════════════════════════════════════════════════════════════════ */
+.nc-quota-short-text {
+  display: none;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SUGGESTION — mobile hidden (4th+ card)
+   ════════════════════════════════════════════════════════════════ */
+.nc-suggestion-mobile-hidden {
+  display: block;
+}
+
+/* ════════════════════════════════════════════════════════════════
    RESPONSIVE
    ════════════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
-  .nc-header { padding: 6px 12px; }
+  .nc-header { padding: 6px 12px; padding-top: calc(6px + env(safe-area-inset-top)); }
   .nc-scroll { padding: 16px 16px; }
   .nc-composer-wrap { padding: 6px 16px calc(8px + env(safe-area-inset-bottom)); }
-  .nc-suggestions { grid-template-columns: 1fr; }
-  .nc-empty-title { font-size: 24px; }
+  .nc-suggestions { grid-template-columns: 1fr; gap: 8px; }
+  .nc-empty-title { font-size: 22px; margin-bottom: 4px; }
   .nc-answer { font-size: 15.5px; line-height: 1.55; }
   .nc-answer-h { font-size: 15.5px; }
   .nc-timer-pill-prefix { display: none; }
@@ -2073,6 +2094,45 @@ ol.nc-answer-list {
   .nc-lexion-text { display: none; }
   .nc-counter-sm { display: none; }
   .nc-counter-warn.nc-counter-sm { display: inline; }
+
+  /* Favicon in empty state */
+  .nc-empty-favicon {
+    display: block;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    margin: 0 auto 16px;
+    opacity: 0;
+    animation: nc-fade-in 600ms var(--nc-ease) 200ms forwards;
+  }
+  .nc-empty-docstack { display: none; }
+  .nc-empty-desc { display: none; }
+  .nc-cold-start { display: none; }
+  .nc-empty { min-height: 320px; justify-content: center; }
+
+  /* Suggestion cards — compact chips */
+  .nc-suggestion-card {
+    padding: 10px 14px;
+    min-height: 44px;
+    font-size: 13px;
+  }
+  .nc-suggestion-mobile-hidden { display: none; }
+
+  /* Quota pill — compact */
+  .nc-quota-full-text { display: none; }
+  .nc-quota-short-text { display: inline; }
+  .nc-quota-pill {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  /* Composer — single row, hide disclaimer when focused */
+  .nc-composer-focused .nc-composer-notes { display: none; }
+  .nc-composer-disclaimer { font-size: 11px; }
+  .nc-composer-wrap { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+
+  /* Reset line — compact */
+  .nc-reset-line { padding: 4px 12px; font-size: 10px; }
 }
 
 @media (max-width: 380px) {

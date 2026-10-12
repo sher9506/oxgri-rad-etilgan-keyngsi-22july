@@ -201,13 +201,14 @@ function NexusEmptyState({ onPick, disabled }: { onPick: (q: string) => void; di
       <div className="nc-empty-docstack" aria-hidden="true">
         <DocStack phaseB={false} scanning={false} layers={canHover ? 4 : 2} reducedMotion={reducedMotion} canHover={canHover} active={false} />
       </div>
+      <img src="/favicon.png" alt="FanFaster" className="nc-empty-favicon" />
       <h2 className="nc-empty-title">Huquqiy savol bering</h2>
       <p className="nc-empty-desc">
         O'zbekiston qonunchiligi bo'yicha savolingizni yozing. Tegishli moddalar va tushuntirish bilan javob beradi.
       </p>
       <div className="nc-suggestions">
-        {SAMPLE_QUESTIONS.map((q) => (
-          <button key={q} onClick={() => !disabled && onPick(q)} className="nc-suggestion-card" disabled={disabled}>
+        {SAMPLE_QUESTIONS.map((q, i) => (
+          <button key={q} onClick={() => !disabled && onPick(q)} className={`nc-suggestion-card ${i >= 3 ? 'nc-suggestion-mobile-hidden' : ''}`} disabled={disabled}>
             <Sparkles className="nc-sparkle" />
             <span>{q}</span>
           </button>
@@ -522,7 +523,7 @@ function NexusComposer({
             <span className="nc-lexion-dot" />
             <span className="nc-lexion-text">Lexion AI</span>
           </button>
-          {input.length > 0 && (
+          {input.length > maxInput * 0.8 && (
             <span className={`nc-counter nc-counter-sm ${counterWarn || inputTooLong ? 'nc-counter-warn' : ''}`}>
               {input.length} / {maxInput}
             </span>
@@ -626,7 +627,7 @@ interface ResetLineProps {
 
 function ResetLine({ quota, serverOffset }: ResetLineProps) {
   const now = useNow();
-  if (!quota || quota.is_unlimited || quota.remaining >= quota.limit || !quota.next_reset_at) return null;
+  if (!quota || quota.is_unlimited || quota.remaining > 0 || !quota.next_reset_at) return null;
   const nowMs = now + serverOffset;
   const text = formatResetTime(quota.next_reset_at, nowMs);
   if (!text) return null;
@@ -1105,8 +1106,9 @@ function NexusAIInner({ userId }: { userId: string }) {
   const canSend = input.trim().length >= minInput && !inputTooLong && !isProcessing && !inputBlocked && !chatExpired;
 
   const quotaPill = isLimited ? (
-    <div className={`nc-quota-pill ${remaining <= 2 ? 'nc-quota-pill-low' : ''}`} aria-live="polite">
-      Qolgan savollar: {remaining} / {limit}
+    <div className={`nc-quota-pill ${remaining <= 2 ? 'nc-quota-pill-low' : ''}`} aria-live="polite" title={`Qolgan savollar: ${remaining} / ${limit}`} aria-label={`Qolgan savollar: ${remaining} / ${limit}`}>
+      <span className="nc-quota-full-text">Qolgan savollar: {remaining} / {limit}</span>
+      <span className="nc-quota-short-text" aria-hidden="true">{remaining} / {limit}</span>
     </div>
   ) : null;
 

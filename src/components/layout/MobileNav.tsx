@@ -527,8 +527,8 @@ export default function MobileNav({ activeTab, onTabChange, onOpenLogin, onLogou
 
   return (
     <>
-      {/* Mobile Top Bar — only show for non-ustoz/non-admin */}
-      {!user?.rol || user.rol === 'oquvchi' ? (
+      {/* Mobile Top Bar — only show for non-ustoz/non-admin, hidden on Nexus AI tab */}
+      {(!user?.rol || user.rol === 'oquvchi') && activeTab !== 'nexus_ai' ? (
         <MobileTopBar
           activeTab={activeTab}
           onOpenLogin={onOpenLogin}
