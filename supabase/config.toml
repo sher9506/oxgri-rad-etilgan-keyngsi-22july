@@ -132,3 +132,6 @@ verify_jwt = false
 
 [functions.nexus-chat-delete]
 verify_jwt = false
+
+[functions.nexus-chat-history]
+verify_jwt = false

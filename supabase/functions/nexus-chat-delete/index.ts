@@ -1,4 +1,5 @@
 // nexus-chat-delete — foydalanuvchining shu chat'dagi faol xotira qatorini 'expired' qiladi.
+// deploy-trigger Sat Oct 12 2026 16:10 UTC
 // Auth: case-answer-status bilan AYNAN bir xil — body'dan user_id olinadi.
 // verify_jwt = false (config.toml).
 
@@ -34,7 +35,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Faqat o'sha user_id ning shu chat_id qatorini 'expired' qilamiz
+    // 1) Faqat o'sha user_id ning shu chat_id qatorini 'expired' qilamiz
     const { data, error } = await sb
       .from("nexus_chat_notebooks")
       .update({ status: "expired" })
@@ -49,6 +50,20 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "O'chirib bo'lmadi" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // 2) case_answer_jobs dagi shu chat qatorlariga deleted_at = now() qo'y (DELETE QILMASDAN)
+    const nowIso = new Date().toISOString();
+    const { error: jobErr } = await sb
+      .from("case_answer_jobs")
+      .update({ deleted_at: nowIso })
+      .eq("teacher_id", user_id)
+      .eq("chat_id", chat_id)
+      .eq("job_kind", "chat")
+      .is("deleted_at", null);
+
+    if (jobErr) {
+      console.error("[nexus-chat-delete] case_answer_jobs soft-delete xatosi:", jobErr.message);
     }
 
     return new Response(
