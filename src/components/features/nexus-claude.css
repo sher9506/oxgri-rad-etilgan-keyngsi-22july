@@ -12,12 +12,13 @@
   --nc-text-2: #5E5D59;
   --nc-text-3: #6B6A64;
   --nc-border: rgba(31, 30, 29, .12);
-  --nc-accent: #C96442;
-  --nc-accent-hover: #B5573A;
-  --nc-accent-soft: rgba(201, 100, 66, .10);
-  --nc-error-bg: rgba(201, 100, 66, .08);
+  --nc-accent: #2563EB;
+  --nc-accent-hover: #1D4ED8;
+  --nc-accent-soft: rgba(37, 99, 235, .10);
+  --nc-error-bg: rgba(185, 28, 28, .08);
+  --nc-error-text: #B91C1C;
   --nc-shadow: 0 2px 8px rgba(31, 30, 29, .06);
-  --nc-shadow-focus: 0 0 0 3px rgba(201, 100, 66, .12);
+  --nc-shadow-focus: 0 0 0 3px rgba(37, 99, 235, .35);
   --nc-radius: 24px;
   --nc-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --nc-serif: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, 'Times New Roman', serif;
@@ -26,7 +27,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 0;
+  min-height: calc(100dvh - 72px);
+  flex: 1;
   background: var(--nc-bg);
   color: var(--nc-text);
   font-family: var(--nc-sans);
@@ -594,7 +596,7 @@
 }
 
 .nc-composer-focused {
-  border-color: rgba(201, 100, 66, .4);
+  border-color: rgba(37, 99, 235, .4);
   box-shadow: var(--nc-shadow), var(--nc-shadow-focus);
 }
 
@@ -698,7 +700,7 @@
 }
 
 .nc-counter-warn {
-  color: var(--nc-accent-hover);
+  color: #B45309;
 }
 
 .nc-composer-notes {

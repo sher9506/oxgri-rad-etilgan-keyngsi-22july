@@ -292,6 +292,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Parse lexion_urls once for all polling responses
+    const parsedLexionUrls: string[] = job.lexion_urls ? parseLexionUrls(job.lexion_urls) : [];
+    const serverNowIso = new Date().toISOString();
+
     // ── Stale job auto-cleanup: 30 daqiqadan eski queued/running ishlarni timeout qil ──
     if (job.status === "queued" || job.status === "running") {
       const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
@@ -565,7 +569,7 @@ Deno.serve(async (req: Request) => {
               .eq("id", id);
 
             return new Response(
-              JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering" }),
+              JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined, created_at: job.created_at, server_now: serverNowIso }),
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
@@ -681,6 +685,9 @@ Deno.serve(async (req: Request) => {
           error: null,
           lexion_phase: job.lexion_phase || null,
           lexion_fallback: job.lexion_fallback || false,
+          lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined,
+          created_at: job.created_at,
+          server_now: serverNowIso,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -722,7 +729,7 @@ Deno.serve(async (req: Request) => {
               const redispatch = await redispatchChatWithSources(id, job);
               if (redispatch.ok) {
                 return new Response(
-                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering" }),
+                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined, created_at: job.created_at, server_now: serverNowIso }),
                   { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
                 );
               }
@@ -756,7 +763,7 @@ Deno.serve(async (req: Request) => {
           );
         }
         return new Response(
-          JSON.stringify({ status: job.status, answer: null, error: null, lexion_phase: job.lexion_phase || null, lexion_fallback: job.lexion_fallback || false }),
+          JSON.stringify({ status: job.status, answer: null, error: null, lexion_phase: job.lexion_phase || null, lexion_fallback: job.lexion_fallback || false, lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined, created_at: job.created_at, server_now: serverNowIso }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -808,7 +815,7 @@ Deno.serve(async (req: Request) => {
               const redispatch = await redispatchChatWithSources(id, job);
               if (redispatch.ok) {
                 return new Response(
-                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering" }),
+                  JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined, created_at: job.created_at, server_now: serverNowIso }),
                   { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
                 );
               }
@@ -942,13 +949,16 @@ Deno.serve(async (req: Request) => {
           is_library_reuse: job.is_library_reuse || false,
           lexion_phase: job.lexion_phase || null,
           lexion_fallback: job.lexion_fallback || false,
+          lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined,
+          created_at: job.created_at,
+          server_now: serverNowIso,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (fetchErr) {
       console.error("[case-answer-status] Tarmoq xatosi:", fetchErr);
       return new Response(
-        JSON.stringify({ status: job.status, answer: null, error: null, lexion_phase: job.lexion_phase || null, lexion_fallback: job.lexion_fallback || false }),
+        JSON.stringify({ status: job.status, answer: null, error: null, lexion_phase: job.lexion_phase || null, lexion_fallback: job.lexion_fallback || false, lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined, created_at: job.created_at, server_now: serverNowIso }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -1173,4 +1183,4 @@ async function startFallbackGeneral(
 
   return { ok: false, error: "Javob tayyorlanmadi. Qayta urinib ko'ring." };
 }
-// deploy-trigger Sat Oct 10 21:11:36 UTC 2026
+// deploy-trigger Sat Oct 12 2026 03:50 UTC

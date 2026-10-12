@@ -265,7 +265,7 @@ export function useNexusAiChat(userId: string | undefined) {
                   status: data.status as ChatJobStatus,
                   lexionPhase: data.lexion_phase ?? data.phase ?? null,
                   lexionFallback: data.lexion_fallback ?? false,
-                  lexionUrls: Array.isArray(data.urls) ? data.urls : Array.isArray(data.lexion_urls) ? data.lexion_urls : m.lexionUrls,
+                  lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : m.lexionUrls,
                   jobCreatedAt: data.created_at || m.jobCreatedAt,
                   serverNow: data.server_now,
                 }
@@ -313,7 +313,7 @@ export function useNexusAiChat(userId: string | undefined) {
 
       if (data.id) {
         setMessages(prev => prev.map(m =>
-          m.id === aiMsgId ? { ...m, jobId: data.id } : m
+          m.id === aiMsgId ? { ...m, jobId: data.id, jobCreatedAt: new Date().toISOString() } : m
         ));
         fetchQuota();
         startPolling(data.id, userId);

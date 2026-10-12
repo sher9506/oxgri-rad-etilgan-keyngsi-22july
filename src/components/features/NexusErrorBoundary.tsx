@@ -27,9 +27,9 @@ export default class NexusErrorBoundary extends Component<Props, State> {
           <div className="max-w-sm w-full space-y-4">
             <div
               className="w-12 h-12 mx-auto rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(201, 100, 66, 0.10)' }}
+              style={{ background: 'rgba(37, 99, 235, 0.10)' }}
             >
-              <svg className="h-6 w-6" style={{ color: '#C96442' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="h-6 w-6" style={{ color: '#2563EB' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0L3.16 16.25A2 2 0 005 19z" />
               </svg>
             </div>
@@ -41,7 +41,7 @@ export default class NexusErrorBoundary extends Component<Props, State> {
               <button
                 onClick={() => this.setState({ hasError: false, error: undefined })}
                 className="px-5 py-2.5 rounded-xl font-semibold text-sm text-white transition active:scale-95"
-                style={{ background: '#C96442' }}
+                style={{ background: '#2563EB' }}
               >
                 Qayta urinib ko'ring
               </button>

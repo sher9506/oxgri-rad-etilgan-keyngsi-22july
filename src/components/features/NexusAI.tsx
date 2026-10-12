@@ -110,10 +110,9 @@ interface NexusThinkingProps {
   lexionUrls: string[] | undefined;
   jobCreatedAt: string | undefined;
   serverNow: string | undefined;
-  elapsedTick: number;
 }
 
-function NexusThinking({ lexionUrls, jobCreatedAt, serverNow, elapsedTick }: NexusThinkingProps) {
+function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingProps) {
   const lexLinks = useMemo(() => {
     if (!lexionUrls || lexionUrls.length === 0) return [];
     return lexionUrls.filter(isLexUz);
@@ -121,12 +120,17 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow, elapsedTick }: Nex
 
   const isPhaseB = lexLinks.length > 0;
 
-  const elapsedSec = useMemo(() => {
-    if (!jobCreatedAt) return 0;
+  const [elapsedSec, setElapsedSec] = useState(0);
+  useEffect(() => {
+    if (!jobCreatedAt) { setElapsedSec(0); return; }
     const start = new Date(jobCreatedAt).getTime();
-    const now = serverNow ? new Date(serverNow).getTime() : Date.now();
-    return Math.max(0, Math.floor((now - start) / 1000));
-  }, [jobCreatedAt, serverNow, elapsedTick]);
+    const baseNow = serverNow ? new Date(serverNow).getTime() : Date.now();
+    setElapsedSec(Math.max(0, Math.floor((baseNow - start) / 1000)));
+    const t = setInterval(() => {
+      setElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [jobCreatedAt, serverNow]);
 
   const visibleChips = lexLinks.slice(0, 6);
   const remaining = lexLinks.length - visibleChips.length;
@@ -174,10 +178,9 @@ interface NexusMessageProps {
   onCopy: (id: string, text: string) => void;
   onRetry: (jobId: string | undefined, originalText: string) => void;
   findUserText: (aiId: string) => string;
-  elapsedTick: number;
 }
 
-function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText, elapsedTick }: NexusMessageProps) {
+function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText }: NexusMessageProps) {
   const finalSeconds = useMemo(() => {
     if (msg.role !== 'assistant' || msg.status !== 'done' || !msg.jobCreatedAt) return null;
     const start = new Date(msg.jobCreatedAt).getTime();
@@ -197,7 +200,6 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText, elapsedTic
           lexionUrls={msg.lexionUrls}
           jobCreatedAt={msg.jobCreatedAt}
           serverNow={msg.serverNow}
-          elapsedTick={elapsedTick}
         />
       </div>
     );
@@ -208,7 +210,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText, elapsedTic
       <div className="nc-msg-assistant">
         <div className="nc-error-panel">
           <div className="nc-error-text" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-text-3)' }} />
+            <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-error-text)' }} />
             <span>{msg.error}</span>
           </div>
         </div>
@@ -221,7 +223,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText, elapsedTic
       <div className="nc-msg-assistant">
         <div className="nc-error-panel">
           <div className="nc-error-text" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-accent)' }} />
+            <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-error-text)' }} />
             <span>{msg.error}</span>
           </div>
           {msg.jobId && (
@@ -389,15 +391,7 @@ function NexusAIInner({ userId }: { userId: string }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [elapsedTick, setElapsedTick] = useState(0);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-
-  // Timer tick for thinking clock
-  useEffect(() => {
-    if (!isProcessing) return;
-    const t = setInterval(() => setElapsedTick((t2) => t2 + 1), 1000);
-    return () => clearInterval(t);
-  }, [isProcessing]);
 
   // Auto-scroll logic: only if user is near bottom
   const isNearBottom = useCallback(() => {
@@ -500,7 +494,6 @@ function NexusAIInner({ userId }: { userId: string }) {
                   onCopy={handleCopy}
                   onRetry={retry}
                   findUserText={findUserText}
-                  elapsedTick={elapsedTick}
                 />
               ))}
             </div>
