@@ -1,6 +1,7 @@
-// Lexion mode support
+// Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -308,6 +309,7 @@ Deno.serve(async (req: Request) => {
     const answer_mode: string = body.answer_mode || (Array.isArray(sources) && sources.length > 0 ? 'sources' : 'general');
     const isStandaloneChat = !case_id;
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
+    const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
 
     if (!kazus_text || !title || !ustoz_id) {
       return new Response(
@@ -442,6 +444,7 @@ Deno.serve(async (req: Request) => {
         };
       if (case_id) insertPayload.case_id = case_id;
       if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
+      if (chatId) insertPayload.chat_id = chatId;
 
       const { data: jobRow, error: jobError } = await supabaseAdmin
         .from("case_answer_jobs")
@@ -482,9 +485,17 @@ Deno.serve(async (req: Request) => {
         console.log(`[prewarm] job=${jobId} backend=0 status=error ms=0`);
       }
 
+      let lexionText = kazus_text;
+      if (chatId) {
+        const keepCfg = await getKeepCfg();
+        if (keepCfg.on) {
+          const nb = await getChatNotebook(chatId, ustoz_id);
+          if (nb?.last_topic) lexionText = `Oldingi mavzu: ${nb.last_topic}. Yangi savol: ${kazus_text}`.slice(0, 3800);
+        }
+      }
       const lexionBody: Record<string, unknown> = {
         title: "Lexion",
-        kazus_text,
+        kazus_text: lexionText,
         external_id: `${jobId}-lex`,
       };
 
@@ -745,6 +756,7 @@ Deno.serve(async (req: Request) => {
     };
     if (case_id) insertPayload.case_id = case_id;
     if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
+    if (chatId) insertPayload.chat_id = chatId;
 
     const { data: jobRow, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")

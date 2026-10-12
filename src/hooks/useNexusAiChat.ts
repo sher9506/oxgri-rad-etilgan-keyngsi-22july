@@ -32,10 +32,29 @@ export interface QuotaInfo {
 const POLL_INTERVAL_MS = 5000;
 const MAX_POLL_MS = 1800000;
 const STORAGE_KEY_PREFIX = 'nexus_chat_v1';
+const CHAT_ID_KEY_PREFIX = 'nexus_chat_id_v1';
 const MAX_HISTORY = 50;
 
 function storageKey(userId: string): string {
   return `${STORAGE_KEY_PREFIX}_${userId}`;
+}
+
+function chatIdKey(userId: string): string {
+  return `${CHAT_ID_KEY_PREFIX}_${userId}`;
+}
+
+function getOrCreateChatId(userId: string): string {
+  try {
+    let id = localStorage.getItem(chatIdKey(userId));
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem(chatIdKey(userId), id); }
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function resetChatId(userId: string) {
+  try { localStorage.removeItem(chatIdKey(userId)); } catch { /* e'tiborsiz */ }
 }
 
 function loadHistory(userId: string): { messages: ChatMessage[]; pendingJobId?: string } {
@@ -260,6 +279,7 @@ export function useNexusAiChat(userId: string | undefined) {
         title: trimmed.slice(0, 100),
         ustoz_id: userId,
         answer_mode: 'lexion',
+        chat_id: getOrCreateChatId(userId),
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
 
@@ -298,6 +318,7 @@ export function useNexusAiChat(userId: string | undefined) {
   const clearChat = useCallback(() => {
     if (!userId) return;
     clearHistory(userId);
+    resetChatId(userId);
     setMessages([]);
     stopPolling();
     setIsProcessing(false);

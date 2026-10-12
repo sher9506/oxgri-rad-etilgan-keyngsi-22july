@@ -1,6 +1,7 @@
 // Lexion phase polling support — backend 3 failover qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { canKeepOn, expireChatNotebook, getChatNotebook, getKeepCfg, lexDocId, registerKeptNotebook } from "../_shared/nexus-notebooks.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -271,7 +272,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership — lexion maydonlarini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, chat_kazus_text, chat_title")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered")
       .eq("id", id)
       .maybeSingle();
 
@@ -514,17 +515,52 @@ Deno.serve(async (req: Request) => {
             sources: serviceSources,
           };
 
-          const backend = await pickBackend(cfg);
-          const dispatched = await sendWithFailover(backend, cfg, serviceBody);
-          const result = dispatched.result;
+          const keepCfg = await getKeepCfg();
+          const useKeep = isChat && keepCfg.on && !!job.chat_id;
+          let dispatched: { result: ServiceResult; backend: number } | null = null;
+          let followup = false;
+
+          if (useKeep) {
+            const nb = await getChatNotebook(job.chat_id as string, job.teacher_id);
+            if (nb) {
+              const seen = new Set<string>(nb.lex_urls ?? []);
+              const newSources = urls
+                .filter((u) => { const d = lexDocId(u); return !d || !seen.has(d); })
+                .map((u) => ({ title: "Lex.uz hujjati", url: u }));
+              const r = await sendToBackend(nb.backend, cfg, {
+                ...serviceBody,
+                sources: newSources,
+                notebook_id: nb.notebook_id,
+                profile: nb.profile,
+                conversation_id: nb.conversation_id,
+                prior_turns: nb.turns,
+              });
+              if (r.serviceJobId) {
+                dispatched = { backend: nb.backend, result: r };
+                followup = true;
+              } else {
+                console.log(`[case-answer-status] chat daftariga yuborib bo'lmadi, yangi daftar ochiladi: job=${id}`);
+                await expireChatNotebook(nb.id);
+              }
+            }
+          }
+
+          if (!dispatched) {
+            const backend = await pickBackend(cfg);
+            if (useKeep && (await canKeepOn(backend, keepCfg))) serviceBody.keep_notebook = true;
+            dispatched = await sendWithFailover(backend, cfg, serviceBody);
+          }
+          const result = dispatched!.result;
 
           if (result.serviceJobId) {
             await supabaseAdmin
               .from("case_answer_jobs")
               .update({
-                backend: dispatched.backend,
+                backend: dispatched!.backend,
                 service_job_id: result.serviceJobId,
                 status: "queued",
+                chat_followup: followup,
+                chat_keep_requested: followup || serviceBody.keep_notebook === true,
               })
               .eq("id", id);
 
@@ -832,6 +868,19 @@ Deno.serve(async (req: Request) => {
         } catch { /* ignore */ }
       }
 
+      if (job.chat_keep_requested && !job.chat_keep_registered && newStatus === "done") {
+        try {
+          const keepCfg = await getKeepCfg();
+          const cfgSvc = await getAnswerServiceConfig();
+          await registerKeptNotebook(job, serviceData, keepCfg, {
+            baseUrl: getBackendUrl(cfgSvc, job.backend ?? 1),
+            key: cfgSvc.key,
+          });
+        } catch (e) {
+          console.error("[case-answer-status] chat daftarini ro'yxatga olish:", e);
+        }
+      }
+
       // Persist the updated state
       const updatePayload: Record<string, unknown> = { status: newStatus };
       if (answer !== null) updatePayload.answer = answer;
@@ -944,7 +993,7 @@ async function retryLexionSearch(
 // ── Chat: 2-bosqichda boshqa Render'ga qayta yuborish (max 1 marta) ──
 async function redispatchChatWithSources(
   jobId: string,
-  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null }
+  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null; chat_id: string | null; teacher_id: string; chat_followup: boolean | null }
 ): Promise<{ ok: boolean }> {
   const retryCount = job.fallback_count ?? 0;
   if (retryCount >= 1) {
@@ -977,6 +1026,19 @@ async function redispatchChatWithSources(
   const newBackend = failoverBackends[0];
   console.log(`[case-answer-status] redispatchChat: backend=${oldBackend} -> backend=${newBackend}, job=${jobId}`);
 
+  let keepFlag = false;
+  const keepCfg = await getKeepCfg();
+  if (keepCfg.on && job.chat_id) {
+    if (job.chat_followup) {
+      const old = await getChatNotebook(job.chat_id, job.teacher_id, { ignoreGrace: true });
+      if (old) await expireChatNotebook(old.id);
+    }
+    if (await canKeepOn(newBackend, keepCfg)) {
+      serviceBody.keep_notebook = true;
+      keepFlag = true;
+    }
+  }
+
   const result = await sendToBackend(newBackend, cfg, serviceBody);
   if (result.serviceJobId) {
     await supabaseAdmin
@@ -987,6 +1049,9 @@ async function redispatchChatWithSources(
         status: "queued",
         fallback_count: retryCount + 1,
         last_render_error: null,
+        chat_followup: false,
+        chat_keep_requested: keepFlag,
+        chat_keep_registered: false,
       })
       .eq("id", jobId);
     return { ok: true };

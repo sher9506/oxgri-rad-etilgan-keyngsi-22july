@@ -123,3 +123,6 @@ verify_jwt = false
 
 [functions.nexus-quota]
 verify_jwt = false
+
+[functions.nexus-notebook-cleanup]
+verify_jwt = false
