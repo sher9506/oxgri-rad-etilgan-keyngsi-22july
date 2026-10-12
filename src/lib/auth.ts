@@ -10,7 +10,6 @@ export interface Ustoz {
   telegram_username?: string;
   blog_huquqi?: boolean;
   ustoz_huquqi?: boolean;
-  hukm_only?: boolean;
   // face_descriptor va face_image saqlanib qoladi DB da, lekin login uchun ishlatilmaydi
 }
 
@@ -254,13 +253,12 @@ export async function loginUstoz(phone: string, password: string): Promise<Ustoz
 export async function approveUstoz(
   ustoz_id: string,
   status: 'approved' | 'rejected',
-  huquqlar?: { blog_huquqi?: boolean; ustoz_huquqi?: boolean; hukm_only?: boolean }
+  huquqlar?: { blog_huquqi?: boolean; ustoz_huquqi?: boolean }
 ) {
   const update: Record<string, any> = { status };
   if (huquqlar) {
     update.blog_huquqi = huquqlar.blog_huquqi ?? false;
     update.ustoz_huquqi = huquqlar.ustoz_huquqi ?? false;
-    update.hukm_only = huquqlar.hukm_only ?? false;
   }
   const { error } = await supabase
     .from('ustoz')

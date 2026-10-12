@@ -1,509 +1,546 @@
-// HukmOquvchi — o'quvchi ekrani (PIN kirish, savol, natija, xatolar)
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Gavel, Loader2, CheckCircle2, XCircle, Trophy, BookOpen, ArrowRight, Home } from 'lucide-react';
+import { Trophy, Loader2, ChevronLeft, CheckCircle, XCircle, Clock, Users, Award, AlertCircle, RotateCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { joinGame, getGameState, submitAnswer, getMistakes } from '@/lib/hukmApi';
+import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
-const EASE = [0.22, 1, 0.36, 1] as const;
+type GameView = 'join' | 'lobby' | 'question' | 'answered' | 'reveal' | 'leaderboard' | 'finished' | 'mistakes';
 
-// Javob ranglari va shakllari
-const ANSWER_STYLES = [
-  { color: '#C2303D', name: 'qalqon' },
-  { color: '#2F6BE0', name: 'olmos' },
-  { color: '#12805C', name: 'doira' },
-  { color: '#F2A93B', name: 'kvadrat' },
-];
+const ANSWER_COLORS = ['#C2303D', '#2F6BE0', '#12805C', '#F2A93B'];
+const ANSWER_TEXT_COLORS = ['#fff', '#fff', '#fff', '#1A1205'];
+const ANSWER_LABELS = ['A', 'B', 'C', 'D'];
 
-export function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+async function hukmFetch(path: string, method = 'GET', body?: any) {
+  const url = `${supabaseUrl}/functions/v1/hukm-api/${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.json();
+}
+
+interface Mistake {
+  question_index: number;
+  text: string;
+  my_choice: number;
+  correct_index: number;
+  options: { text: string }[];
+  explanation: string;
+  legal_basis: string;
+}
+
+export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [screen, setScreen] = useState<'pin' | 'lobby' | 'question' | 'waiting' | 'reveal' | 'finished' | 'mistakes'>('pin');
+
+  const talabaId = user?.talaba_id || '';
+  const defaultNick = user ? `${user.ism} ${user.familiya}`.trim() : '';
+
+  const [view, setView] = useState<GameView>('join');
   const [pin, setPin] = useState('');
-  const [nickname, setNickname] = useState('');
+  const [nickname, setNickname] = useState(defaultNick);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
   const [gameId, setGameId] = useState('');
   const [playerId, setPlayerId] = useState('');
   const [playerToken, setPlayerToken] = useState('');
-  const [state, setState] = useState<any>(null);
-  const [myChoice, setMyChoice] = useState<number | null>(null);
-  const [mistakes, setMistakes] = useState<any[]>([]);
-  const [error, setError] = useState('');
-  const [joining, setJoining] = useState(false);
+  const [gameState, setGameState] = useState<any>(null);
+  const [myAnswer, setMyAnswer] = useState<number | null>(null);
+  const [myResult, setMyResult] = useState<any>(null);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [timerPct, setTimerPct] = useState(1);
+  const [mistakes, setMistakes] = useState<Mistake[]>([]);
+  const [mistakesLoading, setMistakesLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [alreadyAnswered, setAlreadyAnswered] = useState(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastQuestionIndexRef = useRef<number>(-1);
+  const lastStatusRef = useRef<string>('');
 
-  const talabaId = user?.talaba_id || '';
-  const defaultNick = user ? `${user.ism || ''} ${user.familiya || ''}`.trim() : '';
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+  const stopTimer = () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  };
 
-  useEffect(() => {
-    if (!nickname && defaultNick) setNickname(defaultNick);
-  }, [defaultNick]);
-
-  const poll = useCallback(async () => {
+  const fetchGameState = useCallback(async () => {
     if (!gameId || !playerId || !playerToken) return;
-    try {
-      const data = await getGameState(gameId, { player_token: playerToken, player_id: playerId });
-      setState(data);
-      setError('');
-      // Ekran holatini yangilash
-      if (data.status === 'lobby') setScreen('lobby');
-      else if (data.status === 'question') {
-        setScreen('question');
-        setMyChoice(data.my_answer ?? null);
-      } else if (data.status === 'reveal') {
-        setScreen('reveal');
-      } else if (data.status === 'leaderboard') {
-        setScreen('reveal'); // leaderboard ham reveal ko'rinishida
-      } else if (data.status === 'finished') {
-        setScreen('finished');
-        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    const data = await hukmFetch(`game/${gameId}?player_id=${playerId}&player_token=${playerToken}`);
+    if (!data?.id) return;
+    setGameState(data);
+
+    const status = data.status;
+    const qIdx = data.current_index;
+
+    // Reset per-question state when new question arrives
+    if (qIdx !== lastQuestionIndexRef.current && status === 'question') {
+      lastQuestionIndexRef.current = qIdx;
+      setMyAnswer(null);
+      setMyResult(null);
+      setAlreadyAnswered(data.my_answer !== undefined && data.my_answer !== null);
+      const limit = data.question?.time_limit_s || 20;
+      setTimeLeft(limit);
+      setTimerPct(1);
+      stopTimer();
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          const next = Math.max(0, prev - 1);
+          setTimerPct(next / limit);
+          return next;
+        });
+      }, 1000);
+    }
+
+    if (status !== lastStatusRef.current) {
+      lastStatusRef.current = status;
+      if (status === 'lobby') setView('lobby');
+      else if (status === 'question') {
+        setView(data.my_answer !== undefined && data.my_answer !== null ? 'answered' : 'question');
       }
-    } catch (err: any) {
-      // network xato — davom et
+      else if (status === 'reveal') {
+        stopTimer();
+        setMyResult(data.my_result || null);
+        setView('reveal');
+      }
+      else if (status === 'leaderboard') setView('leaderboard');
+      else if (status === 'finished') { setView('finished'); stopPolling(); stopTimer(); }
+    } else if (status === 'question' && data.my_answer !== undefined && data.my_answer !== null) {
+      setAlreadyAnswered(true);
+      setView('answered');
     }
   }, [gameId, playerId, playerToken]);
 
   useEffect(() => {
-    if (gameId && playerId && playerToken && screen !== 'finished' && screen !== 'pin') {
-      if (!pollRef.current) {
-        pollRef.current = setInterval(poll, 1000);
-      }
-    }
-    return () => {
-      if (pollRef.current && (screen === 'finished' || screen === 'pin')) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [gameId, playerId, playerToken, screen, poll]);
+    if (!gameId || !playerId || !playerToken) return;
+    fetchGameState();
+    stopPolling();
+    pollRef.current = setInterval(fetchGameState, 2000);
+    return () => { stopPolling(); stopTimer(); };
+  }, [gameId, playerId, playerToken, fetchGameState]);
 
-  async function handleJoin() {
-    if (!talabaId) {
-      toast({ title: 'Kirish kerak', description: 'Avval tizimga kiring', variant: 'destructive' });
-      return;
-    }
-    if (pin.length !== 6) {
-      toast({ title: 'PIN noto\'g\'ri', description: '6 raqamli kod kiriting' });
-      return;
-    }
+  const handleJoin = async () => {
+    if (!pin.trim() || pin.trim().length !== 6) { setJoinError("PIN 6 raqamdan iborat bo'lishi kerak"); return; }
+    if (!nickname.trim()) { setJoinError('Ismingizni kiriting'); return; }
+    if (!talabaId) { setJoinError("Kirish kerak. Iltimos, tizimga kiring."); return; }
     setJoining(true);
-    setError('');
-    try {
-      const data = await joinGame(pin, nickname || defaultNick || 'O\'yinchi', talabaId);
+    setJoinError('');
+    const data = await hukmFetch('game/join', 'POST', { pin: pin.trim(), nickname: nickname.trim(), talaba_id: talabaId });
+    setJoining(false);
+    if (data?.player && data?.game_id && data?.player_token) {
       setGameId(data.game_id);
       setPlayerId(data.player.id);
       setPlayerToken(data.player_token);
-      setScreen('lobby');
-      poll();
-    } catch (err: any) {
-      setError(err.message);
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    } finally {
-      setJoining(false);
+      lastStatusRef.current = '';
+      lastQuestionIndexRef.current = -1;
+    } else {
+      setJoinError(data?.error || "Qo'shilmadi. Qayta urinib ko'ring.");
     }
-  }
+  };
 
-  async function handleAnswer(choice: number) {
-    if (myChoice !== null) return; // already answered
-    setMyChoice(choice);
-    setScreen('waiting');
-    try {
-      await submitAnswer(gameId, playerId, playerToken, choice);
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-      setMyChoice(null);
-      setScreen('question');
+  const handleAnswer = async (choice: number) => {
+    if (alreadyAnswered || submitting || myAnswer !== null) return;
+    setMyAnswer(choice);
+    setSubmitting(true);
+    stopTimer();
+    const data = await hukmFetch(`game/${gameId}/answer`, 'POST', { player_id: playerId, player_token: playerToken, choice });
+    setSubmitting(false);
+    if (data?.received) {
+      setView('answered');
+      setAlreadyAnswered(true);
+    } else {
+      toast({ title: data?.error || 'Javob qabul qilinmadi', variant: 'destructive' });
+      setMyAnswer(null);
     }
-  }
+  };
 
-  async function handleShowMistakes() {
-    try {
-      const data = await getMistakes(gameId, playerId, playerToken);
-      setMistakes(data.mistakes || []);
-      setScreen('mistakes');
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
+  const handleLoadMistakes = async () => {
+    setMistakesLoading(true);
+    const data = await hukmFetch(`game/${gameId}/mistakes?player_id=${playerId}&player_token=${playerToken}`);
+    setMistakesLoading(false);
+    if (data?.mistakes) {
+      setMistakes(data.mistakes);
+      setView('mistakes');
+    } else {
+      toast({ title: data?.error || 'Xatolar yuklanmadi', variant: 'destructive' });
     }
-  }
+  };
 
-  // ── PIN kiritish ekrani ──
-  if (screen === 'pin') {
+  const players = gameState?.players || [];
+  const question = gameState?.question;
+  const reveal = gameState?.reveal;
+  const leaderboard = gameState?.leaderboard || [];
+  const totalQ = gameState?.total_questions || 0;
+  const currentIdx = gameState?.current_index ?? 0;
+
+  // ── JOIN VIEW ───────────────────────────────────────────────────────────────
+  if (view === 'join') {
     return (
-      <div className="max-w-md mx-auto p-4 md:p-6 min-h-[60vh] flex flex-col justify-center">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'linear-gradient(135deg, var(--navy-1), var(--gold))' }}>
-            <Gavel className="w-8 h-8 text-white" />
+      <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
+        <div className="w-full max-w-sm space-y-5">
+          <div className="text-center space-y-1">
+            <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-3" style={{ background: 'linear-gradient(135deg, #1e3a8a, #2563eb)' }}>
+              <Trophy className="h-7 w-7 text-amber-300" />
+            </div>
+            <h1 className="text-xl font-black" style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}>Hukm Viktorinasi</h1>
+            <p className="text-sm text-gray-500">PIN kodni kiriting va o'yinga qo'shiling</p>
           </div>
-          <h1 className="ff-serif text-2xl mb-2" style={{ color: 'var(--ink)' }}>Hukm</h1>
-          <p className="text-sm" style={{ color: 'var(--ink-muted)' }}>Ustozingiz bergan kod orqali viktorinaga qo'shiling</p>
-        </div>
 
-        <input
-          value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          placeholder="6 raqamli kod"
-          inputMode="numeric"
-          className="w-full px-4 py-4 rounded-xl text-2xl text-center font-bold tracking-[0.3em] outline-none mb-3"
-          style={{ background: 'var(--ff-card)', border: '2px solid var(--line)', color: 'var(--ink)' }}
-        />
-        <input
-          value={nickname}
-          onChange={(e) => setNickname(e.target.value.slice(0, 20))}
-          placeholder="Ismingiz (ixtiyoriy)"
-          className="w-full px-4 py-3 rounded-xl text-sm outline-none mb-4"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
-
-        {error && <p className="text-sm text-center mb-3" style={{ color: '#C2303D' }}>{error}</p>}
-
-        <button
-          onClick={handleJoin}
-          disabled={joining || pin.length !== 6}
-          className="w-full py-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all"
-          style={{
-            background: pin.length === 6 ? 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' : 'var(--panel-2)',
-            opacity: pin.length === 6 ? 1 : 0.5,
-          }}
-        >
-          {joining ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
-          Qo'shilish
-        </button>
-      </div>
-    );
-  }
-
-  // ── Lobby (kutish) ──
-  if (screen === 'lobby') {
-    return (
-      <div className="max-w-md mx-auto p-6 min-h-[60vh] flex flex-col justify-center items-center text-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, ease: EASE }}
-        >
-          <Loader2 className="w-10 h-10 animate-spin mx-auto mb-4" style={{ color: 'var(--cobalt-1)' }} />
-          <h2 className="ff-serif text-xl mb-2" style={{ color: 'var(--ink)' }}>Lobby'da kutyapsiz</h2>
-          <p className="text-sm mb-4" style={{ color: 'var(--ink-muted)' }}>O'yin boshlanishini kuting.</p>
-          <div className="rounded-xl p-4" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>O'yinchilar soni:</p>
-            <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{state?.players?.length || 0}</p>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // ── Savol ekrani ──
-  if (screen === 'question' || screen === 'waiting') {
-    const q = state?.question;
-    if (!q) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--cobalt-1)' }} /></div>;
-
-    return (
-      <div className="max-w-md mx-auto p-4 min-h-[80vh] flex flex-col">
-        <div className="text-center mb-3">
-          <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>Savol {(state.current_index || 0) + 1} / {state.total_questions}</span>
-        </div>
-
-        {/* Taymer chizig'i */}
-        <div className="h-1.5 rounded-full overflow-hidden mb-4" style={{ background: 'var(--panel-2)' }}>
-          <TimerBar key={state.current_index} timeLimit={q.time_limit_s || 20} />
-        </div>
-
-        {/* Savol matni */}
-        {q.text && (
-          <motion.h2
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: EASE }}
-            className="ff-serif text-lg md:text-xl mb-6 text-center"
-            style={{ color: 'var(--ink)' }}
-          >
-            {q.text}
-          </motion.h2>
-        )}
-
-        {/* 4 ta javob tugmasi */}
-        <div className="grid grid-cols-2 gap-3 flex-1">
-          {q.options?.map((opt: any, i: number) => {
-            const s = ANSWER_STYLES[i] || ANSWER_STYLES[0];
-            const selected = myChoice === i;
-            const answered = myChoice !== null;
-            return (
-              <motion.button
-                key={i}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.05, ease: EASE }}
-                onClick={() => handleAnswer(i)}
-                disabled={answered}
-                className="rounded-2xl p-4 flex flex-col items-center justify-center gap-2 transition-all min-h-[120px]"
-                style={{
-                  background: selected ? s.color : `${s.color}15`,
-                  border: `2px solid ${s.color}`,
-                  opacity: answered && !selected ? 0.4 : 1,
-                }}
-              >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: s.color }}>
-                  <span className="text-white font-bold text-sm">{String.fromCharCode(65 + i)}</span>
-                </div>
-                <span className="text-sm font-semibold text-center" style={{ color: selected ? 'white' : 'var(--ink)' }}>{opt.text}</span>
-              </motion.button>
-            );
-          })}
-        </div>
-
-        {/* Javob qabul qilindi */}
-        {screen === 'waiting' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4 text-center"
-          >
-            <CheckCircle2 className="w-8 h-8 mx-auto mb-1" style={{ color: 'var(--success)' }} />
-            <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Javob qabul qilindi</p>
-            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Boshqa o'yinchilar javobini kutmoqda...</p>
-          </motion.div>
-        )}
-      </div>
-    );
-  }
-
-  // ── Reveal (natija) ──
-  if (screen === 'reveal') {
-    const r = state?.reveal;
-    if (!r) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--cobalt-1)' }} /></div>;
-    const myResult = state?.my_result;
-    const isCorrect = myResult?.correct;
-
-    return (
-      <div className="max-w-md mx-auto p-4 min-h-[80vh] flex flex-col">
-        {/* Natija belgisi */}
-        {myResult && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, ease: EASE }}
-            className="text-center mb-4"
-          >
-            {isCorrect ? (
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: 'var(--success-tint)' }}>
-                <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--success)' }} />
-                <span className="font-bold text-sm" style={{ color: 'var(--success)' }}>To'g'ri! +{myResult.points} ball</span>
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: '#FEF2F2' }}>
-                <XCircle className="w-5 h-5" style={{ color: '#C2303D' }} />
-                <span className="font-bold text-sm" style={{ color: '#C2303D' }}>Noto'g'ri</span>
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        <h2 className="ff-serif text-lg mb-4 text-center" style={{ color: 'var(--ink)' }}>{r.text}</h2>
-
-        {/* Variantlar to'g'ri/noto'g'ri belgi bilan */}
-        <div className="space-y-2 mb-4">
-          {r.options?.map((opt: any, i: number) => {
-            const isCorrectOpt = i === r.correct_index;
-            const myPick = myChoice === i;
-            const s = ANSWER_STYLES[i] || ANSWER_STYLES[0];
-            return (
-              <div
-                key={i}
-                className="rounded-xl p-3 flex items-center gap-2 transition-all"
-                style={{
-                  background: isCorrectOpt ? 'var(--success-tint)' : myPick ? '#FEF2F2' : 'var(--panel-2)',
-                  border: `2px solid ${isCorrectOpt ? 'var(--success)' : myPick ? '#C2303D' : 'var(--line)'}`,
-                }}
-              >
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: s.color }}>
-                  <span className="text-white font-bold text-xs">{String.fromCharCode(65 + i)}</span>
-                </div>
-                <span className="text-sm flex-1" style={{ color: 'var(--ink)' }}>{opt.text}</span>
-                {isCorrectOpt && <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--success)' }} />}
-                {myPick && !isCorrectOpt && <XCircle className="w-5 h-5" style={{ color: '#C2303D' }} />}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Izoh va asos modda */}
-        {(r.explanation || r.legal_basis) && (
-          <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--cobalt-tint)', border: '1px solid var(--cobalt-line)' }}>
-            {r.explanation && <p className="text-sm mb-2" style={{ color: 'var(--ink-body)' }}><b>Izoh:</b> {r.explanation}</p>}
-            {r.legal_basis && <p className="text-sm" style={{ color: 'var(--gold-ink)' }}><b>Asos modda:</b> {r.legal_basis}</p>}
-          </div>
-        )}
-
-        {/* Mini reyting */}
-        {state?.leaderboard && state.leaderboard.length > 0 && (
-          <div className="mb-4">
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink-muted)' }}>Reyting</p>
-            {state.leaderboard.slice(0, 5).map((p: any, i: number) => (
-              <div key={p.player_id} className="flex items-center justify-between px-3 py-1.5 rounded-lg mb-1" style={{
-                background: p.player_id === playerId ? 'var(--gold-tint)' : 'var(--panel-2)',
-              }}>
-                <span className="text-sm" style={{ color: 'var(--ink)' }}>{i + 1}. {p.nickname}{p.player_id === playerId ? ' (Siz)' : ''}</span>
-                <span className="text-sm font-bold" style={{ color: 'var(--gold-ink)' }}>{p.total_points}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <p className="text-xs text-center" style={{ color: 'var(--ink-muted)' }}>Keyingi savolni kuting...</p>
-      </div>
-    );
-  }
-
-  // ── Yakuniy natija ──
-  if (screen === 'finished') {
-    const board = state?.leaderboard || [];
-    const myEntry = board.find((p: any) => p.player_id === playerId);
-    const myRank = board.findIndex((p: any) => p.player_id === playerId) + 1;
-
-    return (
-      <div className="max-w-md mx-auto p-4 min-h-[80vh] flex flex-col justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, ease: EASE }}
-          className="text-center mb-6"
-        >
-          <Trophy className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--gold)' }} />
-          <h2 className="ff-serif text-2xl mb-2" style={{ color: 'var(--ink)' }}>O'yin tugadi</h2>
-          {myEntry && (
-            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl" style={{ background: 'var(--gold-tint)' }}>
-              <div>
-                <p className="text-xs" style={{ color: 'var(--gold-ink)' }}>O'rin</p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--gold)' }}>{myRank}</p>
-              </div>
-              <div className="w-px h-10" style={{ background: 'var(--gold)' }} />
-              <div>
-                <p className="text-xs" style={{ color: 'var(--gold-ink)' }}>Ball</p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--gold)' }}>{myEntry.total_points}</p>
-              </div>
+          {!talabaId && (
+            <div className="flex items-center gap-2 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+              <p className="text-xs font-medium text-amber-700">O'yinga kirish uchun tizimga kiring</p>
             </div>
           )}
-        </motion.div>
 
-        {/* Top 5 */}
-        <div className="space-y-1.5 mb-6">
-          {board.slice(0, 5).map((p: any, i: number) => (
-            <div key={p.player_id} className="flex items-center gap-3 px-4 py-2 rounded-xl" style={{
-              background: p.player_id === playerId ? 'var(--gold-tint)' : 'var(--ff-card)',
-              border: '1px solid var(--line)',
-            }}>
-              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: i === 0 ? 'var(--gold)' : 'var(--panel-2)', color: i === 0 ? 'white' : 'var(--ink)' }}>{i + 1}</span>
-              <span className="flex-1 text-sm" style={{ color: 'var(--ink)' }}>{p.nickname}{p.player_id === playerId ? ' (Siz)' : ''}</span>
-              <span className="text-sm font-bold" style={{ color: 'var(--gold-ink)' }}>{p.total_points}</span>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs font-bold">PIN kod</Label>
+              <Input
+                value={pin}
+                onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setJoinError(''); }}
+                placeholder="123456"
+                inputMode="numeric"
+                maxLength={6}
+                className="mt-1.5 rounded-xl text-center text-2xl font-black tracking-[0.3em]"
+                style={{ color: '#2563eb' }}
+                onKeyDown={e => { if (e.key === 'Enter') handleJoin(); }}
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Taxallus (laqab)</Label>
+              <Input value={nickname} onChange={e => setNickname(e.target.value)} placeholder="Ismingiz" className="mt-1.5 rounded-xl" onKeyDown={e => { if (e.key === 'Enter') handleJoin(); }} />
+            </div>
+            {joinError && (
+              <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-100 px-3 py-2">
+                <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                <p className="text-xs text-red-700">{joinError}</p>
+              </div>
+            )}
+            <Button onClick={handleJoin} disabled={joining || !talabaId} className="w-full rounded-xl shadow-md shadow-blue-500/15" style={{ minHeight: '52px' }}>
+              {joining ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
+              {joining ? 'Qo\'shilmoqda...' : 'O\'yinga kirish'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── LOBBY VIEW ──────────────────────────────────────────────────────────────
+  if (view === 'lobby') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 space-y-5">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1e3a8a, #2563eb)' }}>
+          <Trophy className="h-8 w-8 text-amber-300" />
+        </div>
+        <div className="text-center space-y-1">
+          <h2 className="text-lg font-black" style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}>O'yin kutilmoqda</h2>
+          <p className="text-sm text-gray-500">Ustoz o'yinni boshlaguncha kuting</p>
+        </div>
+        <div className="flex items-center gap-2 rounded-2xl bg-blue-50 border border-blue-100 px-4 py-2.5">
+          <Users className="h-4 w-4 text-blue-600" />
+          <span className="text-sm font-bold text-blue-700">{players.length} ta o'yinchi qo'shildi</span>
+        </div>
+        <div className="flex flex-wrap justify-center gap-1.5 max-w-xs">
+          {players.slice(0, 12).map((p: any) => (
+            <span key={p.id} className={`text-xs font-bold px-3 py-1 rounded-full ${p.id === playerId ? 'bg-blue-100 text-blue-700 border border-blue-300' : 'bg-gray-100 text-gray-600'}`}>{p.nickname}</span>
+          ))}
+          {players.length > 12 && <span className="text-xs text-gray-400 px-2 py-1">+{players.length - 12}</span>}
+        </div>
+        <div className="flex items-center gap-2 text-gray-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-xs">Kutilmoqda...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── QUESTION VIEW ───────────────────────────────────────────────────────────
+  if (view === 'question' && question) {
+    const circumference = 2 * Math.PI * 22;
+    const offset = circumference * (1 - timerPct);
+    const timerColor = timerPct > 0.5 ? '#22c55e' : timerPct > 0.25 ? '#f59e0b' : '#ef4444';
+
+    return (
+      <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <Badge variant="secondary" className="text-xs">{currentIdx + 1} / {totalQ}</Badge>
+          <svg width="52" height="52" className="shrink-0">
+            <circle cx="26" cy="26" r="22" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+            <circle cx="26" cy="26" r="22" fill="none" stroke={timerColor} strokeWidth="3" strokeLinecap="round"
+              strokeDasharray={circumference} strokeDashoffset={offset} transform="rotate(-90 26 26)"
+              style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.3s' }} />
+            <text x="26" y="30" textAnchor="middle" fontSize="13" fontWeight="700" fill="#1f2937">{timeLeft}</text>
+          </svg>
+        </div>
+
+        {/* Question text */}
+        {question.case_text && (
+          <div className="rounded-2xl bg-amber-50/80 border border-amber-100/60 px-4 py-3">
+            <p className="text-xs text-gray-600 leading-relaxed">{question.case_text}</p>
+          </div>
+        )}
+        <div className="rounded-2xl bg-white border border-gray-100/80 shadow-sm px-4 py-4">
+          <p className="text-base font-bold text-gray-900 leading-snug">{question.text}</p>
+        </div>
+
+        {/* Options */}
+        <div className="grid grid-cols-1 gap-2.5">
+          {(question.options || []).map((o: any, i: number) => (
+            <button
+              key={i}
+              onClick={() => handleAnswer(i)}
+              disabled={submitting || myAnswer !== null}
+              className="flex items-center gap-3 rounded-2xl px-4 font-bold text-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-70"
+              style={{
+                background: myAnswer === i ? `${ANSWER_COLORS[i]}dd` : ANSWER_COLORS[i],
+                color: ANSWER_TEXT_COLORS[i],
+                minHeight: '64px',
+                boxShadow: myAnswer === i ? `0 4px 16px ${ANSWER_COLORS[i]}60` : `0 2px 8px ${ANSWER_COLORS[i]}30`,
+              }}
+              aria-label={`${ANSWER_LABELS[i]} variantini tanlash`}
+            >
+              <span className="w-8 h-8 rounded-xl bg-black/15 flex items-center justify-center text-xs font-black shrink-0">{ANSWER_LABELS[i]}</span>
+              <span className="flex-1 text-left">{o.text}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── ANSWERED VIEW ───────────────────────────────────────────────────────────
+  if (view === 'answered') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 space-y-4">
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+          <CheckCircle className="h-8 w-8 text-green-500" />
+        </div>
+        <div className="text-center">
+          <h2 className="text-base font-black" style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}>Javob qabul qilindi!</h2>
+          <p className="text-sm text-gray-500 mt-1">Natija kutilmoqda...</p>
+        </div>
+        <div className="flex items-center gap-2 text-gray-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-xs">Boshqalar javob berishini kuting</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── REVEAL VIEW ─────────────────────────────────────────────────────────────
+  if (view === 'reveal' && reveal) {
+    const isCorrect = myResult?.correct;
+    const pointsEarned = myResult?.points || 0;
+
+    return (
+      <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
+        {/* My result */}
+        <div className={`rounded-3xl p-5 text-center space-y-2 border-2 ${isCorrect ? 'bg-green-50 border-green-200' : myResult ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+          {isCorrect !== undefined ? (
+            <>
+              <div className="flex justify-center">
+                {isCorrect ? <CheckCircle className="h-10 w-10 text-green-500" /> : <XCircle className="h-10 w-10 text-red-400" />}
+              </div>
+              <p className="text-lg font-black" style={{ color: isCorrect ? '#166534' : '#991b1b' }}>
+                {isCorrect ? 'To\'g\'ri!' : 'Noto\'g\'ri'}
+              </p>
+              {isCorrect && pointsEarned > 0 && (
+                <p className="text-2xl font-black" style={{ color: '#2563eb' }}>+{pointsEarned}</p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-gray-500 font-medium">Javob berilmadi</p>
+          )}
+        </div>
+
+        {/* Correct answer */}
+        <div className="grid grid-cols-1 gap-2">
+          {(reveal.options || []).map((o: any, i: number) => (
+            <div
+              key={i}
+              className={`flex items-center gap-3 rounded-2xl px-4 border-2 font-bold text-sm ${i === reveal.correct_index ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-400 opacity-60'}`}
+              style={{ minHeight: '52px' }}
+            >
+              <span className="w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black shrink-0 text-white" style={{ background: ANSWER_COLORS[i] || '#666' }}>{ANSWER_LABELS[i]}</span>
+              <span className="flex-1">{o.text}</span>
+              {i === reveal.correct_index && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
             </div>
           ))}
         </div>
 
-        {/* Tugmalar */}
-        <div className="space-y-2">
-          <button
-            onClick={handleShowMistakes}
-            className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
-            style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-          >
-            <BookOpen className="w-4 h-4" />
-            Xatolarim
-          </button>
-          <button
-            onClick={() => { setScreen('pin'); setPin(''); setGameId(''); setPlayerId(''); setPlayerToken(''); setState(null); setMyChoice(null); }}
-            className="w-full py-3 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
-            style={{ background: 'var(--cobalt-1)' }}
-          >
-            <Home className="w-4 h-4" />
-            Bosh o'yinga qaytish
-          </button>
+        {/* Explanation */}
+        {reveal.explanation && (
+          <div className="rounded-2xl bg-blue-50 border border-blue-100 px-4 py-3 space-y-1">
+            <p className="text-[11px] font-bold text-blue-600">Izoh</p>
+            <p className="text-xs text-gray-700 leading-relaxed">{reveal.explanation}</p>
+          </div>
+        )}
+        {reveal.legal_basis && (
+          <p className="text-xs text-blue-600 font-medium px-1">📋 Asos: {reveal.legal_basis}</p>
+        )}
+
+        <div className="flex items-center gap-2 justify-center text-gray-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-xs">Keyingi savolni kuting</span>
         </div>
       </div>
     );
   }
 
-  // ── Xatolarim ──
-  if (screen === 'mistakes') {
+  // ── LEADERBOARD VIEW ────────────────────────────────────────────────────────
+  if (view === 'leaderboard') {
+    const myRank = leaderboard.findIndex((p: any) => p.player_id === playerId) + 1;
     return (
-      <div className="max-w-md mx-auto p-4">
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => setScreen('finished')} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-            <ArrowRight className="w-4 h-4 rotate-180" style={{ color: 'var(--ink)' }} />
-          </button>
-          <h1 className="ff-serif text-xl" style={{ color: 'var(--ink)' }}>Xatolarim</h1>
+      <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
+        <div className="text-center space-y-1">
+          <Trophy className="h-8 w-8 text-amber-500 mx-auto" />
+          <h2 className="text-lg font-black" style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}>Oraliq reyting</h2>
+          {myRank > 0 && <p className="text-sm text-blue-600 font-bold">Sizning o'rningiz: {myRank}-o'rin</p>}
+        </div>
+        <div className="space-y-2">
+          {leaderboard.slice(0, 5).map((p: any, i: number) => (
+            <div key={p.player_id} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 border ${p.player_id === playerId ? 'border-blue-300 bg-blue-50' : 'border-gray-100/60 bg-white'} shadow-sm`}>
+              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-gray-100 text-gray-600' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-50 text-gray-400'}`}>{i + 1}</span>
+              <span className={`flex-1 text-sm font-bold truncate ${p.player_id === playerId ? 'text-blue-700' : 'text-gray-900'}`}>{p.nickname}</span>
+              <span className="text-sm font-black" style={{ color: '#2563eb' }}>{p.total_points}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 justify-center text-gray-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-xs">O'yin davom etmoqda</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── FINISHED VIEW ───────────────────────────────────────────────────────────
+  if (view === 'finished') {
+    const myRank = leaderboard.findIndex((p: any) => p.player_id === playerId) + 1;
+    const myPoints = leaderboard.find((p: any) => p.player_id === playerId)?.total_points || 0;
+    const top3 = leaderboard.slice(0, 3);
+    const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3;
+    const podiumHeights = top3.length >= 3 ? ['h-20', 'h-28', 'h-16'] : ['h-24'];
+    const podiumColors = top3.length >= 3 ? ['bg-gray-200', 'bg-amber-300', 'bg-orange-200'] : ['bg-amber-300'];
+
+    return (
+      <div className="max-w-lg mx-auto px-4 py-4 space-y-5">
+        <div className="text-center space-y-1">
+          <Trophy className="h-10 w-10 text-amber-500 mx-auto" />
+          <h2 className="text-xl font-black" style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}>O'yin yakunlandi!</h2>
+          {myRank > 0 && (
+            <div className="inline-flex items-center gap-2 rounded-2xl bg-blue-50 border border-blue-200 px-4 py-2">
+              <Award className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-bold text-blue-700">{myRank}-o'rin • {myPoints} ball</span>
+            </div>
+          )}
         </div>
 
-        {mistakes.length === 0 ? (
-          <div className="text-center py-12 rounded-2xl" style={{ background: 'var(--success-tint)', border: '1px solid var(--success)' }}>
-            <CheckCircle2 className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--success)' }} />
-            <p className="text-sm font-semibold" style={{ color: 'var(--success)' }}>Hamma savolga to'g'ri javob berdingiz!</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {mistakes.map((m, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05, ease: EASE }}
-                className="rounded-xl p-4"
-                style={{ background: 'var(--ff-card)', border: '1px solid var(--line)' }}
-              >
-                <p className="text-sm font-semibold mb-2" style={{ color: 'var(--ink)' }}>{m.question_index + 1}. {m.text}</p>
-                <div className="space-y-1 mb-2">
-                  {m.options?.map((opt: any, oi: number) => {
-                    const isCorrect = oi === m.correct_index;
-                    const myPick = m.my_choice === oi;
-                    return (
-                      <div key={oi} className="flex items-center gap-2 text-xs">
-                        <span className="font-bold" style={{ color: isCorrect ? 'var(--success)' : myPick ? '#C2303D' : 'var(--ink-muted)' }}>
-                          {String.fromCharCode(65 + oi)})
-                        </span>
-                        <span style={{ color: isCorrect ? 'var(--success)' : myPick ? '#C2303D' : 'var(--ink-body)' }}>
-                          {opt.text}
-                        </span>
-                        {isCorrect && <CheckCircle2 className="w-3 h-3" style={{ color: 'var(--success)' }} />}
-                        {myPick && !isCorrect && <XCircle className="w-3 h-3" style={{ color: '#C2303D' }} />}
-                      </div>
-                    );
-                  })}
+        {/* Podium */}
+        {top3.length > 0 && (
+          <div className="flex items-end justify-center gap-2 px-4">
+            {podiumOrder.map((p: any, i: number) => p && (
+              <div key={p.player_id} className="flex flex-col items-center gap-1 flex-1">
+                <span className="text-xs font-bold text-gray-700 truncate max-w-full text-center">{p.nickname}</span>
+                <span className="text-xs font-black" style={{ color: '#2563eb' }}>{p.total_points}</span>
+                <div className={`w-full rounded-t-2xl flex items-start justify-center pt-1.5 ${podiumHeights[i] || 'h-16'} ${podiumColors[i] || 'bg-gray-200'}`}>
+                  <span className="text-sm font-black text-white/80">
+                    {[top3.length >= 3 ? 2 : 1, 1, 3][i]}
+                  </span>
                 </div>
-                {m.explanation && <p className="text-xs mb-1" style={{ color: 'var(--ink-body)' }}><b>Izoh:</b> {m.explanation}</p>}
-                {m.legal_basis && <p className="text-xs" style={{ color: 'var(--gold-ink)' }}><b>Asos:</b> {m.legal_basis}</p>}
-              </motion.div>
+              </div>
             ))}
           </div>
         )}
 
-        <button
-          onClick={() => { setScreen('pin'); setPin(''); setGameId(''); setPlayerId(''); setPlayerToken(''); setState(null); setMyChoice(null); setMistakes([]); }}
-          className="w-full mt-6 py-3 rounded-xl font-semibold text-sm text-white"
-          style={{ background: 'var(--cobalt-1)' }}
-        >
-          Bosh o'yinga qaytish
-        </button>
+        {/* Full leaderboard */}
+        {leaderboard.length > 3 && (
+          <div className="space-y-1.5">
+            {leaderboard.slice(3).map((p: any, i: number) => (
+              <div key={p.player_id} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${p.player_id === playerId ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+                <span className="text-xs font-bold text-gray-400 w-5 text-center">{i + 4}</span>
+                <span className={`flex-1 text-sm font-bold ${p.player_id === playerId ? 'text-blue-700' : 'text-gray-700'}`}>{p.nickname}</span>
+                <span className="text-sm font-black text-gray-600">{p.total_points}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2">
+          <Button onClick={handleLoadMistakes} disabled={mistakesLoading} variant="outline" className="w-full rounded-xl">
+            {mistakesLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <RotateCw className="h-4 w-4 mr-1.5" />}
+            Xatolar daftarim
+          </Button>
+          <Button onClick={() => { setView('join'); setGameId(''); setPlayerId(''); setPlayerToken(''); setPin(''); setGameState(null); }} className="w-full rounded-xl" variant="outline">
+            Yangi o'yinga qo'shilish
+          </Button>
+        </div>
       </div>
     );
   }
 
-  return null;
-}
+  // ── MISTAKES VIEW ───────────────────────────────────────────────────────────
+  if (view === 'mistakes') {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setView('finished')} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors">
+            <ChevronLeft className="h-4 w-4" /> Natijaga qaytish
+          </button>
+          <Badge variant="secondary" className="text-xs ml-auto">{mistakes.length} ta xato</Badge>
+        </div>
+        <h2 className="text-base font-black" style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}>Xatolar daftari</h2>
+        {mistakes.length === 0 ? (
+          <div className="text-center py-12">
+            <CheckCircle className="h-10 w-10 text-green-400 mx-auto mb-3" />
+            <p className="text-sm font-bold text-gray-700">Barcha savollar to'g'ri!</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {mistakes.map((m, i) => (
+              <div key={i} className="rounded-3xl bg-white border border-gray-100/80 shadow-sm p-4 space-y-3">
+                <p className="text-sm font-bold text-gray-900">{m.question_index + 1}. {m.text}</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {(m.options || []).map((o, j) => (
+                    <div key={j} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold border ${j === m.correct_index ? 'border-green-400 bg-green-50 text-green-800' : j === m.my_choice ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-gray-50 text-gray-500 opacity-60'}`}>
+                      <span className="w-5 h-5 rounded-lg flex items-center justify-center text-[10px] font-black text-white shrink-0" style={{ background: ANSWER_COLORS[j] || '#666' }}>{ANSWER_LABELS[j]}</span>
+                      <span>{o.text}</span>
+                      {j === m.correct_index && <CheckCircle className="h-3.5 w-3.5 text-green-500 ml-auto shrink-0" />}
+                      {j === m.my_choice && j !== m.correct_index && <XCircle className="h-3.5 w-3.5 text-red-400 ml-auto shrink-0" />}
+                    </div>
+                  ))}
+                </div>
+                {m.explanation && (
+                  <div className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-2">
+                    <p className="text-[11px] font-bold text-blue-600 mb-0.5">Izoh</p>
+                    <p className="text-xs text-gray-700 leading-relaxed">{m.explanation}</p>
+                  </div>
+                )}
+                {m.legal_basis && <p className="text-xs text-blue-600 font-medium">📋 {m.legal_basis}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
-// Timer bar komponenti
-function TimerBar({ timeLimit }: { timeLimit: number }) {
-  const reduceMotion = useRef(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // Fallback
   return (
-    <motion.div
-      initial={reduceMotion.current ? undefined : { width: '100%' }}
-      animate={reduceMotion.current ? undefined : { width: '0%' }}
-      transition={{ duration: timeLimit, ease: 'linear' }}
-      style={{
-        height: '100%',
-        width: reduceMotion.current ? '50%' : '100%',
-        background: 'linear-gradient(90deg, var(--success), var(--gold), #C2303D)',
-        borderRadius: 'inherit',
-      }}
-    />
+    <div className="flex flex-col items-center justify-center min-h-[70vh]">
+      <Loader2 className="h-7 w-7 animate-spin text-blue-500" />
+    </div>
   );
 }

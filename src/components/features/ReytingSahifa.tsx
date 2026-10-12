@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Trophy, Medal, TrendingUp, Lock, LogIn, Clock, FileText, Users, BarChart2, Gavel } from 'lucide-react';
+import { Trophy, Medal, TrendingUp, Lock, LogIn, Clock, FileText, Users, BarChart2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
-import { useAuth, type User } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import TasdiqlanganBelgi from './TasdiqlanganBelgi';
 
 interface ReytigSatri {
@@ -26,7 +26,7 @@ export default function ReytingSahifa() {
   const [yuklanyapti, setYuklanyapti] = useState(false);
   const [umumiyReyting, setUmumiyReyting] = useState<ReytigSatri[]>([]);
   const [testReyting, setTestReyting] = useState<TestReyting[]>([]);
-  const [aktifTab, setAktifTab] = useState<'umumiy' | 'testlar' | 'hukm'>('umumiy');
+  const [aktifTab, setAktifTab] = useState<'umumiy' | 'testlar'>('umumiy');
   const [talabaMap, setTalabaMap] = useState<Record<string, { tasdiqlangan: boolean; avatar_url: string | null }>>({});
 
   useEffect(() => {
@@ -155,7 +155,7 @@ export default function ReytingSahifa() {
 
       {/* TABS */}
       <div className="flex gap-2">
-        {[{ id: 'umumiy', label: "Umumiy reyting", icon: Trophy }, { id: 'testlar', label: 'Testlar statistikasi', icon: FileText }, { id: 'hukm', label: 'Hukm', icon: Gavel }].map(tab => (
+        {[{ id: 'umumiy', label: "Umumiy reyting", icon: Trophy }, { id: 'testlar', label: 'Testlar statistikasi', icon: FileText }].map(tab => (
           <button key={tab.id} onClick={() => setAktifTab(tab.id as any)}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black transition-all ${aktifTab === tab.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}>
             <tab.icon className="h-4 w-4" />
@@ -232,8 +232,6 @@ export default function ReytingSahifa() {
             </>
           )}
         </div>
-      ) : aktifTab === 'hukm' ? (
-        <HukmReyting user={user} />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           {testReyting.length === 0 ? (
@@ -265,69 +263,6 @@ export default function ReytingSahifa() {
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function HukmReyting({ user }: { user: User | null }) {
-  const [loading, setLoading] = useState(true);
-  const [sessions, setSessions] = useState<any[]>([]);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const { data } = await supabase
-          .from('hukm_sessions')
-          .select('id, quiz_id, started_at, ended_at, join_code, hukm_quizzes(title)')
-          .order('started_at', { ascending: false })
-          .limit(30);
-        setSessions(data || []);
-      } catch {
-        setSessions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="bg-white rounded-2xl p-12 text-center border border-slate-100">
-        <div className="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-3" />
-        <p className="text-slate-400 font-medium">Yuklanmoqda...</p>
-      </div>
-    );
-  }
-
-  if (sessions.length === 0) {
-    return (
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm py-16 text-center text-slate-400">
-        <Gavel className="h-12 w-12 mx-auto mb-3 opacity-30" />
-        <p className="font-semibold">Hali Hukm o'yinlari o'tkazilmagan</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-      {sessions.map((s, idx) => (
-        <motion.div key={s.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}
-          className="flex items-center gap-4 px-5 py-4 border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-            <Gavel className="h-4 w-4 text-amber-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-slate-800 truncate">{s.hukm_quizzes?.title || 'Viktorina'}</p>
-            <p className="text-[10px] text-slate-400 font-medium">{new Date(s.started_at).toLocaleString('uz-UZ')}</p>
-          </div>
-          <div className="text-center shrink-0">
-            <p className="text-sm font-black text-amber-600">{s.join_code}</p>
-            <p className="text-[9px] text-slate-400">PIN</p>
-          </div>
-        </motion.div>
-      ))}
     </div>
   );
 }
