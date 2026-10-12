@@ -58,7 +58,7 @@ function buildNavGroups(
   const main: NavItem[] = isBlogOnly
     ? [{ id: 'blog', label: 'Blog', icon: Newspaper }]
     : [
-        { id: 'kurslar', label: 'Kurslar', icon: BookMarked },
+        { id: 'nexus_ai', label: 'Nexus AI', icon: Scale },
         { id: 'oqmatlar', label: "O'quv materiallari", icon: Library },
       ];
 
@@ -82,7 +82,7 @@ function buildNavGroups(
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },
         ]
       : [
-          { id: 'nexus_ai', label: 'Nexus AI', icon: Scale, desc: 'AI huquq yordamchisi' },
+          { id: 'kurslar', label: 'Kurslar', icon: BookMarked, desc: "O'quv kurslari" },
           { id: 'savol_javob', label: 'Savol–javoblar', icon: Layers, desc: "Savollarga javoblar kutubxonasi" },
           { id: 'reyting', label: 'Reyting', icon: TrendingUp, desc: "O'quvchilar reytingi" },
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },

@@ -45,7 +45,7 @@ export function buildNavGroups(
   const main: NavItem[] = isBlogOnly
     ? [{ id: 'blog', label: 'Blog', icon: Newspaper }]
     : [
-        { id: 'kurslar', label: 'Kurslar', icon: BookMarked },
+        { id: 'nexus_ai', label: 'Nexus AI', icon: Scale },
         { id: 'oqmatlar', label: "O'quv materiallari", icon: Library },
       ];
 
@@ -69,7 +69,7 @@ export function buildNavGroups(
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },
         ]
       : [
-          { id: 'nexus_ai', label: 'Nexus AI', icon: Scale, desc: 'AI huquq yordamchisi' },
+          { id: 'kurslar', label: 'Kurslar', icon: BookMarked, desc: "O'quv kurslari" },
           { id: 'savol_javob', label: 'Savol–javoblar', icon: Layers, desc: "Savollarga javoblar kutubxonasi" },
           { id: 'reyting', label: 'Reyting', icon: TrendingUp, desc: "O'quvchilar reytingi" },
           { id: 'blog', label: 'Blog', icon: Newspaper, desc: 'Yuridik maqolalar va tahlillar' },
@@ -112,7 +112,7 @@ const LANG_OPTIONS: { code: Lang; flag: string; label: string }[] = [
 
 /* ═══ Sinov guruhidagi tab id'lar ═══ */
 const SINOV_TABS = ['sinov', 'mavjud_testlar', 'mavjud_kazuslar', 'moot_court'];
-const YANA_TABS = ['nexus_ai', 'savol_javob', 'reyting', 'blog', 'yordam'];
+const YANA_TABS = ['kurslar', 'savol_javob', 'reyting', 'blog', 'yordam'];
 
 /* ═════════════════════════════════════════════════════════════════
    MobileSheet — bottom-sheet dialog
@@ -275,13 +275,13 @@ function MobileBottomNav({
 }) {
   const tabs = [
     { id: 'haqida', label: 'Bosh', icon: Home },
-    { id: 'kurslar', label: 'Kurslar', icon: GraduationCap },
+    { id: 'nexus_ai', label: 'Nexus', icon: Scale },
     { id: 'oqmatlar', label: 'Materiallar', icon: Library, shortLabel: 'Materiallar' },
   ];
 
   const isActive = (tabId: string) => {
     if (tabId === 'haqida') return activeTab === 'haqida';
-    if (tabId === 'kurslar') return activeTab === 'kurslar';
+    if (tabId === 'nexus_ai') return activeTab === 'nexus_ai';
     if (tabId === 'oqmatlar') return activeTab === 'oqmatlar';
     return false;
   };
@@ -346,7 +346,7 @@ function MobileBottomNav({
       }}
     >
       <Cell tabId="haqida" label="Bosh" icon={Home} onClick={() => onTabChange('haqida')} active={isActive('haqida')} />
-      <Cell tabId="kurslar" label="Kurslar" icon={GraduationCap} onClick={() => onTabChange('kurslar')} active={isActive('kurslar')} />
+      <Cell tabId="nexus_ai" label="Nexus" icon={Scale} onClick={() => onTabChange('nexus_ai')} active={isActive('nexus_ai')} />
       <Cell tabId="oqmatlar" label="Materiallar" icon={Library} onClick={() => onTabChange('oqmatlar')} active={isActive('oqmatlar')} />
       <Cell tabId="sinov" label="Sinov" icon={ClipboardCheck} onClick={onOpenSinov} active={isSinovActive} hasPopup />
       <Cell tabId="yana" label="Yana" icon={MoreHorizontal} onClick={onOpenYana} active={isYanaActive} hasPopup />
