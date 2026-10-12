@@ -16,7 +16,7 @@ export const SAMPLE_QUESTIONS = [
 export const NEXUS_NOTES = {
   NO_MEMORY: "Har savol alohida ko'rib chiqiladi, oldingi javoblar eslab qolinmaydi",
   DISCLAIMER: "Javob ma'lumot uchun va rasmiy yuridik maslahat o'rnini bosmaydi.",
-  LOCAL_ONLY: "Suhbat tarixi faqat shu qurilmada saqlanadi",
+  LOCAL_ONLY: "Suhbat tarixi hisobingizda saqlanadi",
   COLD_START: "Birinchi javob biroz kechikishi mumkin",
   MEMORY_ACTIVE: "Suhbat 5 soat davomida oldingi savollaringizni eslab qoladi",
   MEMORY_COLD: "Birinchi savoldan boshlab suhbat 5 soat davomida eslab qolinadi",

@@ -50,6 +50,129 @@ export interface ChatsStatusResponse {
   chats: Record<string, ChatStatusInfo>;
 }
 
+export interface ServerChatListItem {
+  chat_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  has_pending: boolean;
+  pending_job_id: string | null;
+}
+
+export interface ServerChatMessage {
+  job_id: string;
+  status: string;
+  question: string;
+  answer: string | null;
+  error: string | null;
+  created_at: string;
+  lexion_urls?: string[];
+  lexion_phase?: string | null;
+  lexion_fallback?: boolean;
+}
+
+function serverJobToMessages(job: ServerChatMessage): { user: ChatMessage; assistant: ChatMessage | null } {
+  const userMsg: ChatMessage = {
+    id: `srv-user-${job.job_id}`,
+    role: 'user',
+    content: job.question || '',
+    createdAt: new Date(job.created_at).getTime(),
+  };
+  if (job.status === 'done' && job.answer) {
+    const assistantMsg: ChatMessage = {
+      id: `srv-ai-${job.job_id}`,
+      role: 'assistant',
+      content: job.answer,
+      status: 'done',
+      jobId: job.job_id,
+      lexionPhase: job.lexion_phase ?? null,
+      lexionFallback: job.lexion_fallback ?? false,
+      lexionUrls: job.lexion_urls,
+      createdAt: new Date(job.created_at).getTime() + 1,
+      jobCreatedAt: job.created_at,
+    };
+    return { user: userMsg, assistant: assistantMsg };
+  }
+  if (job.status === 'error') {
+    const assistantMsg: ChatMessage = {
+      id: `srv-ai-${job.job_id}`,
+      role: 'assistant',
+      content: job.error || 'Xatolik yuz berdi',
+      status: 'error',
+      jobId: job.job_id,
+      error: job.error || 'Xatolik',
+      lexionPhase: job.lexion_phase ?? null,
+      createdAt: new Date(job.created_at).getTime() + 1,
+    };
+    return { user: userMsg, assistant: assistantMsg };
+  }
+  if (job.status === 'queued' || job.status === 'running') {
+    const assistantMsg: ChatMessage = {
+      id: `srv-ai-${job.job_id}`,
+      role: 'assistant',
+      content: '',
+      status: job.status as ChatJobStatus,
+      jobId: job.job_id,
+      lexionPhase: job.lexion_phase ?? null,
+      lexionUrls: job.lexion_urls,
+      createdAt: new Date(job.created_at).getTime() + 1,
+    };
+    return { user: userMsg, assistant: assistantMsg };
+  }
+  return { user: userMsg, assistant: null };
+}
+
+function mergeServerMessages(localMsgs: ChatMessage[], serverMsgs: ChatMessage[], isProcessing: boolean): ChatMessage[] {
+  const serverJobIds = new Set(serverMsgs.map(m => m.jobId).filter(Boolean) as string[]);
+  const localByJobId = new Map<string, { user?: ChatMessage; assistant?: ChatMessage }>();
+  for (const m of localMsgs) {
+    if (m.jobId) {
+      const entry = localByJobId.get(m.jobId) ?? {};
+      if (m.role === 'user') entry.user = m;
+      else entry.assistant = m;
+      localByJobId.set(m.jobId, entry);
+    }
+  }
+
+  const result: ChatMessage[] = [];
+  const usedLocalIds = new Set<string>();
+
+  for (const srvMsg of serverMsgs) {
+    if (srvMsg.role === 'user') {
+      const jobId = (serverMsgs.find(m => m.role === 'assistant' && m.createdAt > srvMsg.createdAt) ?? serverMsgs.find(m => m.role === 'assistant'))?.jobId;
+      if (jobId && localByJobId.has(jobId)) {
+        result.push(srvMsg);
+        usedLocalIds.add(localByJobId.get(jobId)!.user?.id ?? '');
+      } else {
+        result.push(srvMsg);
+      }
+    } else {
+      result.push(srvMsg);
+      if (srvMsg.jobId) {
+        const local = localByJobId.get(srvMsg.jobId);
+        if (local?.user) usedLocalIds.add(local.user.id);
+        if (local?.assistant) usedLocalIds.add(local.assistant.id);
+      }
+    }
+  }
+
+  if (isProcessing) {
+    const lastSrvCreatedAt = serverMsgs.length > 0 ? serverMsgs[serverMsgs.length - 1].createdAt : 0;
+    for (const m of localMsgs) {
+      if (m.jobId && serverJobIds.has(m.jobId)) continue;
+      if (!m.jobId && m.createdAt > lastSrvCreatedAt) {
+        if (!usedLocalIds.has(m.id)) {
+          result.push(m);
+          usedLocalIds.add(m.id);
+        }
+      }
+    }
+  }
+
+  return result.slice(-MAX_HISTORY);
+}
+
 const POLL_INTERVAL_MS = 5000;
 const MAX_POLL_MS = 1800000;
 const STATUS_REFRESH_MS = 60000;
@@ -58,6 +181,7 @@ const MSGS_KEY_PREFIX = 'nexus_chat_msgs_v2';
 const LEGACY_HISTORY_PREFIX = 'nexus_chat_v1';
 const LEGACY_CHATID_PREFIX = 'nexus_chat_id_v1';
 const MAX_HISTORY = 50;
+const SERVER_SYNC_TIMEOUT_MS = 8000;
 
 function chatsKey(userId: string): string {
   return `${CHATS_KEY_PREFIX}_${userId}`;
@@ -234,11 +358,14 @@ export function useNexusAiChat(userId: string | undefined) {
   const wasHidden = useRef(false);
   const activeChatIdRef = useRef<string>('');
   const userIdRef = useRef<string | undefined>(userId);
+  const syncingChatRef = useRef<string | null>(null);
+  const isProcessingRef = useRef(false);
 
   activeChatIdRef.current = activeChatId;
   userIdRef.current = userId;
+  isProcessingRef.current = isProcessing;
 
-  // ── Initialize: migrate + load chat list + rebuild from storage + pick active chat ──
+    // ── Initialize: migrate + load chat list + rebuild from storage + pick active chat ──
   useEffect(() => {
     if (!userId) return;
     setChatsHydrated(false);
@@ -252,9 +379,12 @@ export function useNexusAiChat(userId: string | undefined) {
     }
     const list = Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt);
     setChats(list);
-    setChatsHydrated(true);
+
+    // Pick active chat + restore pending polling
+    let initialActiveId = '';
     if (list.length > 0) {
       const first = list[0];
+      initialActiveId = first.chatId;
       setActiveChatId(first.chatId);
       const { messages: msgs, pendingJobId } = loadChatMessages(userId, first.chatId);
       setMessages(msgs);
@@ -276,8 +406,78 @@ export function useNexusAiChat(userId: string | undefined) {
         }
       }
     } else {
-      setActiveChatId(crypto.randomUUID());
+      initialActiveId = crypto.randomUUID();
+      setActiveChatId(initialActiveId);
     }
+
+    // ── Server sync: chat list from nexus-chat-history ──
+    (async () => {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SERVER_SYNC_TIMEOUT_MS);
+        const data = await callEdgeFunction('nexus-chat-history', { user_id: userId, mode: 'list' }) as { chats: ServerChatListItem[] };
+        clearTimeout(timeout);
+
+        if (!data?.chats || !Array.isArray(data.chats)) return;
+
+        const serverChats: ChatMeta[] = data.chats.map(sc => ({
+          chatId: sc.chat_id,
+          title: sc.title || 'Suhbat',
+          createdAt: new Date(sc.created_at).getTime(),
+          updatedAt: new Date(sc.updated_at).getTime(),
+        }));
+        const serverChatIds = new Set(serverChats.map(c => c.chatId));
+        const serverByMap = new Map(serverChats.map(c => [c.chatId, c]));
+        const serverPendingMap = new Map<string, string>();
+        for (const sc of data.chats) {
+          if (sc.has_pending && sc.pending_job_id) serverPendingMap.set(sc.chat_id, sc.pending_job_id);
+        }
+
+        setChats(prevLocal => {
+          const localByMap = new Map(prevLocal.map(c => [c.chatId, c]));
+          const merged = new Map<string, ChatMeta>();
+
+          for (const sc of serverChats) {
+            const local = localByMap.get(sc.chatId);
+            merged.set(sc.chatId, {
+              ...sc,
+              title: local?.title && local.title !== 'Suhbat' ? local.title : sc.title,
+            });
+          }
+
+          for (const local of prevLocal) {
+            if (serverChatIds.has(local.chatId)) continue;
+            const localMsgs = loadChatMessages(userId, local.chatId).messages;
+            const hasPending = serverPendingMap.has(local.chatId);
+            if (localMsgs.length > 0 || hasPending) {
+              merged.set(local.chatId, local);
+            } else {
+              deleteChatMessages(userId, local.chatId);
+            }
+          }
+
+          return Array.from(merged.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+        });
+
+        // Restore pending polling for active chat
+        const activePending = serverPendingMap.get(initialActiveId);
+        if (activePending && !isProcessingRef.current) {
+          const { messages: localMsgs } = loadChatMessages(userId, initialActiveId);
+          const existingJob = localMsgs.find(m => m.jobId === activePending);
+          if (!existingJob || existingJob.status === 'queued' || existingJob.status === 'running') {
+            setIsProcessing(true);
+            setPendingChatId(initialActiveId);
+            pollingJobId.current = activePending;
+            pollingChatId.current = initialActiveId;
+            startPolling(activePending, userId, initialActiveId);
+          }
+        }
+      } catch {
+        // Offline — keep local list as-is
+      } finally {
+        setChatsHydrated(true);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -514,6 +714,54 @@ export function useNexusAiChat(userId: string | undefined) {
     } else {
       setIsProcessing(false);
     }
+
+    // ── Server sync: fetch messages for this chat ──
+    syncingChatRef.current = chatId;
+    (async () => {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SERVER_SYNC_TIMEOUT_MS);
+        const data = await callEdgeFunction('nexus-chat-history', { user_id: userId, mode: 'messages', chat_id: chatId }) as { messages: ServerChatMessage[] };
+        clearTimeout(timeout);
+
+        if (syncingChatRef.current !== chatId) return;
+        if (!data?.messages || !Array.isArray(data.messages)) return;
+
+        const serverMsgs: ChatMessage[] = [];
+        for (const job of data.messages) {
+          const { user, assistant } = serverJobToMessages(job);
+          serverMsgs.push(user);
+          if (assistant) serverMsgs.push(assistant);
+        }
+
+        const currentLocal = loadChatMessages(userId, chatId).messages;
+        const processing = isProcessingRef.current;
+        const merged = mergeServerMessages(currentLocal, serverMsgs, processing);
+
+        saveChatMessages(userId, chatId, merged, merged.find(m => m.jobId && (m.status === 'queued' || m.status === 'running'))?.jobId);
+
+        if (syncingChatRef.current === chatId && activeChatIdRef.current === chatId) {
+          setMessages(merged);
+        }
+
+        // Check for pending job from server
+        const pendingJob = data.messages.find(j => j.status === 'queued' || j.status === 'running');
+        if (pendingJob && !isProcessingRef.current && syncingChatRef.current === chatId) {
+          const existingPoll = pollingJobId.current === pendingJob.job_id;
+          if (!existingPoll) {
+            setIsProcessing(true);
+            setPendingChatId(chatId);
+            pollingJobId.current = pendingJob.job_id;
+            pollingChatId.current = chatId;
+            startPolling(pendingJob.job_id, userId, chatId);
+          }
+        }
+      } catch {
+        // Offline — keep local messages
+      } finally {
+        if (syncingChatRef.current === chatId) syncingChatRef.current = null;
+      }
+    })();
   }, [userId, activeChatId, startPolling]);
 
   const createNewChat = useCallback(() => {
@@ -702,6 +950,7 @@ export function useNexusAiChat(userId: string | undefined) {
     serverOffset,
     chatLimitError,
     pendingChatId,
+    chatsHydrated,
     sendMessage,
     retry,
     clearChat,

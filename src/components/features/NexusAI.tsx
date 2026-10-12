@@ -749,11 +749,12 @@ interface ChatListPanelProps {
   activeCount: number;
   maxActive: number;
   memoryEnabled: boolean;
+  chatsHydrated: boolean;
 }
 
 function ChatListPanel({
   chats, activeChatId, getChatTimer, pendingChatId, onSelect, onDelete, onNewChat,
-  activeCount, maxActive, memoryEnabled,
+  activeCount, maxActive, memoryEnabled, chatsHydrated,
 }: ChatListPanelProps) {
   const now = useNow();
   const pendingSet = useMemo(() => new Set(pendingChatId ? [pendingChatId] : []), [pendingChatId]);
@@ -805,7 +806,7 @@ function ChatListPanel({
         </div>
       )}
       <div className="nc-chat-list-scroll">
-        {chats.length === 0 && (
+        {chats.length === 0 && chatsHydrated && (
           <p className="nc-chat-empty">{NEXUS_NOTES.EMPTY_CHATS}</p>
         )}
         {memoryEnabled ? (
@@ -914,7 +915,7 @@ function NexusAIInner({ userId }: { userId: string }) {
     memoryEnabled, chatLimitError, sendMessage, retry, deleteChat,
     switchChat, createNewChat, getChatTimer, isChatExpired,
     fetchChatsStatus, chatsStatus, serverOffset, pendingChatId,
-    minInput, maxInput,
+    minInput, maxInput, chatsHydrated,
   } = useNexusAiChat(userId);
 
   const [input, setInput] = useState('');
@@ -1069,6 +1070,7 @@ function NexusAIInner({ userId }: { userId: string }) {
             activeCount={activeCount}
             maxActive={maxActive}
             memoryEnabled={memoryEnabled}
+            chatsHydrated={chatsHydrated}
           />
         </aside>
 
