@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Server, RefreshCw, CheckCircle, XCircle, Clock, Loader2,
-  Activity, AlertTriangle, TrendingUp, Zap, Search, FileText, AlertCircle, ArrowDownCircle
+  Activity, AlertTriangle, TrendingUp, Zap, Search, FileText, AlertCircle, ArrowDownCircle, MessageSquare
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
@@ -257,7 +257,18 @@ export default function LmStudioPanel() {
   const totalActive = jobs.filter(j => j.status === 'queued' || j.status === 'running').length;
   const totalDone = jobs.filter(j => j.status === 'done').length;
   const totalError = jobs.filter(j => j.status === 'error').length;
-  const totalChat = jobs.filter(j => j.job_kind === 'chat').length;
+  const chatJobs = jobs.filter(j => j.job_kind === 'chat');
+  const totalChat = chatJobs.length;
+  const chatActive = chatJobs.filter(j => j.status === 'queued' || j.status === 'running').length;
+  const chatDone = chatJobs.filter(j => j.status === 'done').length;
+  const chatError = chatJobs.filter(j => j.status === 'error').length;
+  const chatByBackend = [1, 2, 3].map(b => ({
+    backend: b,
+    total: chatJobs.filter(j => (j.backend ?? 1) === b).length,
+    done: chatJobs.filter(j => (j.backend ?? 1) === b && j.status === 'done').length,
+    error: chatJobs.filter(j => (j.backend ?? 1) === b && j.status === 'error').length,
+    active: chatJobs.filter(j => (j.backend ?? 1) === b && (j.status === 'queued' || j.status === 'running')).length,
+  })).filter(s => (s.backend === 1) || (s.backend === 2 && settings.url2Configured) || (s.backend === 3 && settings.url3Configured));
   const totalLexion = jobs.filter(j => j.answer_mode === 'lexion').length;
   const totalFallback = jobs.filter(j => j.lexion_fallback).length;
 
@@ -361,6 +372,68 @@ export default function LmStudioPanel() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Chat / Nexus AI monitoring ── */}
+      <Card className={`border-2 ${totalChat > 0 ? 'border-cyan-300' : 'border-gray-200'} shadow-md`}>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <div className="p-2 rounded-lg bg-cyan-100 text-cyan-700">
+              <MessageSquare className="h-5 w-5" />
+            </div>
+            Chat / Nexus AI faoliyati
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {totalChat === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">Hozircha chat so'rovlari yo'q</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="bg-gray-50 rounded-lg p-2">
+                  <p className="text-2xl font-black text-gray-700">{totalChat}</p>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase">Jami so'rov</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-2">
+                  <p className="text-2xl font-black text-green-600">{chatDone}</p>
+                  <p className="text-[10px] text-green-600 font-bold uppercase">Tayyor</p>
+                </div>
+                <div className="bg-red-50 rounded-lg p-2">
+                  <p className="text-2xl font-black text-red-600">{chatError}</p>
+                  <p className="text-[10px] text-red-600 font-bold uppercase">Xato</p>
+                </div>
+                <div className="bg-yellow-50 rounded-lg p-2">
+                  <p className="text-2xl font-black text-yellow-600">{chatActive}</p>
+                  <p className="text-[10px] text-yellow-600 font-bold uppercase">Faol</p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-gray-500 uppercase">Render bo'yicha taqsimot</p>
+                {chatByBackend.map(s => (
+                  <div key={s.backend} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2">
+                    <span className={`font-bold px-2 py-0.5 rounded-full border ${backendColor(s.backend)}`}>
+                      {backendLabel(s.backend)}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-500">Jami: <b className="text-gray-700">{s.total}</b></span>
+                      <span className="text-green-600">Tayyor: <b>{s.done}</b></span>
+                      {s.error > 0 && <span className="text-red-600">Xato: <b>{s.error}</b></span>}
+                      {s.active > 0 && <span className="text-yellow-600">Faol: <b>{s.active}</b></span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {chatError > 0 && (
+                <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 p-2 rounded-lg border border-red-200">
+                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Chat xatolari: {chatError} ta so'rov muvaffaqiyatsiz yakunlangan. Filter'dan "Xato" tugmasini bosib batafsil ko'ring.</span>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Backend kartalari ── */}
       <div className={`grid gap-4 ${stats.length >= 3 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
