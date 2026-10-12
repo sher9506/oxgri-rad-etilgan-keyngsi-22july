@@ -350,13 +350,15 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (talabaRow) {
-        // Faol so'rov tekshiruvi: queued/running chat job bormi?
+        // Faol so'rov tekshiruvi: oxirgi 20 daqiqada queued/running chat job bormi?
+        const activeWindowStart = new Date(Date.now() - 20 * 60 * 1000).toISOString();
         const { count: activeCount } = await supabaseAdmin
           .from("case_answer_jobs")
           .select("id", { count: "exact", head: true })
           .eq("job_kind", "chat")
           .eq("teacher_id", ustoz_id)
-          .in("status", ["queued", "running"]);
+          .in("status", ["queued", "running"])
+          .gte("created_at", activeWindowStart);
         if ((activeCount ?? 0) > 0) {
           return new Response(
             JSON.stringify({ error: "Oldingi so'rovingiz hali bajarilmoqda. Iltimos javobni kuting.", code: "active_job" }),

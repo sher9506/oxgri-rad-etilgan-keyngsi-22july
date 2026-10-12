@@ -122,9 +122,21 @@ export function useNexusAiChat(userId: string | undefined) {
     const { messages: loaded, pendingJobId } = loadHistory(userId);
     setMessages(loaded);
     if (pendingJobId) {
-      // Check if pending job still exists
-      setIsProcessing(true);
-      startPolling(pendingJobId, userId);
+      // Check if pending job is stale (>20 min old) before polling
+      const pendingMsg = loaded.find(m => m.jobId === pendingJobId);
+      const jobAgeMs = pendingMsg?.createdAt ? Date.now() - pendingMsg.createdAt : 0;
+      if (jobAgeMs > 20 * 60 * 1000) {
+        // Stale — mark as error, clear pending, don't block user
+        setMessages(prev => prev.map(m =>
+          m.jobId === pendingJobId
+            ? { ...m, status: 'error' as ChatJobStatus, error: "Server qayta ishga tushdi, savolni qayta yuboring." }
+            : m
+        ));
+        saveHistory(userId, loaded.filter(m => m.jobId !== pendingJobId));
+      } else {
+        setIsProcessing(true);
+        startPolling(pendingJobId, userId);
+      }
     }
   }, [userId]);
 
@@ -301,6 +313,14 @@ export function useNexusAiChat(userId: string | undefined) {
       let errorMsg = e.message || 'Xatolik yuz berdi';
       if (e.code === 'quota_exceeded' || e.code === 'active_job') {
         errorMsg = e.message;
+      }
+      // active_job bloklash — saqlangan pending job'ni tozalash
+      if (e.code === 'active_job') {
+        const pending = messages.find(m => m.jobId && (m.status === 'queued' || m.status === 'running'));
+        if (pending?.jobId) {
+          // Pending job stale bo'lishi mumkin — tozalang
+          saveHistory(userId, messages.filter(m => m.jobId !== pending.jobId));
+        }
       }
       setMessages(prev => prev.map(m =>
         m.id === aiMsgId ? { ...m, status: 'error', error: errorMsg, content: errorMsg } : m

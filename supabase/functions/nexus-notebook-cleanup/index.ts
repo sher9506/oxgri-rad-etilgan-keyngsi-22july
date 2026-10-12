@@ -38,7 +38,8 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  const secret = Deno.env.get("CRON_SECRET") ?? "";
+  const { data: secretRow } = await sb.from("settings").select("text_value").eq("key", "CRON_SECRET").maybeSingle();
+  const secret = secretRow?.text_value ?? "";
   if (!secret || req.headers.get("x-cron-secret") !== secret) return json({ error: "forbidden" }, 403);
 
   const now = Date.now();
@@ -117,5 +118,26 @@ Deno.serve(async (req: Request) => {
     }
   }));
 
-  return json({ ok: true, ...summary });
+  // 3) Stale chat job'larni tozalash: 25 daqiqadan eski faol Nexus chat job'lari
+  const staleCutoff = new Date(now - 25 * 60_000).toISOString();
+  const { data: staleJobs } = await sb
+    .from("case_answer_jobs")
+    .select("id, teacher_id, created_at")
+    .eq("job_kind", "chat")
+    .in("status", ["queued", "running"])
+    .is("case_id", null)
+    .lt("created_at", staleCutoff)
+    .limit(20);
+
+  const staleIds = (staleJobs ?? []).map((r: Record<string, unknown>) => r.id as string);
+  if (staleIds.length > 0) {
+    const { error: staleErr } = await sb
+      .from("case_answer_jobs")
+      .update({ status: "error", error: "Server qayta ishga tushdi, savolni qayta yuboring.", finished_at: new Date().toISOString() })
+      .in("id", staleIds);
+    if (staleErr) console.error("[nexus-cleanup] stale job tozalash xatosi:", staleErr.message);
+    else console.log(`[nexus-cleanup] ${staleIds.length} ta stale chat job error ga o'tdi`);
+  }
+
+  return json({ ok: true, ...summary, stale_cleaned: staleIds.length });
 });

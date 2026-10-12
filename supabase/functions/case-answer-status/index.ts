@@ -659,6 +659,21 @@ Deno.serve(async (req: Request) => {
     // ════════════════════════════════════════════════════════════════
 
     if (!job.service_job_id) {
+      // service_job_id yo'q va leksion bosqichida ham emas — qotib qolgan job
+      if (job.status === 'queued' || job.status === 'running') {
+        const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
+        if (jobAgeMs > 20 * 60 * 1000) {
+          const errMsg = "Server qayta ishga tushdi, savolni qayta yuboring.";
+          await supabaseAdmin
+            .from("case_answer_jobs")
+            .update({ status: "error", error: errMsg, lexion_phase: "error", finished_at: new Date().toISOString() })
+            .eq("id", id);
+          return new Response(
+            JSON.stringify({ status: "error", answer: null, error: errMsg, lexion_phase: "error" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
       return new Response(
         JSON.stringify({
           status: job.status,

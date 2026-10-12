@@ -1,0 +1,774 @@
+/* Nexus AI — Claude.ai uslubidagi sokin muhit */
+/* Barcha stillar .nexus-claude wrapper ichida qamralgan */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
+
+.nexus-claude {
+  /* Rang tokenlari (light only — dark mode yo'q) */
+  --nc-bg: #FAF9F5;
+  --nc-surface: #FFFFFF;
+  --nc-surface-2: #F0EEE6;
+  --nc-text: #1F1E1D;
+  --nc-text-2: #5E5D59;
+  --nc-text-3: #6B6A64;
+  --nc-border: rgba(31, 30, 29, .12);
+  --nc-accent: #C96442;
+  --nc-accent-hover: #B5573A;
+  --nc-accent-soft: rgba(201, 100, 66, .10);
+  --nc-error-bg: rgba(201, 100, 66, .08);
+  --nc-shadow: 0 2px 8px rgba(31, 30, 29, .06);
+  --nc-shadow-focus: 0 0 0 3px rgba(201, 100, 66, .12);
+  --nc-radius: 24px;
+  --nc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --nc-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --nc-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--nc-bg);
+  color: var(--nc-text);
+  font-family: var(--nc-sans);
+}
+
+/* ── Sarlavha qatori ── */
+.nc-header {
+  flex-shrink: 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--nc-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nc-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.nc-header-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  color: var(--nc-accent);
+}
+
+.nc-header-title {
+  font-family: var(--nc-serif);
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--nc-text);
+  line-height: 1.2;
+  margin: 0;
+}
+
+.nc-header-sub {
+  font-size: 12px;
+  color: var(--nc-text-2);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.nc-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nc-quota-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--nc-accent-soft);
+  color: var(--nc-accent);
+}
+
+.nc-quota-pill-low {
+  background: rgba(239, 68, 68, .08);
+  color: #ef4444;
+}
+
+.nc-icon-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nc-text-3);
+  cursor: pointer;
+  transition: background 200ms var(--nc-ease), color 200ms var(--nc-ease);
+}
+
+.nc-icon-btn:hover {
+  background: var(--nc-surface-2);
+  color: var(--nc-text);
+}
+
+.nc-icon-btn:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
+}
+
+.nc-reset-line {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--nc-text-3);
+}
+
+/* ── Scroll maydon ── */
+.nc-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  min-height: 0;
+  scroll-behavior: smooth;
+}
+
+.nc-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.nc-scroll::-webkit-scrollbar-thumb {
+  background: var(--nc-border);
+  border-radius: 3px;
+}
+
+/* ── Bo'sh holat ── */
+.nc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 24px;
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.nc-empty-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--nc-accent);
+  margin-bottom: 16px;
+}
+
+.nc-empty-title {
+  font-family: var(--nc-serif);
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--nc-text);
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+
+.nc-empty-desc {
+  font-size: 16px;
+  color: var(--nc-text-2);
+  line-height: 1.5;
+  margin: 0 0 24px;
+  max-width: 36rem;
+}
+
+.nc-suggestions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  max-width: 40rem;
+}
+
+.nc-suggestion-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--nc-surface);
+  border: 1px solid var(--nc-border);
+  border-radius: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 300ms var(--nc-ease), border-color 200ms var(--nc-ease);
+  font-family: var(--nc-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--nc-text);
+}
+
+.nc-suggestion-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--nc-text-3);
+}
+
+.nc-suggestion-card:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
+}
+
+.nc-suggestion-card:hover .nc-sparkle {
+  color: var(--nc-accent);
+}
+
+.nc-sparkle {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--nc-text-3);
+  transition: color 200ms var(--nc-ease);
+}
+
+.nc-cold-start {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--nc-text-3);
+}
+
+/* ── Xabarlar ── */
+.nc-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.nc-msg-user {
+  align-self: flex-end;
+  max-width: 85%;
+  background: var(--nc-surface-2);
+  border-radius: 18px;
+  padding: 10px 16px;
+  font-family: var(--nc-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--nc-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  animation: nc-msg-in 400ms var(--nc-ease);
+}
+
+.nc-msg-assistant {
+  align-self: flex-start;
+  width: 100%;
+  animation: nc-msg-in 500ms var(--nc-ease);
+}
+
+@keyframes nc-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.nc-answer {
+  font-family: var(--nc-serif);
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--nc-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.nc-answer-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--nc-text-3);
+}
+
+.nc-answer-meta-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.nc-fallback-note {
+  margin-top: 8px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--nc-text-3);
+}
+
+/* Javob ostidagi tugmalar */
+.nc-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.nc-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-family: var(--nc-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--nc-text-3);
+  cursor: pointer;
+  transition: background 200ms var(--nc-ease), color 200ms var(--nc-ease);
+  min-height: 32px;
+}
+
+.nc-action-btn:hover {
+  background: var(--nc-surface-2);
+  color: var(--nc-text);
+}
+
+.nc-action-btn:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
+}
+
+.nc-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Foydalanilgan manbalar (javob ostida) */
+.nc-sources {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--nc-border);
+}
+
+.nc-sources-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nc-text-2);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nc-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nc-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--nc-accent);
+  text-decoration: none;
+  transition: opacity 200ms var(--nc-ease);
+}
+
+.nc-source-link:hover {
+  opacity: 0.8;
+}
+
+.nc-source-link svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* ── Thinking (kutish holati) ── */
+.nc-thinking {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nc-thinking-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nc-thinking-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--nc-text-2);
+  animation: nc-pulse 2s ease-in-out infinite;
+}
+
+@keyframes nc-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.nc-thinking-text {
+  font-family: var(--nc-sans);
+  font-size: 15px;
+  color: var(--nc-text-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.nc-thinking-text::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+  animation: nc-shimmer 2s infinite;
+  transform: translateX(-100%);
+}
+
+@keyframes nc-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.nc-thinking-timer {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--nc-text-3);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--nc-sans);
+}
+
+.nc-thinking-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--nc-border);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--nc-text-2);
+  text-decoration: none;
+  background: var(--nc-surface);
+  transition: border-color 200ms var(--nc-ease);
+  animation: nc-chip-in 300ms var(--nc-ease) backwards;
+}
+
+.nc-chip:hover {
+  border-color: var(--nc-text-3);
+}
+
+.nc-chip:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
+}
+
+.nc-chip svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.nc-chip-more {
+  padding: 4px 10px;
+  border: 1px solid var(--nc-border);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--nc-text-3);
+  background: var(--nc-surface-2);
+  animation: nc-chip-in 300ms var(--nc-ease) backwards;
+}
+
+@keyframes nc-chip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Xato holati ── */
+.nc-error-panel {
+  background: var(--nc-error-bg);
+  border: 1px solid var(--nc-border);
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nc-error-text {
+  font-size: 14px;
+  color: var(--nc-text);
+  line-height: 1.5;
+}
+
+.nc-error-retry {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--nc-accent);
+  border-radius: 10px;
+  background: transparent;
+  font-family: var(--nc-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nc-accent);
+  cursor: pointer;
+  transition: background 200ms var(--nc-ease), color 200ms var(--nc-ease);
+}
+
+.nc-error-retry:hover {
+  background: var(--nc-accent);
+  color: #fff;
+}
+
+.nc-error-retry:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
+}
+
+.nc-error-retry svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Scroll-to-bottom tugmasi ── */
+.nc-scroll-bottom {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 140px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--nc-border);
+  background: var(--nc-surface);
+  box-shadow: var(--nc-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nc-text-2);
+  cursor: pointer;
+  z-index: 10;
+  transition: opacity 300ms var(--nc-ease);
+  animation: nc-msg-in 300ms var(--nc-ease);
+}
+
+.nc-scroll-bottom:hover {
+  color: var(--nc-text);
+  border-color: var(--nc-text-3);
+}
+
+.nc-scroll-bottom:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
+}
+
+.nc-scroll-bottom svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Composer ── */
+.nc-composer-wrap {
+  position: relative;
+  flex-shrink: 0;
+  padding: 8px 20px 12px;
+}
+
+.nc-composer {
+  max-width: 44rem;
+  margin: 0 auto;
+  background: var(--nc-surface);
+  border: 1px solid var(--nc-border);
+  border-radius: var(--nc-radius);
+  box-shadow: var(--nc-shadow);
+  padding: 12px 16px;
+  transition: border-color 200ms var(--nc-ease), box-shadow 200ms var(--nc-ease);
+}
+
+.nc-composer-focused {
+  border-color: rgba(201, 100, 66, .4);
+  box-shadow: var(--nc-shadow), var(--nc-shadow-focus);
+}
+
+.nc-composer-inner {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.nc-textarea {
+  flex: 1;
+  resize: none;
+  border: none;
+  background: transparent;
+  font-family: var(--nc-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--nc-text);
+  outline: none;
+  min-height: 24px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.nc-textarea::placeholder {
+  color: var(--nc-text-3);
+}
+
+.nc-textarea:disabled {
+  opacity: 0.5;
+}
+
+.nc-send-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: var(--nc-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 200ms var(--nc-ease), transform 200ms var(--nc-ease);
+}
+
+.nc-send-btn:hover:not(:disabled) {
+  background: var(--nc-accent-hover);
+}
+
+.nc-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nc-send-btn:focus-visible {
+  outline: 2px solid var(--nc-accent);
+  outline-offset: 2px;
+}
+
+.nc-send-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.nc-send-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.nc-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.nc-lexion-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--nc-serif);
+  font-size: 13px;
+  color: var(--nc-text-2);
+  cursor: pointer;
+}
+
+.nc-lexion-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+}
+
+.nc-counter {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--nc-text-3);
+  font-family: var(--nc-sans);
+}
+
+.nc-counter-warn {
+  color: var(--nc-accent-hover);
+}
+
+.nc-composer-notes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.nc-note {
+  font-size: 12px;
+  color: var(--nc-text-3);
+  font-family: var(--nc-sans);
+}
+
+.nc-note-dot {
+  color: var(--nc-text-3);
+  font-size: 12px;
+}
+
+.nc-note-kbd {
+  display: none;
+}
+
+/* Enter hint faqat hover-capable qurilmalarda */
+@media (hover: hover) {
+  .nc-note-kbd {
+    display: inline;
+  }
+}
+
+/* ── Input warnings ── */
+.nc-input-warning {
+  max-width: 44rem;
+  margin: 0 auto 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+  background: var(--nc-surface-2);
+  color: var(--nc-text-2);
+}
+
+/* ── reduced-motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .nc-thinking-icon { animation: none; }
+  .nc-thinking-text::after { animation: none; display: none; }
+  .nc-chip { animation: none; }
+  .nc-msg-user, .nc-msg-assistant { animation: none; }
+  .nc-scroll-bottom { animation: none; }
+}
+
+/* ── Mobil ≤640px ── */
+@media (max-width: 640px) {
+  .nc-header { padding: 10px 16px; }
+  .nc-scroll { padding: 12px 16px; }
+  .nc-composer-wrap { padding: 6px 16px calc(8px + env(safe-area-inset-bottom)); }
+  .nc-suggestions { grid-template-columns: 1fr; }
+  .nc-empty-title { font-size: 24px; }
+  .nc-answer { font-size: 16px; line-height: 1.65; }
+  .nc-msg-user { max-width: 90%; }
+  .nc-composer-notes { flex-wrap: wrap; }
+  .nc-note-kbd { display: none; }
+}
+
+/* ≥1280px: maskot uchun joy (lekin LexionAI faqat !user da, shuning uchun bu bo'sh) */
+@media (min-width: 1280px) {
+  .nc-messages { max-width: 44rem; }
+}
