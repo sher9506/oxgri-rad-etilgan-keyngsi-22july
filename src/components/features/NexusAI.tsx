@@ -10,10 +10,12 @@ import { useNow } from '@/hooks/useNow';
 import {
   AI_NAME, AI_TAGLINE, SAMPLE_QUESTIONS, NEXUS_NOTES,
   MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS,
+  formatRemainingShort, getTimerTone, formatRelativeDate,
 } from '@/constants/nexus';
 import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
 import BgShapes from './nexus/BgShapes';
+import AnswerText from './nexus/AnswerText';
 import './nexus-claude.css';
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -26,8 +28,8 @@ function formatResetTime(nextResetAt: string, nowMs: number): string | null {
   const hours = Math.floor(totalMin / 60);
   const mins = totalMin % 60;
   const timeStr = new Date(nextResetAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
-  if (hours > 0) return `${hours} soat ${mins} daqiqadan keyin (${timeStr})`;
-  return `${mins} daqiqadan keyin (${timeStr})`;
+  if (hours > 0) return `${hours} soat ${mins > 0 ? mins + ' daq ' : ''}keyin (${timeStr})`;
+  return `${totalMin} daq keyin (${timeStr})`;
 }
 
 function normalizeUrl(url: string): string {
@@ -46,23 +48,13 @@ function extractLexDocId(url: string): string {
   return m ? `lex.uz/docs/${m[1]}` : url.replace(/^https?:\/\/(www\.)?/, '');
 }
 
-function formatClock(seconds: number): string {
+function formatElapsedMin(seconds: number): string {
   const min = Math.floor(seconds / 60);
-  const sec = seconds % 60;
-  return `${min}:${sec.toString().padStart(2, '0')}`;
+  return min > 0 ? `${min} daq` : '<1 daq';
 }
 
-function formatTimerHMS(totalSeconds: number): string {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-}
-
-function formatSrTimer(totalSeconds: number): string {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  return `Qolgan vaqt ${h} soat ${m} daqiqa`;
+function formatSrTimer(remainingMs: number): string {
+  return `Qolgan vaqt: ${formatRemainingShort(remainingMs)}`;
 }
 
 /* ───────────────────────── Media query hooks ───────────────────────── */
@@ -234,32 +226,30 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
   }, [lexionUrls]);
 
   const isPhaseB = lexLinks.length > 0;
-  const now = useNow();
+  const now = useNow(15_000);
   const offsetRef = useRef(0);
 
   useEffect(() => {
     offsetRef.current = serverNow ? new Date(serverNow).getTime() - Date.now() : 0;
   }, [serverNow]);
 
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [elapsedMin, setElapsedMin] = useState(0);
   const prevElapsedRef = useRef(0);
 
   useEffect(() => {
-    if (!jobCreatedAt) { setElapsedSec(0); prevElapsedRef.current = 0; return; }
+    if (!jobCreatedAt) { setElapsedMin(0); prevElapsedRef.current = 0; return; }
     const start = new Date(jobCreatedAt).getTime();
-    const calc = Math.max(0, Math.floor((now + offsetRef.current - start) / 1000));
-    if (calc >= prevElapsedRef.current) {
-      setElapsedSec(calc);
-      prevElapsedRef.current = calc;
+    const calcSec = Math.max(0, Math.floor((now + offsetRef.current - start) / 1000));
+    const calcMin = Math.floor(calcSec / 60);
+    if (calcMin >= prevElapsedRef.current) {
+      setElapsedMin(calcMin);
+      prevElapsedRef.current = calcMin;
     }
   }, [now, jobCreatedAt]);
 
   const reducedMotion = usePrefersReducedMotion();
   const canHover = useCanHover();
   const docLayers = canHover ? 4 : 2;
-
-  const visibleChips = lexLinks.slice(0, 6);
-  const remaining = lexLinks.length - visibleChips.length;
 
   return (
     <div className="nc-thinking" aria-live="polite">
@@ -268,7 +258,7 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
         <span className="nc-thinking-text" key={isPhaseB ? 'b' : 'a'}>
           {isPhaseB ? "Ushbu qonun hujjatlari o'rganilmoqda" : "Amaldagi qonunchilik o'rganilmoqda"}
         </span>
-        <span className="nc-thinking-timer" aria-hidden="true">{formatClock(elapsedSec)}</span>
+        <span className="nc-thinking-timer" aria-hidden="true">{elapsedMin > 0 ? `${elapsedMin} daq` : ''}</span>
       </div>
       <div className="nc-thinking-docstack" aria-hidden="true">
         <DocStack
@@ -280,26 +270,21 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
           active={true}
         />
       </div>
-      {isPhaseB && visibleChips.length > 0 && (
+      {isPhaseB && lexLinks.length > 0 && (
         <div className="nc-thinking-chips">
-          {visibleChips.map((url, i) => (
+          {lexLinks.map((url, i) => (
             <a
               key={url}
               href={normalizeUrl(url)}
               target="_blank"
               rel="noopener noreferrer"
               className="nc-chip"
-              style={{ animationDelay: `${i * 60}ms` }}
+              style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}
             >
               <FileText style={{ width: 12, height: 12 }} />
               {extractLexDocId(url)}
             </a>
           ))}
-          {remaining > 0 && (
-            <span className="nc-chip-more" style={{ animationDelay: `${visibleChips.length * 60}ms` }}>
-              +{remaining}
-            </span>
-          )}
         </div>
       )}
       <div className="nc-thinking-skeleton" aria-hidden="true">
@@ -378,7 +363,9 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
 
   return (
     <div className="nc-msg-assistant">
-      <div className="nc-answer" aria-live="polite">{msg.content}</div>
+      <div className="nc-answer">
+        <AnswerText text={msg.content} />
+      </div>
       {msg.lexionFallback && (
         <p className="nc-fallback-note">(Umumiy rejimda javob berildi)</p>
       )}
@@ -406,7 +393,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
         {finalSeconds !== null && (
           <span className="nc-answer-meta">
             <Clock className="nc-answer-meta-icon" />
-            {formatClock(finalSeconds)}
+            {formatElapsedMin(finalSeconds)}
           </span>
         )}
       </div>
@@ -534,11 +521,7 @@ function NexusComposer({
         </div>
       </div>
       <div className="nc-composer-notes">
-        <span className="nc-note">{memoryNote}</span>
-        <span className="nc-note-dot">·</span>
-        <span className="nc-note">{NEXUS_NOTES.LOCAL_ONLY}</span>
-        <span className="nc-note-dot nc-note-kbd">·</span>
-        <span className="nc-note nc-note-kbd">Enter — yuborish, Shift+Enter — yangi qator</span>
+        <span className="nc-composer-disclaimer">{NEXUS_NOTES.AI_DISCLAIMER}</span>
       </div>
     </div>
   );
@@ -550,22 +533,22 @@ interface TimerPillProps {
   getChatTimer: (chatId: string, nowMs?: number) => { remaining: number; status: 'active' | 'expired' | 'none' };
   chatId: string;
   memoryEnabled: boolean;
+  nowOverride?: number;
 }
 
-function TimerPill({ getChatTimer, chatId, memoryEnabled }: TimerPillProps) {
-  const now = useNow();
+function TimerPill({ getChatTimer, chatId, memoryEnabled, nowOverride = 0 }: TimerPillProps) {
+  const now = Math.max(useNow(), nowOverride);
   const [showPopover, setShowPopover] = useState(false);
 
   if (!memoryEnabled) return null;
   const timer = getChatTimer(chatId, now);
   if (timer.status !== 'active') return null;
 
-  const totalSec = Math.floor(timer.remaining / 1000);
-  const hours = totalSec / 3600;
-
-  let cls = 'nc-timer-pill nc-timer-pill-normal';
-  if (hours < 1 / 6) cls = 'nc-timer-pill nc-timer-pill-red nc-timer-pulse';
-  else if (hours < 1) cls = 'nc-timer-pill nc-timer-pill-amber';
+  const tone = getTimerTone(timer.remaining);
+  let cls = 'nc-timer-pill';
+  if (tone === 'red') cls += ' nc-timer-pill-red nc-timer-pulse';
+  else if (tone === 'amber') cls += ' nc-timer-pill-amber';
+  else cls += ' nc-timer-pill-normal';
 
   return (
     <div className="nc-timer-pill-wrap">
@@ -573,11 +556,13 @@ function TimerPill({ getChatTimer, chatId, memoryEnabled }: TimerPillProps) {
         className={cls}
         onClick={() => setShowPopover(true)}
         aria-label="Xotira taymeri haqida ma'lumot"
+        title="Chat xotirasi tugashigacha qolgan vaqt"
         aria-expanded={showPopover}
         aria-controls="nc-timer-popover"
       >
         <Clock style={{ width: 13, height: 13 }} />
-        <span aria-hidden="true">{formatTimerHMS(totalSec)}</span>
+        <span aria-hidden="true" className="nc-timer-pill-prefix">Xotira: </span>
+        <span aria-hidden="true">{formatRemainingShort(timer.remaining)}</span>
         <Info style={{ width: 12, height: 12, opacity: 0.6 }} />
       </button>
       {showPopover && <TimerPopover onClose={() => setShowPopover(false)} />}
@@ -591,23 +576,23 @@ interface TimerBannerProps {
   getChatTimer: (chatId: string, nowMs?: number) => { remaining: number; status: 'active' | 'expired' | 'none' };
   chatId: string;
   memoryEnabled: boolean;
+  nowOverride?: number;
 }
 
-function TimerBanner({ getChatTimer, chatId, memoryEnabled }: TimerBannerProps) {
-  const now = useNow();
+function TimerBanner({ getChatTimer, chatId, memoryEnabled, nowOverride = 0 }: TimerBannerProps) {
+  const now = Math.max(useNow(), nowOverride);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   if (!memoryEnabled) return null;
   const timer = getChatTimer(chatId, now);
   if (timer.status !== 'active') return null;
 
-  const totalSec = Math.floor(timer.remaining / 1000);
-  const hours = totalSec / 3600;
-  if (hours >= 1) return null;
+  const tone = getTimerTone(timer.remaining);
+  if (tone === 'normal') return null;
   if (dismissedIds.has(chatId)) return null;
 
-  const bannerText = NEXUS_NOTES.BANNER_WARNING.replace('{time}', formatTimerHMS(totalSec));
-  const bannerRed = hours < 1 / 6;
+  const bannerText = NEXUS_NOTES.BANNER_WARNING.replace('{time}', formatRemainingShort(timer.remaining));
+  const bannerRed = tone === 'red';
 
   return (
     <div className={`nc-timer-banner ${bannerRed ? 'nc-timer-banner-red' : ''}`}>
@@ -647,25 +632,24 @@ function TimerChip({ remaining, status }: { remaining: number; status: 'active' 
     return <span className="nc-timer-chip nc-timer-expired" aria-hidden="true">Tugadi</span>;
   }
 
-  const totalSec = Math.floor(remaining / 1000);
-  const hours = totalSec / 3600;
+  const tone = getTimerTone(remaining);
   let cls = 'nc-timer-chip nc-timer-normal';
   let icon = <Clock style={{ width: 11, height: 11 }} />;
 
-  if (hours < 1 && hours >= 1 / 6) {
+  if (tone === 'amber') {
     cls = 'nc-timer-chip nc-timer-amber';
     icon = <span style={{ fontSize: 11, fontWeight: 700 }}>!</span>;
-  } else if (hours < 1 / 6) {
+  } else if (tone === 'red') {
     cls = 'nc-timer-chip nc-timer-red nc-timer-pulse';
     icon = <span style={{ fontSize: 11, fontWeight: 700 }}>!</span>;
   }
 
-  const srText = formatSrTimer(totalSec);
+  const srText = formatSrTimer(remaining);
 
   return (
     <span className={cls} aria-hidden="true">
       {icon}
-      {formatTimerHMS(totalSec)}
+      {formatRemainingShort(remaining)}
       <span className="sr-only" aria-live="off" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
         {srText}
       </span>
@@ -688,6 +672,7 @@ interface ChatListItemProps {
 function ChatListItem({ chat, isActive, timerRemaining, timerStatus, hasPending, onSelect, onDelete }: ChatListItemProps) {
   const [confirming, setConfirming] = useState(false);
   const canHover = useCanHover();
+  const displayTitle = chat.title.charAt(0).toUpperCase() + chat.title.slice(1);
 
   return (
     <div
@@ -703,10 +688,11 @@ function ChatListItem({ chat, isActive, timerRemaining, timerStatus, hasPending,
     >
       {isActive && <div className="nc-chat-active-bar" />}
       <div className="nc-chat-content">
-        <span className="nc-chat-title">{chat.title}</span>
+        <span className="nc-chat-title">{displayTitle}</span>
         <div className="nc-chat-meta">
           {hasPending && <span className="nc-chat-pending"><Loader2 style={{ width: 10, height: 10 }} /> ishlamoqda</span>}
-          {timerStatus !== 'none' && <TimerChip remaining={timerRemaining} status={timerStatus} />}
+          {timerStatus === 'expired' && <span className="nc-chat-date">{formatRelativeDate(chat.updatedAt)}</span>}
+          {timerStatus === 'active' && !isActive && <TimerChip remaining={timerRemaining} status={timerStatus} />}
         </div>
       </div>
       {confirming ? (
@@ -722,7 +708,7 @@ function ChatListItem({ chat, isActive, timerRemaining, timerStatus, hasPending,
           >{NEXUS_NOTES.DELETE_CANCEL}</button>
         </div>
       ) : (
-        (isActive || canHover) && (
+        (isActive || canHover || !canHover) && (
           <button
             className="nc-chat-delete"
             onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
@@ -750,15 +736,50 @@ interface ChatListPanelProps {
   maxActive: number;
   memoryEnabled: boolean;
   chatsHydrated: boolean;
+  nowOverride?: number;
+  isDrawer?: boolean;
+}
+
+const PANEL_HEAD_KEY = 'nexus_panel_head_collapsed_v1';
+
+function getInitialCollapsed(isDrawer: boolean): boolean {
+  if (isDrawer) return false;
+  if (typeof window === 'undefined') return false;
+  const stored = localStorage.getItem(PANEL_HEAD_KEY);
+  if (stored !== null) return stored === '1';
+  return window.innerHeight < 800;
 }
 
 function ChatListPanel({
   chats, activeChatId, getChatTimer, pendingChatId, onSelect, onDelete, onNewChat,
-  activeCount, maxActive, memoryEnabled, chatsHydrated,
+  activeCount, maxActive, memoryEnabled, chatsHydrated, nowOverride = 0,
+  isDrawer = false,
 }: ChatListPanelProps) {
-  const now = useNow();
+  const now = Math.max(useNow(), nowOverride);
   const pendingSet = useMemo(() => new Set(pendingChatId ? [pendingChatId] : []), [pendingChatId]);
   const atLimit = activeCount >= maxActive;
+  const [headCollapsed, setHeadCollapsed] = useState(() => getInitialCollapsed(isDrawer));
+  const reducedMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    if (isDrawer) return;
+    const handler = () => {
+      const stored = localStorage.getItem(PANEL_HEAD_KEY);
+      if (stored === null) setHeadCollapsed(window.innerHeight < 800);
+    };
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, [isDrawer]);
+
+  const toggleHead = useCallback(() => {
+    setHeadCollapsed(prev => {
+      const next = !prev;
+      if (!isDrawer && typeof window !== 'undefined') {
+        localStorage.setItem(PANEL_HEAD_KEY, next ? '1' : '0');
+      }
+      return next;
+    });
+  }, [isDrawer]);
 
   const sortedChats = useMemo(() => [...chats].sort((a, b) => b.updatedAt - a.updatedAt), [chats]);
 
@@ -772,6 +793,12 @@ function ChatListPanel({
     return (t.status === 'expired' || t.status === 'none') && !pendingSet.has(c.chatId);
   }).slice(0, MAX_EXPIRED_CHATS);
 
+  const activeExpiredIds = useMemo(() => new Set(expiredChats.filter(c => c.chatId === activeChatId).map(c => c.chatId)), [expiredChats, activeChatId]);
+  const [expiredOpen, setExpiredOpen] = useState(false);
+  useEffect(() => {
+    if (activeExpiredIds.has(activeChatId)) setExpiredOpen(true);
+  }, [activeExpiredIds, activeChatId]);
+
   const localActiveCount = activeChats.length;
   const displayCount = Math.max(activeCount, localActiveCount);
   const showOtherDeviceHint = activeCount > localActiveCount;
@@ -781,28 +808,66 @@ function ChatListPanel({
   if (displayCount >= maxActive) progressCls += ' nc-progress-red';
   else if (displayCount >= maxActive - 2) progressCls += ' nc-progress-amber';
 
+  const panelHeadId = 'nc-panel-head';
+
   return (
     <div className="nc-chat-list-panel">
-      <button
-        className={`nc-new-chat-btn ${atLimit ? 'nc-new-chat-disabled' : ''}`}
-        onClick={onNewChat}
-        disabled={atLimit}
-        title={atLimit ? NEXUS_NOTES.LIMIT_TOOLTIP : undefined}
-      >
-        <Plus style={{ width: 16, height: 16 }} />
-        {NEXUS_NOTES.NEW_CHAT}
-      </button>
-      {memoryEnabled && (
-        <div className="nc-active-counter">
-          <span className="nc-active-counter-text">
-            {NEXUS_NOTES.ACTIVE_CHATS}: {displayCount} / {maxActive}
-          </span>
-          <div className="nc-progress-track">
-            <div className={progressCls} style={{ width: `${progressPct}%` }} />
-          </div>
-          {showOtherDeviceHint && (
-            <span className="nc-other-device-hint">{NEXUS_NOTES.OTHER_DEVICE_HINT}</span>
+      {headCollapsed ? (
+        <div className="nc-panel-head-collapsed">
+          <button
+            className={`nc-panel-head-new-btn ${atLimit ? 'nc-new-chat-disabled' : ''}`}
+            onClick={onNewChat}
+            disabled={atLimit}
+            title={atLimit ? NEXUS_NOTES.LIMIT_TOOLTIP : NEXUS_NOTES.NEW_CHAT}
+            aria-label={NEXUS_NOTES.NEW_CHAT}
+          >
+            <Plus style={{ width: 16, height: 16 }} />
+          </button>
+          <span className="nc-panel-head-count">{displayCount} / {maxActive}</span>
+          <button
+            className="nc-panel-head-toggle"
+            onClick={toggleHead}
+            aria-expanded={false}
+            aria-controls={panelHeadId}
+            aria-label="Panelni yoyish"
+          >
+            <ChevronDown style={{ width: 16, height: 16, transform: 'rotate(-90deg)' }} />
+          </button>
+        </div>
+      ) : (
+        <div className={`nc-panel-head-expanded ${reducedMotion ? '' : 'nc-panel-anim'}`} id={panelHeadId}>
+          <button
+            className={`nc-new-chat-btn ${atLimit ? 'nc-new-chat-disabled' : ''}`}
+            onClick={onNewChat}
+            disabled={atLimit}
+            title={atLimit ? NEXUS_NOTES.LIMIT_TOOLTIP : undefined}
+          >
+            <Plus style={{ width: 16, height: 16 }} />
+            {NEXUS_NOTES.NEW_CHAT}
+          </button>
+          {memoryEnabled && (
+            <div className="nc-active-counter">
+              <span className="nc-active-counter-text">
+                {NEXUS_NOTES.ACTIVE_CHATS}: {displayCount} / {maxActive}
+              </span>
+              <div className="nc-progress-track">
+                <div className={progressCls} style={{ width: `${progressPct}%` }} />
+              </div>
+              {showOtherDeviceHint && (
+                <span className="nc-other-device-hint">{NEXUS_NOTES.OTHER_DEVICE_HINT}</span>
+              )}
+            </div>
           )}
+          <button
+            className="nc-panel-head-toggle"
+            onClick={toggleHead}
+            aria-expanded={true}
+            aria-controls={panelHeadId}
+            aria-label="Panelni yig'ish"
+            style={{ alignSelf: 'flex-end' }}
+          >
+            <ChevronDown style={{ width: 16, height: 16 }} />
+          </button>
         </div>
       )}
       <div className="nc-chat-list-scroll">
@@ -830,8 +895,18 @@ function ChatListPanel({
             )}
             {expiredChats.length > 0 && (
               <>
-                <div className="nc-chat-group-label">{NEXUS_NOTES.EXPIRED_CHATS}</div>
-                {expiredChats.map(chat => (
+                <button
+                  className="nc-expired-group-header"
+                  onClick={() => setExpiredOpen(v => !v)}
+                  aria-expanded={expiredOpen}
+                  aria-label={NEXUS_NOTES.EXPIRED_CHATS}
+                >
+                  <span className="nc-expired-group-label">{NEXUS_NOTES.EXPIRED_CHATS}</span>
+                  <span className="nc-expired-group-count">{expiredChats.length}</span>
+                  <span className="nc-expired-group-divider" />
+                  <ChevronDown className={`nc-expired-group-chevron ${expiredOpen ? 'nc-expanded' : ''}`} />
+                </button>
+                {expiredOpen && expiredChats.map(chat => (
                   <ChatListItem
                     key={chat.chatId}
                     chat={chat}
@@ -924,6 +999,7 @@ function NexusAIInner({ userId }: { userId: string }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [nowOverride, setNowOverride] = useState(0);
 
   const isNearBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -1013,6 +1089,7 @@ function NexusAIInner({ userId }: { userId: string }) {
     if (ms <= 0) return;
     const t = setTimeout(() => {
       setExpiredBump(b => b + 1);
+      setNowOverride(Date.now());
       fetchChatsStatus();
     }, ms + 300);
     return () => clearTimeout(t);
@@ -1053,6 +1130,7 @@ function NexusAIInner({ userId }: { userId: string }) {
           getChatTimer={getChatTimer}
           chatId={activeChatId}
           memoryEnabled={memoryEnabled}
+          nowOverride={nowOverride}
         />
       }
     >
@@ -1071,6 +1149,7 @@ function NexusAIInner({ userId }: { userId: string }) {
             maxActive={maxActive}
             memoryEnabled={memoryEnabled}
             chatsHydrated={chatsHydrated}
+            nowOverride={nowOverride}
           />
         </aside>
 
@@ -1097,6 +1176,8 @@ function NexusAIInner({ userId }: { userId: string }) {
                 maxActive={maxActive}
                 memoryEnabled={memoryEnabled}
                 chatsHydrated={chatsHydrated}
+                nowOverride={nowOverride}
+                isDrawer
               />
             </aside>
           </>
@@ -1108,6 +1189,7 @@ function NexusAIInner({ userId }: { userId: string }) {
             getChatTimer={getChatTimer}
             chatId={activeChatId}
             memoryEnabled={memoryEnabled}
+            nowOverride={nowOverride}
           />
           <div className="nc-scroll-container" style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div ref={scrollRef} className="nc-scroll">

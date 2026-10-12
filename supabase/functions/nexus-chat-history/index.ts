@@ -1,5 +1,5 @@
 // nexus-chat-history — foydalanuvchining chat tarixini qaytaradi.
-// deploy-trigger Sat Oct 12 2026 16:10 UTC
+// deploy-trigger Sat Oct 12 2026 18:55 UTC
 // Auth: nexus-chats-status bilan AYNAN bir xil — body'dan user_id olinadi,
 // service-role bilan o'sha user_id qatorlari xolos o'qiladi.
 // verify_jwt = false (config.toml).
@@ -23,7 +23,8 @@ function sanitizeAnswer(text: string): string {
     .replace(/\bNotebookLM\b/gi, "manba")
     .replace(/\bGemini Notebook\b/gi, "manba")
     .replace(/\bNotebook\b/gi, "manba")
-    .replace(/\s*\[\d+(?:\s*[-,]\s*\d+)*\]\s*/g, " ")
+    .replace(/\s*\[\d+(?:\s*[-,]\s*\d+)*\]/g, "")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
     .replace(/  +/g, " ")
     .replace(/ +\n/g, "\n")
     .trim();
@@ -241,3 +242,4 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+

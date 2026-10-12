@@ -41,10 +41,25 @@ if (typeof window !== 'undefined') {
   });
 }
 
-export function useNow(): number {
+const stepCache = new Map<number, { raw: number; floored: number }>();
+
+function getSteppedSnapshot(stepMs: number): number {
+  const raw = getSnapshot();
+  const entry = stepCache.get(stepMs);
+  if (entry && entry.raw === raw) return entry.floored;
+  const floored = Math.floor(raw / stepMs) * stepMs;
+  stepCache.set(stepMs, { raw, floored });
+  return floored;
+}
+
+function makeSteppedSnapshotFn(stepMs: number): () => number {
+  return () => getSteppedSnapshot(stepMs);
+}
+
+export function useNow(stepMs: number = 60_000): number {
   return useSyncExternalStore(
     subscribe,
-    getSnapshot,
+    makeSteppedSnapshotFn(stepMs),
     getServerSnapshot,
   );
 }

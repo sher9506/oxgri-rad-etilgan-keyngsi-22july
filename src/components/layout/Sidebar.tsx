@@ -7,7 +7,7 @@ import {
   Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
   Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain, LogOut,
   BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper, Activity, Server, Smartphone,
-  Gavel
+  Gavel, MessageSquareText
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang } from '@/contexts/LangContext';
@@ -109,7 +109,7 @@ function buildSections(
   ] : [
     { id: 'kurslar', label: t('nav.kurslar'), icon: BookMarked },
     { id: 'oqmatlar', label: t('nav.oqmatlar'), icon: Library },
-    { id: 'nexus_ai', label: 'Nexus AI', icon: Scale },
+    { id: 'nexus_ai', label: 'Nexus AI', icon: MessageSquareText },
     { id: 'savol_javob', label: t('nav.savol_javob'), icon: Layers },
     { id: 'blog', label: 'Blog', icon: Newspaper },
   ];
@@ -262,6 +262,7 @@ export default function Sidebar({
       <button
         onClick={onClick}
         title={isCollapsed ? item.label : undefined}
+        aria-label={item.label}
         className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all group ${
           isActive
             ? accent
@@ -344,7 +345,7 @@ export default function Sidebar({
       </div>
 
       {/* ── Navigation ────────────────────────────────────────────────────── */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 custom-scrollbar">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 pb-3 custom-scrollbar">
         {isAdmin ? (
           /* ── ADMIN ACCORDION ─────────────────────────────────────────── */
           <div className="px-1.5 space-y-0.5">
@@ -522,7 +523,7 @@ export default function Sidebar({
               </div>
             </div>
 
-            <nav className="flex-1 overflow-y-auto py-2 px-1.5 custom-scrollbar space-y-0.5">
+            <nav className="flex-1 overflow-y-auto py-2 pb-3 px-1.5 custom-scrollbar space-y-0.5">
               {isAdmin ? (
                 ADMIN_GROUPS.map(group => {
                   const GroupIcon = group.icon;
@@ -545,6 +546,7 @@ export default function Sidebar({
                               <button
                                 key={item.id}
                                 onClick={() => handleAdminItemClick(item.id)}
+                                aria-label={item.label}
                                 className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-all ${
                                   adminView === item.id
                                     ? 'bg-red-600 text-white font-bold'
@@ -569,7 +571,7 @@ export default function Sidebar({
                   {oqishItems.map(item => {
                     const Icon = item.icon;
                     return (
-                      <button key={item.id} onClick={() => handleItemClick(item.id)}
+                      <button key={item.id} onClick={() => handleItemClick(item.id)} aria-label={item.label}
                         className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all ${
                           activeTab === item.id ? 'bg-white/10 text-white font-bold' : 'text-gray-400 hover:bg-white/5 hover:text-white'
                         }`}>
@@ -585,7 +587,7 @@ export default function Sidebar({
                   {sinovItems.map(item => {
                     const Icon = item.icon;
                     return (
-                      <button key={item.id} onClick={() => handleItemClick(item.id)}
+                      <button key={item.id} onClick={() => handleItemClick(item.id)} aria-label={item.label}
                         className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all ${
                           activeTab === item.id
                             ? item.id === 'sinov' ? 'bg-blue-600 text-white font-bold' : 'bg-white/10 text-white font-bold'
@@ -605,7 +607,7 @@ export default function Sidebar({
                       {kabinetItems.map(item => {
                         const Icon = item.icon;
                         return (
-                          <button key={item.id} onClick={() => handleItemClick(item.id)}
+                          <button key={item.id} onClick={() => handleItemClick(item.id)} aria-label={item.label}
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all ${
                               activeTab === item.id ? 'bg-white/10 text-white font-bold' : 'text-gray-400 hover:bg-white/5 hover:text-white'
                             }`}>
@@ -621,7 +623,7 @@ export default function Sidebar({
                     {bottomItems.map(item => {
                       const Icon = item.icon;
                       return (
-                        <button key={item.id} onClick={() => handleItemClick(item.id)}
+                        <button key={item.id} onClick={() => handleItemClick(item.id)} aria-label={item.label}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all ${
                             activeTab === item.id ? 'bg-white/10 text-white font-bold' : 'text-gray-400 hover:bg-white/5 hover:text-white'
                           }`}>

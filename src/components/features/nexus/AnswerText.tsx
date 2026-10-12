@@ -1,0 +1,131 @@
+import { useMemo, type ReactNode } from 'react';
+
+const PUNCT = '.,;:!?';
+
+function cleanText(raw: string): string {
+  let t = raw.replace(/\r\n/g, '\n');
+  t = t.replace(new RegExp(`[ \\t]+([${PUNCT}])`, 'g'), '$1');
+  t = t.replace(/\n{3,}/g, '\n\n');
+  return t.trim();
+}
+
+function stripMarkdown(s: string): string {
+  return s.replace(/^#+\s*/, '').replace(/^\*{1,2}(.*?)\*{1,2}$/, '$1').trim();
+}
+
+function isHeading(line: string, blockCount: number): boolean {
+  if (blockCount < 2) return false;
+  if (line.includes('\n')) return false;
+  if (line.length > 70) return false;
+  const stripped = stripMarkdown(line);
+  if (!stripped) return false;
+  const last = stripped[stripped.length - 1];
+  return !PUNCT.includes(last);
+}
+
+const LIST_BULLET = /^[-\u2022*]\s+/;
+const LIST_NUMBERED = /^\d+[.)]\s+/;
+
+function isListItem(line: string): boolean {
+  return LIST_BULLET.test(line) || LIST_NUMBERED.test(line);
+}
+
+function isBullet(line: string): boolean {
+  return LIST_BULLET.test(line);
+}
+
+function stripListMarker(line: string): string {
+  return line.replace(LIST_BULLET, '').replace(LIST_NUMBERED, '').trim();
+}
+
+function renderInline(text: string, keyBase: string): ReactNode[] {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  const nodes: ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) {
+      if (parts[i]) nodes.push(<span key={`${keyBase}-t${i}`}>{parts[i]}</span>);
+    } else {
+      nodes.push(<strong key={`${keyBase}-b${i}`}>{parts[i]}</strong>);
+    }
+  }
+  return nodes;
+}
+
+interface Block {
+  type: 'heading' | 'ul' | 'ol' | 'para';
+  lines: string[];
+}
+
+function parseBlocks(text: string): Block[] {
+  const rawBlocks = text.split(/\n\n+/);
+  const blocks: Block[] = [];
+
+  for (const rawBlock of rawBlocks) {
+    const blockText = rawBlock.trim();
+    if (!blockText) continue;
+    const lines = blockText.split('\n');
+
+    if (isHeading(blockText, rawBlocks.filter(b => b.trim()).length)) {
+      blocks.push({ type: 'heading', lines: [stripMarkdown(blockText)] });
+      continue;
+    }
+
+    const allList = lines.every(l => isListItem(l.trim()));
+    if (allList && lines.length > 0) {
+      const isOl = !isBullet(lines[0].trim()) && LIST_NUMBERED.test(lines[0].trim());
+      blocks.push({ type: isOl ? 'ol' : 'ul', lines: lines.map(l => stripListMarker(l.trim())) });
+      continue;
+    }
+
+    blocks.push({ type: 'para', lines });
+  }
+
+  return blocks;
+}
+
+export default function AnswerText({ text }: { text: string }) {
+  const blocks = useMemo(() => {
+    const cleaned = cleanText(text);
+    if (!cleaned) return [];
+    return parseBlocks(cleaned);
+  }, [text]);
+
+  return (
+    <div className="nc-answer" aria-live="polite">
+      {blocks.map((block, i) => {
+        const key = `b${i}`;
+        if (block.type === 'heading') {
+          return (
+            <h3 key={key} className="nc-answer-h">
+              {renderInline(block.lines[0], key)}
+            </h3>
+          );
+        }
+        if (block.type === 'ul') {
+          return (
+            <ul key={key} className="nc-answer-list">
+              {block.lines.map((li, j) => (
+                <li key={`${key}-li${j}`}>{renderInline(li, `${key}-li${j}`)}</li>
+              ))}
+            </ul>
+          );
+        }
+        if (block.type === 'ol') {
+          return (
+            <ol key={key} className="nc-answer-list">
+              {block.lines.map((li, j) => (
+                <li key={`${key}-li${j}`}>{renderInline(li, `${key}-li${j}`)}</li>
+              ))}
+            </ol>
+          );
+        }
+        const paraText = block.lines.join('\n');
+        return (
+          <p key={key} className="nc-answer-p">
+            {renderInline(paraText, key)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
