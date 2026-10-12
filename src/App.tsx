@@ -382,7 +382,8 @@ function AppContent() {
                 </AnimatePresence>
               </div>
             </main>
-            {!user && <LexionAI onOpen={() => setIsLexionOpen(true)} />}
+            {/* LexionAI robot — vaqtinchalik o'chirilgan (kod o'chirilmagan) */}
+            {false && !user && <LexionAI onOpen={() => setIsLexionOpen(true)} />}
           </div>
         )}
         {isLexionOpen && (
