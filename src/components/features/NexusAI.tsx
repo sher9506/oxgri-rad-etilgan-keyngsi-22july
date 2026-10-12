@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useNexusAiChat } from '@/hooks/useNexusAiChat';
 import type { ChatMeta } from '@/hooks/useNexusAiChat';
+import { useNow } from '@/hooks/useNow';
 import {
   AI_NAME, AI_TAGLINE, SAMPLE_QUESTIONS, NEXUS_NOTES,
   MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS,
@@ -17,10 +18,9 @@ import './nexus-claude.css';
 
 /* ───────────────────────── helpers ───────────────────────── */
 
-function formatResetTime(nextResetAt: string | null): string | null {
-  if (!nextResetAt) return null;
+function formatResetTime(nextResetAt: string, nowMs: number): string | null {
   const target = new Date(nextResetAt).getTime();
-  const diff = target - Date.now();
+  const diff = target - nowMs;
   if (diff <= 0) return null;
   const totalMin = Math.floor(diff / 60000);
   const hours = Math.floor(totalMin / 60);
@@ -65,6 +65,34 @@ function formatSrTimer(totalSeconds: number): string {
   return `Qolgan vaqt ${h} soat ${m} daqiqa`;
 }
 
+/* ───────────────────────── Media query hooks ───────────────────────── */
+
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduced(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return reduced;
+}
+
+function useCanHover(): boolean {
+  const [canHover, setCanHover] = useState(true);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(hover: hover)');
+    setCanHover(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setCanHover(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return canHover;
+}
+
 /* ───────────────────────── NexusShell ───────────────────────── */
 
 interface NexusShellProps {
@@ -83,30 +111,45 @@ function NexusShell({
   onToggleChats, activeChatCount, timerPill,
 }: NexusShellProps) {
   const shellRef = useRef<HTMLDivElement>(null);
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReducedMotion(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+  const reducedMotion = usePrefersReducedMotion();
+  const prevOverflowRef = useRef<string>('');
 
   useEffect(() => {
     const el = shellRef.current;
     if (!el) return;
     const main = el.closest('main');
     if (!main) return;
+
+    prevOverflowRef.current = main.style.overflow;
+    main.style.overflow = 'hidden';
+    if (main.scrollTop) main.scrollTop = 0;
+
     const update = () => {
-      const h = main.getBoundingClientRect().height;
-      el.style.minHeight = `${h}px`;
+      const mainRect = main.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const mainPad = getComputedStyle(main);
+      const padBottom = parseFloat(mainPad.paddingBottom) || 0;
+      const h = mainRect.bottom - elRect.top - padBottom;
+      if (h > 0) el.style.height = `${h}px`;
     };
     update();
+
     const ro = new ResizeObserver(update);
     ro.observe(main);
-    return () => ro.disconnect();
+    const onResize = () => update();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    const vv = window.visualViewport;
+    if (vv) vv.addEventListener('resize', onResize);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      if (vv) vv.removeEventListener('resize', onResize);
+      main.style.overflow = prevOverflowRef.current;
+      el.style.height = '';
+    };
   }, []);
 
   return (
@@ -150,25 +193,9 @@ function NexusShell({
 
 /* ───────────────────────── NexusEmptyState ───────────────────────── */
 
-function NexusEmptyState({ onPick }: { onPick: (q: string) => void }) {
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [canHover, setCanHover] = useState(true);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const rmq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const hmq = window.matchMedia('(hover: hover)');
-    setReducedMotion(rmq.matches);
-    setCanHover(hmq.matches);
-    const rmHandler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
-    const hHandler = (e: MediaQueryListEvent) => setCanHover(e.matches);
-    rmq.addEventListener('change', rmHandler);
-    hmq.addEventListener('change', hHandler);
-    return () => {
-      rmq.removeEventListener('change', rmHandler);
-      hmq.removeEventListener('change', hHandler);
-    };
-  }, []);
+function NexusEmptyState({ onPick, disabled }: { onPick: (q: string) => void; disabled: boolean }) {
+  const reducedMotion = usePrefersReducedMotion();
+  const canHover = useCanHover();
 
   return (
     <div className="nc-empty">
@@ -181,7 +208,7 @@ function NexusEmptyState({ onPick }: { onPick: (q: string) => void }) {
       </p>
       <div className="nc-suggestions">
         {SAMPLE_QUESTIONS.map((q) => (
-          <button key={q} onClick={() => onPick(q)} className="nc-suggestion-card">
+          <button key={q} onClick={() => !disabled && onPick(q)} className="nc-suggestion-card" disabled={disabled}>
             <Sparkles className="nc-sparkle" />
             <span>{q}</span>
           </button>
@@ -207,27 +234,32 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
   }, [lexionUrls]);
 
   const isPhaseB = lexLinks.length > 0;
+  const now = useNow();
+  const offsetRef = useRef(0);
+
+  useEffect(() => {
+    offsetRef.current = serverNow ? new Date(serverNow).getTime() - Date.now() : 0;
+  }, [serverNow]);
 
   const [elapsedSec, setElapsedSec] = useState(0);
+  const prevElapsedRef = useRef(0);
+
   useEffect(() => {
-    if (!jobCreatedAt) { setElapsedSec(0); return; }
+    if (!jobCreatedAt) { setElapsedSec(0); prevElapsedRef.current = 0; return; }
     const start = new Date(jobCreatedAt).getTime();
-    const baseNow = serverNow ? new Date(serverNow).getTime() : Date.now();
-    setElapsedSec(Math.max(0, Math.floor((baseNow - start) / 1000)));
-    const t = setInterval(() => {
-      setElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    }, 1000);
-    return () => clearInterval(t);
-  }, [jobCreatedAt, serverNow]);
+    const calc = Math.max(0, Math.floor((now + offsetRef.current - start) / 1000));
+    if (calc >= prevElapsedRef.current) {
+      setElapsedSec(calc);
+      prevElapsedRef.current = calc;
+    }
+  }, [now, jobCreatedAt]);
+
+  const reducedMotion = usePrefersReducedMotion();
+  const canHover = useCanHover();
+  const docLayers = canHover ? 4 : 2;
 
   const visibleChips = lexLinks.slice(0, 6);
   const remaining = lexLinks.length - visibleChips.length;
-
-  const reducedMotion = typeof window !== 'undefined'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const canHover = typeof window !== 'undefined'
-    && window.matchMedia('(hover: hover)').matches;
-  const docLayers = canHover ? 4 : 2;
 
   return (
     <div className="nc-thinking" aria-live="polite">
@@ -285,11 +317,10 @@ interface NexusMessageProps {
   msg: import('@/hooks/useNexusAiChat').ChatMessage;
   copiedId: string | null;
   onCopy: (id: string, text: string) => void;
-  onRetry: (jobId: string | undefined, originalText: string) => void;
-  findUserText: (aiId: string) => string;
+  onRetry: (aiMsgId: string) => void;
 }
 
-function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText }: NexusMessageProps) {
+function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
   const finalSeconds = useMemo(() => {
     if (msg.role !== 'assistant' || msg.status !== 'done' || !msg.jobCreatedAt) return null;
     const start = new Date(msg.jobCreatedAt).getTime();
@@ -321,6 +352,9 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText }: NexusMes
             <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-error-text)' }} />
             <span>{msg.error}</span>
           </div>
+          <button onClick={() => onRetry(msg.id)} className="nc-error-retry">
+            <RotateCcw /> Qayta urinish
+          </button>
         </div>
       </div>
     );
@@ -334,11 +368,9 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, findUserText }: NexusMes
             <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-error-text)' }} />
             <span>{msg.error}</span>
           </div>
-          {msg.jobId && (
-            <button onClick={() => onRetry(msg.jobId, findUserText(msg.id))} className="nc-error-retry">
-              <RotateCcw /> Qayta urinish
-            </button>
-          )}
+          <button onClick={() => onRetry(msg.id)} className="nc-error-retry">
+            <RotateCcw /> Qayta urinish
+          </button>
         </div>
       </div>
     );
@@ -402,12 +434,16 @@ interface NexusComposerProps {
   chatLimitError: string | null;
   onOpenChats: () => void;
   memoryNote: string;
+  chatExpired: boolean;
+  onNewChat: () => void;
+  newChatBlocked: boolean;
 }
 
 function NexusComposer({
   input, setInput, onSend, onKeyDown, onPillClick,
   isProcessing, canSend, inputBlocked, inputTooLong, inputTooShort,
   minInput, maxInput, resetText, inputRef, chatLimitError, onOpenChats, memoryNote,
+  chatExpired, onNewChat, newChatBlocked,
 }: NexusComposerProps) {
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -424,24 +460,43 @@ function NexusComposer({
   }, [input]);
 
   const counterWarn = input.length > maxInput * 0.9;
+  const textareaDisabled = isProcessing || inputBlocked || chatExpired;
+  const sendDisabled = !canSend || chatExpired;
+  const placeholder = chatExpired ? NEXUS_NOTES.EXPIRED_PLACEHOLDER : "Huquqiy savolingizni yozing...";
 
   return (
     <div className="nc-composer-wrap">
-      {chatLimitError && (
-        <div className="nc-input-warning nc-chat-limit-warning">
-          <span>{chatLimitError}</span>
-          <button onClick={onOpenChats} className="nc-chat-limit-link">Suhbatlarni ochish</button>
+      {chatExpired ? (
+        <div className="nc-expired-card">
+          <p className="nc-expired-card-title">{NEXUS_NOTES.EXPIRED_COMPOSER_TITLE}</p>
+          <p className="nc-expired-card-text">{NEXUS_NOTES.EXPIRED_COMPOSER_TEXT}</p>
+          {newChatBlocked ? (
+            <span className="nc-expired-card-limit">{NEXUS_NOTES.EXPIRED_LIMIT_TEXT}</span>
+          ) : (
+            <button onClick={onNewChat} className="nc-expired-card-btn">
+              {NEXUS_NOTES.EXPIRED_NEW_CHAT_BTN}
+            </button>
+          )}
         </div>
-      )}
-      {inputBlocked && !chatLimitError && (
-        <div className="nc-input-warning">
-          Savol limiti tugadi. {resetText} yana yozishingiz mumkin.
-        </div>
-      )}
-      {inputTooShort && !inputBlocked && !chatLimitError && (
-        <div className="nc-input-warning">
-          Savol kamida {minInput} belgi bo'lishi kerak
-        </div>
+      ) : (
+        <>
+          {chatLimitError && (
+            <div className="nc-input-warning nc-chat-limit-warning">
+              <span>{chatLimitError}</span>
+              <button onClick={onOpenChats} className="nc-chat-limit-link">Suhbatlarni ochish</button>
+            </div>
+          )}
+          {inputBlocked && !chatLimitError && (
+            <div className="nc-input-warning">
+              Savol limiti tugadi. {resetText} yana yozishingiz mumkin.
+            </div>
+          )}
+          {inputTooShort && !inputBlocked && !chatLimitError && (
+            <div className="nc-input-warning">
+              Savol kamida {minInput} belgi bo'lishi kerak
+            </div>
+          )}
+        </>
       )}
       <div className={`nc-composer ${focused ? 'nc-composer-focused' : ''}`}>
         <div className="nc-composer-inner">
@@ -452,16 +507,16 @@ function NexusComposer({
             onKeyDown={onKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder="Huquqiy savolingizni yozing..."
+            placeholder={placeholder}
             rows={1}
-            disabled={isProcessing || inputBlocked}
+            disabled={textareaDisabled}
             className="nc-textarea"
             aria-label="Savol matni"
             style={{ fontSize: '16px' }}
           />
           <button
             onClick={onSend}
-            disabled={!canSend}
+            disabled={sendDisabled}
             className="nc-send-btn"
             aria-label="Yuborish"
           >
@@ -489,16 +544,104 @@ function NexusComposer({
   );
 }
 
+/* ───────────────────────── TimerPill ───────────────────────── */
+
+interface TimerPillProps {
+  getChatTimer: (chatId: string, nowMs?: number) => { remaining: number; status: 'active' | 'expired' | 'none' };
+  chatId: string;
+  memoryEnabled: boolean;
+}
+
+function TimerPill({ getChatTimer, chatId, memoryEnabled }: TimerPillProps) {
+  const now = useNow();
+  const [showPopover, setShowPopover] = useState(false);
+
+  if (!memoryEnabled) return null;
+  const timer = getChatTimer(chatId, now);
+  if (timer.status !== 'active') return null;
+
+  const totalSec = Math.floor(timer.remaining / 1000);
+  const hours = totalSec / 3600;
+
+  let cls = 'nc-timer-pill nc-timer-pill-normal';
+  if (hours < 1 / 6) cls = 'nc-timer-pill nc-timer-pill-red nc-timer-pulse';
+  else if (hours < 1) cls = 'nc-timer-pill nc-timer-pill-amber';
+
+  return (
+    <div className="nc-timer-pill-wrap">
+      <button
+        className={cls}
+        onClick={() => setShowPopover(true)}
+        aria-label="Xotira taymeri haqida ma'lumot"
+        aria-expanded={showPopover}
+        aria-controls="nc-timer-popover"
+      >
+        <Clock style={{ width: 13, height: 13 }} />
+        <span aria-hidden="true">{formatTimerHMS(totalSec)}</span>
+        <Info style={{ width: 12, height: 12, opacity: 0.6 }} />
+      </button>
+      {showPopover && <TimerPopover onClose={() => setShowPopover(false)} />}
+    </div>
+  );
+}
+
+/* ───────────────────────── TimerBanner ───────────────────────── */
+
+interface TimerBannerProps {
+  getChatTimer: (chatId: string, nowMs?: number) => { remaining: number; status: 'active' | 'expired' | 'none' };
+  chatId: string;
+  memoryEnabled: boolean;
+}
+
+function TimerBanner({ getChatTimer, chatId, memoryEnabled }: TimerBannerProps) {
+  const now = useNow();
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+
+  if (!memoryEnabled) return null;
+  const timer = getChatTimer(chatId, now);
+  if (timer.status !== 'active') return null;
+
+  const totalSec = Math.floor(timer.remaining / 1000);
+  const hours = totalSec / 3600;
+  if (hours >= 1) return null;
+  if (dismissedIds.has(chatId)) return null;
+
+  const bannerText = NEXUS_NOTES.BANNER_WARNING.replace('{time}', formatTimerHMS(totalSec));
+  const bannerRed = hours < 1 / 6;
+
+  return (
+    <div className={`nc-timer-banner ${bannerRed ? 'nc-timer-banner-red' : ''}`}>
+      <span>{bannerText}</span>
+      <button
+        onClick={() => setDismissedIds(prev => { const next = new Set(prev); next.add(chatId); return next; })}
+        className="nc-timer-banner-close"
+        aria-label="Yopish"
+      >
+        <X style={{ width: 12, height: 12 }} />
+      </button>
+    </div>
+  );
+}
+
+/* ───────────────────────── ResetLine ───────────────────────── */
+
+interface ResetLineProps {
+  quota: { next_reset_at: string | null; remaining: number; limit: number; is_unlimited: boolean } | null;
+  serverOffset: number;
+}
+
+function ResetLine({ quota, serverOffset }: ResetLineProps) {
+  const now = useNow();
+  if (!quota || quota.is_unlimited || quota.remaining >= quota.limit || !quota.next_reset_at) return null;
+  const nowMs = now + serverOffset;
+  const text = formatResetTime(quota.next_reset_at, nowMs);
+  if (!text) return null;
+  return <div className="nc-reset-line">Keyingi savol huquqi {text} tiklanadi</div>;
+}
+
 /* ───────────────────────── TimerChip ───────────────────────── */
 
 function TimerChip({ remaining, status }: { remaining: number; status: 'active' | 'expired' | 'none' }) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (status !== 'active') return;
-    const t = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(t);
-  }, [status]);
-
   if (status === 'none') return null;
   if (status === 'expired' || remaining <= 0) {
     return <span className="nc-timer-chip nc-timer-expired" aria-hidden="true">Tugadi</span>;
@@ -544,6 +687,7 @@ interface ChatListItemProps {
 
 function ChatListItem({ chat, isActive, timerRemaining, timerStatus, hasPending, onSelect, onDelete }: ChatListItemProps) {
   const [confirming, setConfirming] = useState(false);
+  const canHover = useCanHover();
 
   return (
     <div
@@ -578,7 +722,7 @@ function ChatListItem({ chat, isActive, timerRemaining, timerStatus, hasPending,
           >{NEXUS_NOTES.DELETE_CANCEL}</button>
         </div>
       ) : (
-        (isActive || typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches) && (
+        (isActive || canHover) && (
           <button
             className="nc-chat-delete"
             onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
@@ -597,8 +741,8 @@ function ChatListItem({ chat, isActive, timerRemaining, timerStatus, hasPending,
 interface ChatListPanelProps {
   chats: ChatMeta[];
   activeChatId: string;
-  getChatTimer: (chatId: string) => { remaining: number; status: 'active' | 'expired' | 'none' };
-  pendingChatIds: Set<string>;
+  getChatTimer: (chatId: string, nowMs?: number) => { remaining: number; status: 'active' | 'expired' | 'none' };
+  pendingChatId: string | null;
   onSelect: (chatId: string) => void;
   onDelete: (chatId: string) => void;
   onNewChat: () => void;
@@ -608,25 +752,33 @@ interface ChatListPanelProps {
 }
 
 function ChatListPanel({
-  chats, activeChatId, getChatTimer, pendingChatIds, onSelect, onDelete, onNewChat,
+  chats, activeChatId, getChatTimer, pendingChatId, onSelect, onDelete, onNewChat,
   activeCount, maxActive, memoryEnabled,
 }: ChatListPanelProps) {
+  const now = useNow();
+  const pendingSet = useMemo(() => new Set(pendingChatId ? [pendingChatId] : []), [pendingChatId]);
   const atLimit = activeCount >= maxActive;
 
-  const activeChats = chats.filter(c => {
-    const t = getChatTimer(c.chatId);
-    return t.status === 'active' || pendingChatIds.has(c.chatId);
-  }).sort((a, b) => b.updatedAt - a.updatedAt);
+  const sortedChats = useMemo(() => [...chats].sort((a, b) => b.updatedAt - a.updatedAt), [chats]);
 
-  const expiredChats = chats.filter(c => {
-    const t = getChatTimer(c.chatId);
-    return (t.status === 'expired' || t.status === 'none') && !pendingChatIds.has(c.chatId);
-  }).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_EXPIRED_CHATS);
+  const activeChats = sortedChats.filter(c => {
+    const t = getChatTimer(c.chatId, now);
+    return t.status === 'active' || pendingSet.has(c.chatId);
+  });
 
-  const progressPct = Math.min(100, (activeCount / maxActive) * 100);
+  const expiredChats = sortedChats.filter(c => {
+    const t = getChatTimer(c.chatId, now);
+    return (t.status === 'expired' || t.status === 'none') && !pendingSet.has(c.chatId);
+  }).slice(0, MAX_EXPIRED_CHATS);
+
+  const localActiveCount = activeChats.length;
+  const displayCount = Math.max(activeCount, localActiveCount);
+  const showOtherDeviceHint = activeCount > localActiveCount;
+
+  const progressPct = Math.min(100, (displayCount / maxActive) * 100);
   let progressCls = 'nc-progress-bar';
-  if (activeCount >= maxActive) progressCls += ' nc-progress-red';
-  else if (activeCount >= maxActive - 2) progressCls += ' nc-progress-amber';
+  if (displayCount >= maxActive) progressCls += ' nc-progress-red';
+  else if (displayCount >= maxActive - 2) progressCls += ' nc-progress-amber';
 
   return (
     <div className="nc-chat-list-panel">
@@ -642,45 +794,68 @@ function ChatListPanel({
       {memoryEnabled && (
         <div className="nc-active-counter">
           <span className="nc-active-counter-text">
-            {NEXUS_NOTES.ACTIVE_CHATS}: {activeCount} / {maxActive}
+            {NEXUS_NOTES.ACTIVE_CHATS}: {displayCount} / {maxActive}
           </span>
           <div className="nc-progress-track">
             <div className={progressCls} style={{ width: `${progressPct}%` }} />
           </div>
+          {showOtherDeviceHint && (
+            <span className="nc-other-device-hint">{NEXUS_NOTES.OTHER_DEVICE_HINT}</span>
+          )}
         </div>
       )}
       <div className="nc-chat-list-scroll">
         {chats.length === 0 && (
           <p className="nc-chat-empty">{NEXUS_NOTES.EMPTY_CHATS}</p>
         )}
-        {activeChats.length > 0 && (
+        {memoryEnabled ? (
           <>
-            <div className="nc-chat-group-label">{NEXUS_NOTES.ACTIVE_CHATS}</div>
-            {activeChats.map(chat => (
-              <ChatListItem
-                key={chat.chatId}
-                chat={chat}
-                isActive={chat.chatId === activeChatId}
-                timerRemaining={getChatTimer(chat.chatId).remaining}
-                timerStatus={getChatTimer(chat.chatId).status}
-                hasPending={pendingChatIds.has(chat.chatId)}
-                onSelect={() => onSelect(chat.chatId)}
-                onDelete={() => onDelete(chat.chatId)}
-              />
-            ))}
+            {activeChats.length > 0 && (
+              <>
+                <div className="nc-chat-group-label">{NEXUS_NOTES.ACTIVE_CHATS}</div>
+                {activeChats.map(chat => (
+                  <ChatListItem
+                    key={chat.chatId}
+                    chat={chat}
+                    isActive={chat.chatId === activeChatId}
+                    timerRemaining={getChatTimer(chat.chatId, now).remaining}
+                    timerStatus={getChatTimer(chat.chatId, now).status}
+                    hasPending={pendingSet.has(chat.chatId)}
+                    onSelect={() => onSelect(chat.chatId)}
+                    onDelete={() => onDelete(chat.chatId)}
+                  />
+                ))}
+              </>
+            )}
+            {expiredChats.length > 0 && (
+              <>
+                <div className="nc-chat-group-label">{NEXUS_NOTES.EXPIRED_CHATS}</div>
+                {expiredChats.map(chat => (
+                  <ChatListItem
+                    key={chat.chatId}
+                    chat={chat}
+                    isActive={chat.chatId === activeChatId}
+                    timerRemaining={getChatTimer(chat.chatId, now).remaining}
+                    timerStatus={getChatTimer(chat.chatId, now).status}
+                    hasPending={pendingSet.has(chat.chatId)}
+                    onSelect={() => onSelect(chat.chatId)}
+                    onDelete={() => onDelete(chat.chatId)}
+                  />
+                ))}
+              </>
+            )}
           </>
-        )}
-        {expiredChats.length > 0 && (
+        ) : (
           <>
-            <div className="nc-chat-group-label">{NEXUS_NOTES.EXPIRED_CHATS}</div>
-            {expiredChats.map(chat => (
+            <div className="nc-chat-group-label">{NEXUS_NOTES.CHAT_LIST_TITLE}</div>
+            {sortedChats.map(chat => (
               <ChatListItem
                 key={chat.chatId}
                 chat={chat}
                 isActive={chat.chatId === activeChatId}
-                timerRemaining={getChatTimer(chat.chatId).remaining}
-                timerStatus={getChatTimer(chat.chatId).status}
-                hasPending={pendingChatIds.has(chat.chatId)}
+                timerRemaining={0}
+                timerStatus="none"
+                hasPending={pendingSet.has(chat.chatId)}
                 onSelect={() => onSelect(chat.chatId)}
                 onDelete={() => onDelete(chat.chatId)}
               />
@@ -711,7 +886,7 @@ function TimerPopover({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div ref={ref} className="nc-timer-popover" role="dialog" aria-modal="false">
+    <div ref={ref} id="nc-timer-popover" className="nc-timer-popover" role="dialog" aria-modal="false">
       <div className="nc-timer-popover-header">
         <h3 className="nc-timer-popover-title">{NEXUS_NOTES.TIMER_POPOVER_TITLE}</h3>
         <button onClick={onClose} className="nc-timer-popover-close" aria-label="Yopish">
@@ -737,8 +912,9 @@ function NexusAIInner({ userId }: { userId: string }) {
   const {
     chats, activeChatId, messages, isProcessing, quota,
     memoryEnabled, chatLimitError, sendMessage, retry, deleteChat,
-    switchChat, createNewChat, getChatTimer, fetchChatsStatus,
-    chatsStatus, minInput, maxInput,
+    switchChat, createNewChat, getChatTimer, isChatExpired,
+    fetchChatsStatus, chatsStatus, serverOffset, pendingChatId,
+    minInput, maxInput,
   } = useNexusAiChat(userId);
 
   const [input, setInput] = useState('');
@@ -747,9 +923,6 @@ function NexusAIInner({ userId }: { userId: string }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [showTimerPopover, setShowTimerPopover] = useState(false);
-  const [showBanner, setShowBanner] = useState(true);
-  const bannerDismissed = useRef<Set<string>>(new Set());
 
   const isNearBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -773,32 +946,24 @@ function NexusAIInner({ userId }: { userId: string }) {
     return () => el.removeEventListener('scroll', onScroll);
   }, [isNearBottom, messages.length]);
 
-  // Pending job chat IDs
-  const pendingChatIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const m of messages) {
-      if (m.jobId && (m.status === 'queued' || m.status === 'running')) {
-        if (activeChatId) ids.add(activeChatId);
-      }
-    }
-    return ids;
-  }, [messages, activeChatId]);
-
   const handleSend = useCallback(() => {
     if (!input.trim() || isProcessing) return;
     if (input.trim().length < minInput) return;
     if (input.length > maxInput) return;
     if (quota && !quota.is_unlimited && quota.remaining <= 0) return;
+    if (isChatExpired(activeChatId)) return;
     sendMessage(input);
     setInput('');
-  }, [input, isProcessing, minInput, maxInput, quota, sendMessage]);
+  }, [input, isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   }, [handleSend]);
 
   const handleCopy = useCallback((id: string, text: string) => {
-    try { navigator.clipboard.writeText(text); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); } catch { /* ignore */ }
+    navigator.clipboard.writeText(text)
+      .then(() => { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); })
+      .catch(() => {});
   }, []);
 
   const handleClear = useCallback(() => {
@@ -808,19 +973,16 @@ function NexusAIInner({ userId }: { userId: string }) {
     }
   }, [messages.length, deleteChat, activeChatId]);
 
-  const findUserText = useCallback((aiId: string) => {
-    const userMsg = messages.find((m) => m.id === `user-${aiId.replace('ai-', 'user-')}`);
-    return userMsg?.content || '';
-  }, [messages]);
-
   const isLimited = quota && !quota.is_unlimited;
   const remaining = isLimited ? quota!.remaining : 99;
   const limit = isLimited ? quota!.limit : 99;
-  const resetText = isLimited ? formatResetTime(quota!.next_reset_at) : null;
+  const resetText = isLimited ? formatResetTime(quota!.next_reset_at!, Date.now() + serverOffset) : null;
   const inputBlocked = isLimited && remaining <= 0;
   const inputTooShort = input.trim().length > 0 && input.trim().length < minInput;
   const inputTooLong = input.length > maxInput;
-  const canSend = input.trim().length >= minInput && !inputTooLong && !isProcessing && !inputBlocked;
+
+  const chatExpired = memoryEnabled && isChatExpired(activeChatId);
+  const canSend = input.trim().length >= minInput && !inputTooLong && !isProcessing && !inputBlocked && !chatExpired;
 
   const quotaPill = isLimited ? (
     <div className={`nc-quota-pill ${remaining <= 2 ? 'nc-quota-pill-low' : ''}`} aria-live="polite">
@@ -828,65 +990,32 @@ function NexusAIInner({ userId }: { userId: string }) {
     </div>
   ) : null;
 
-  const resetLine = isLimited && remaining < limit && resetText ? (
-    <div className="nc-reset-line">Keyingi savol huquqi {resetText} tiklanadi</div>
-  ) : null;
-
-  // Timer for active chat
-  const activeTimer = getChatTimer(activeChatId);
-  const activeTimerSec = Math.floor(activeTimer.remaining / 1000);
-  const activeTimerHours = activeTimerSec / 3600;
-
-  const timerPill = memoryEnabled && activeTimer.status === 'active' ? (
-    <div className="nc-timer-pill-wrap">
-      <button
-        className={`nc-timer-pill ${
-          activeTimerHours < 1 / 6 ? 'nc-timer-pill-red nc-timer-pulse'
-          : activeTimerHours < 1 ? 'nc-timer-pill-amber'
-          : 'nc-timer-pill-normal'
-        }`}
-        onClick={() => setShowTimerPopover(true)}
-        aria-label="Xotira taymeri haqida ma'lumot"
-        aria-expanded={showTimerPopover}
-        aria-controls="nc-timer-popover"
-      >
-        <Clock style={{ width: 13, height: 13 }} />
-        <span aria-hidden="true">{formatTimerHMS(activeTimerSec)}</span>
-        <Info style={{ width: 12, height: 12, opacity: 0.6 }} />
-      </button>
-      {showTimerPopover && <TimerPopover onClose={() => setShowTimerPopover(false)} />}
-    </div>
-  ) : null;
-
-  // Banner for <1 hour
-  const showTimerBanner = memoryEnabled && activeTimer.status === 'active' && activeTimerHours < 1 && !bannerDismissed.current.has(activeChatId);
-  const bannerText = NEXUS_NOTES.BANNER_WARNING.replace('{time}', formatTimerHMS(activeTimerSec));
-  const bannerRed = activeTimerHours < 1 / 6;
-
-  // Memory divider: when timer just expired (was active, now not)
-  const [prevTimerActive, setPrevTimerActive] = useState(false);
-  const [showDivider, setShowDivider] = useState(false);
-  useEffect(() => {
-    const isActive = activeTimer.status === 'active';
-    if (prevTimerActive && !isActive && activeTimer.status === 'expired') {
-      setShowDivider(true);
-      const t = setTimeout(() => setShowDivider(false), 5000);
-      return () => clearTimeout(t);
-    }
-    setPrevTimerActive(isActive);
-  }, [activeTimer.status, prevTimerActive]);
-
-  // Memory note text
-  const memoryNote = !memoryEnabled
-    ? NEXUS_NOTES.NO_MEMORY
-    : activeTimer.status === 'active'
-      ? NEXUS_NOTES.MEMORY_ACTIVE
-      : messages.length === 0
-        ? NEXUS_NOTES.MEMORY_COLD
-        : NEXUS_NOTES.MEMORY_COLD;
-
   const activeCount = chatsStatus?.active_count ?? 0;
   const maxActive = chatsStatus?.max_active ?? MAX_ACTIVE_CHATS;
+
+  const memoryNote = !memoryEnabled
+    ? NEXUS_NOTES.NO_MEMORY
+    : chatExpired
+      ? NEXUS_NOTES.MEMORY_EXPIRED_NOTE
+      : getChatTimer(activeChatId).status === 'active'
+        ? NEXUS_NOTES.MEMORY_ACTIVE
+        : NEXUS_NOTES.MEMORY_COLD;
+
+  // One-time timeout when active chat expires
+  const expiresAtIso = chatsStatus?.chats?.[activeChatId]?.expires_at;
+  const [, setExpiredBump] = useState(0);
+  useEffect(() => {
+    if (!expiresAtIso || !memoryEnabled) return;
+    const expires = new Date(expiresAtIso).getTime();
+    const now = Date.now() + serverOffset;
+    const ms = expires - now;
+    if (ms <= 0) return;
+    const t = setTimeout(() => {
+      setExpiredBump(b => b + 1);
+      fetchChatsStatus();
+    }, ms + 300);
+    return () => clearTimeout(t);
+  }, [expiresAtIso, serverOffset, memoryEnabled, fetchChatsStatus]);
 
   const handleSelectChat = useCallback((chatId: string) => {
     switchChat(chatId);
@@ -915,10 +1044,16 @@ function NexusAIInner({ userId }: { userId: string }) {
       onClear={handleClear}
       showClear={messages.length > 0}
       quotaPill={quotaPill}
-      resetLine={resetLine}
+      resetLine={<ResetLine quota={quota} serverOffset={serverOffset} />}
       onToggleChats={() => setDrawerOpen(true)}
       activeChatCount={activeCount}
-      timerPill={timerPill}
+      timerPill={
+        <TimerPill
+          getChatTimer={getChatTimer}
+          chatId={activeChatId}
+          memoryEnabled={memoryEnabled}
+        />
+      }
     >
       <div className="nc-layout">
         {/* Desktop chat list panel */}
@@ -927,7 +1062,7 @@ function NexusAIInner({ userId }: { userId: string }) {
             chats={chats}
             activeChatId={activeChatId}
             getChatTimer={getChatTimer}
-            pendingChatIds={pendingChatIds}
+            pendingChatId={pendingChatId}
             onSelect={handleSelectChat}
             onDelete={handleDeleteChat}
             onNewChat={handleNewChat}
@@ -952,7 +1087,7 @@ function NexusAIInner({ userId }: { userId: string }) {
                 chats={chats}
                 activeChatId={activeChatId}
                 getChatTimer={getChatTimer}
-                pendingChatIds={pendingChatIds}
+                pendingChatId={pendingChatId}
                 onSelect={handleSelectChat}
                 onDelete={handleDeleteChat}
                 onNewChat={handleNewChat}
@@ -966,25 +1101,15 @@ function NexusAIInner({ userId }: { userId: string }) {
 
         {/* Main chat area */}
         <div className="nc-main-area">
-          {showTimerBanner && (
-            <div className={`nc-timer-banner ${bannerRed ? 'nc-timer-banner-red' : ''}`}>
-              <span>{bannerText}</span>
-              <button
-                onClick={() => {
-                  bannerDismissed.current.add(activeChatId);
-                  setShowBanner(false);
-                }}
-                className="nc-timer-banner-close"
-                aria-label="Yopish"
-              >
-                <X style={{ width: 12, height: 12 }} />
-              </button>
-            </div>
-          )}
+          <TimerBanner
+            getChatTimer={getChatTimer}
+            chatId={activeChatId}
+            memoryEnabled={memoryEnabled}
+          />
           <div className="nc-scroll-container" style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div ref={scrollRef} className="nc-scroll">
               {messages.length === 0 ? (
-                <NexusEmptyState onPick={(q) => { setInput(q); inputRef.current?.focus(); }} />
+                <NexusEmptyState onPick={(q) => { setInput(q); inputRef.current?.focus(); }} disabled={chatExpired} />
               ) : (
                 <div className="nc-messages">
                   {messages.map((msg) => (
@@ -994,10 +1119,9 @@ function NexusAIInner({ userId }: { userId: string }) {
                       copiedId={copiedId}
                       onCopy={handleCopy}
                       onRetry={retry}
-                      findUserText={findUserText}
                     />
                   ))}
-                  {showDivider && (
+                  {chatExpired && (
                     <div className="nc-memory-divider">
                       <span>{NEXUS_NOTES.MEMORY_EXPIRED_DIVIDER}</span>
                     </div>
@@ -1029,6 +1153,9 @@ function NexusAIInner({ userId }: { userId: string }) {
             chatLimitError={chatLimitError}
             onOpenChats={() => setDrawerOpen(true)}
             memoryNote={memoryNote}
+            chatExpired={chatExpired}
+            onNewChat={handleNewChat}
+            newChatBlocked={activeCount >= maxActive}
           />
         </div>
       </div>

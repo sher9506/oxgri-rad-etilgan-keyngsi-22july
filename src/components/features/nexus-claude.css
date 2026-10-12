@@ -39,7 +39,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 100%;
+  min-height: 0;
   flex: 1;
   background: var(--nc-bg);
   color: var(--nc-text);
@@ -640,7 +640,7 @@
 
 /* ── DocStack inside thinking card ── */
 .nc-thinking-docstack {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -657,6 +657,15 @@
   align-items: center;
   justify-content: center;
   position: relative;
+}
+
+.nc-docstack-float {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .nc-docstack-scene {
@@ -712,30 +721,40 @@
   background: var(--nc-surface-2);
 }
 
-/* ── Scan line ── */
+/* ── Scan line (clipped to viewport) ── */
+.nc-scan-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  pointer-events: none;
+  z-index: 5;
+}
+
 .nc-scan-line {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
-  height: 60px;
+  height: 100%;
   background: linear-gradient(180deg,
     transparent 0%,
-    rgba(37, 99, 235, .06) 30%,
+    transparent 35%,
+    rgba(37, 99, 235, .06) 42%,
     rgba(37, 99, 235, .35) 50%,
-    rgba(37, 99, 235, .06) 70%,
+    rgba(37, 99, 235, .06) 58%,
+    transparent 65%,
     transparent 100%);
   animation: nc-scan 2.6s ease-in-out infinite;
   pointer-events: none;
-  z-index: 5;
-  border-radius: var(--nc-radius);
+  border-radius: 0;
 }
 
 @keyframes nc-scan {
-  0% { transform: translateY(0); opacity: 0; }
+  0% { transform: translateY(-100%); opacity: 0; }
   10% { opacity: 1; }
   90% { opacity: 1; }
-  100% { transform: translateY(280px); opacity: 0; }
+  100% { transform: translateY(100%); opacity: 0; }
 }
 
 /* ── Skeleton lines (answer preview) ── */
@@ -1738,6 +1757,73 @@
   background: var(--nc-surface-2);
 }
 
+/* ── Expired chat card (composer area) ── */
+.nc-expired-card {
+  max-width: 44rem;
+  margin: 0 auto 8px;
+  padding: 12px 14px;
+  border-radius: var(--nc-radius-sm);
+  background: rgba(180, 83, 9, .07);
+  border: 1px solid rgba(180, 83, 9, .16);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nc-expired-card-title {
+  font-family: var(--nc-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: #B45309;
+  margin: 0;
+}
+
+.nc-expired-card-text {
+  font-size: 13px;
+  color: var(--nc-text-2);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.nc-expired-card-btn {
+  align-self: flex-start;
+  width: auto;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--nc-accent);
+  color: #fff;
+  font-family: var(--nc-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 200ms var(--nc-ease), box-shadow 200ms var(--nc-ease);
+  box-shadow: 0 6px 16px -10px rgba(37, 99, 235, .50);
+}
+
+.nc-expired-card-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -8px rgba(37, 99, 235, .55);
+}
+
+.nc-expired-card-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.nc-expired-card-limit {
+  font-size: 12px;
+  color: #B45309;
+  font-weight: 500;
+}
+
+.nc-other-device-hint {
+  font-size: 10px;
+  color: var(--nc-text-3);
+  margin-top: 2px;
+}
+
 /* ════════════════════════════════════════════════════════════════
    RESPONSIVE
    ════════════════════════════════════════════════════════════════ */
@@ -1781,6 +1867,7 @@
   .nc-timer-pulse { animation: none !important; }
   .nc-chat-drawer { transform: none !important; }
   .nc-scan-line { display: none; }
+  .nc-scan-clip { display: none; }
   .nc-bg-shape { animation: none !important; }
   .nc-skeleton-line { animation: none; }
   .nc-doc-layer { transition: none !important; }

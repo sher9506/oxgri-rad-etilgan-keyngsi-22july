@@ -1,17 +1,11 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 
 interface DocStackProps {
-  /** Phase A = collapsed/gentle float, Phase B = fanned out with chips */
   phaseB: boolean;
-  /** Whether scan line should animate */
   scanning: boolean;
-  /** Number of visible doc layers (2 on mobile, 4 on desktop) */
   layers?: number;
-  /** Reduced motion disables tilt/float/scan */
   reducedMotion: boolean;
-  /** Whether device supports hover (desktop) */
   canHover: boolean;
-  /** Whether to show gentle float (empty state) vs active processing */
   active: boolean;
 }
 
@@ -45,11 +39,11 @@ export default function DocStack({
   active,
 }: DocStackProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const floatRef = useRef<HTMLDivElement>(null);
+  const tiltRef = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0 });
   const rafRef = useRef<number>(0);
-  const floatRef = useRef<HTMLDivElement>(null);
 
-  // Pointer parallax tilt (desktop only, rAF throttled)
   const onPointerMove = useCallback((e: PointerEvent) => {
     if (!canHover || reducedMotion) return;
     const el = containerRef.current;
@@ -86,7 +80,7 @@ export default function DocStack({
     };
   }, [canHover, reducedMotion, onPointerMove, onPointerLeave]);
 
-  // Gentle float for Phase A / empty state
+  // Float animation on outer wrapper only (translateY)
   useEffect(() => {
     if (reducedMotion || !floatRef.current) return;
     let start = 0;
@@ -119,36 +113,43 @@ export default function DocStack({
     >
       <div
         ref={floatRef}
-        className="nc-docstack-scene"
-        style={{
-          transformStyle: 'preserve-3d',
-          transform: `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
-          transition: 'transform 400ms cubic-bezier(0.22,1,0.36,1)',
-        }}
+        className="nc-docstack-float"
       >
-        {layerStyles.map((ls, i) => (
-          <div
-            key={i}
-            className={`nc-doc-layer ${phaseB ? 'nc-doc-layer-fanned' : ''} ${i === layers - 1 ? 'nc-doc-layer-top' : ''}`}
-            style={{
-              transform: ls.transform,
-              zIndex: ls.zIndex,
-              transitionDelay: phaseB ? `${i * 70}ms` : '0ms',
-            }}
-          >
-            <div className="nc-doc-layer-header" />
-            <div className="nc-doc-layer-lines">
-              <div className="nc-doc-line" style={{ width: '88%' }} />
-              <div className="nc-doc-line" style={{ width: '72%' }} />
-              <div className="nc-doc-line" style={{ width: '94%' }} />
-              <div className="nc-doc-line" style={{ width: '60%' }} />
-              <div className="nc-doc-line" style={{ width: '80%' }} />
+        <div
+          ref={tiltRef}
+          className="nc-docstack-scene"
+          style={{
+            transformStyle: 'preserve-3d',
+            transform: `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
+            transition: 'transform 400ms cubic-bezier(0.22,1,0.36,1)',
+          }}
+        >
+          {layerStyles.map((ls, i) => (
+            <div
+              key={i}
+              className={`nc-doc-layer ${phaseB ? 'nc-doc-layer-fanned' : ''} ${i === layers - 1 ? 'nc-doc-layer-top' : ''}`}
+              style={{
+                transform: ls.transform,
+                zIndex: ls.zIndex,
+                transitionDelay: phaseB ? `${i * 70}ms` : '0ms',
+              }}
+            >
+              <div className="nc-doc-layer-header" />
+              <div className="nc-doc-layer-lines">
+                <div className="nc-doc-line" style={{ width: '88%' }} />
+                <div className="nc-doc-line" style={{ width: '72%' }} />
+                <div className="nc-doc-line" style={{ width: '94%' }} />
+                <div className="nc-doc-line" style={{ width: '60%' }} />
+                <div className="nc-doc-line" style={{ width: '80%' }} />
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
       {scanning && !reducedMotion && (
-        <div className="nc-scan-line" aria-hidden="true" />
+        <div className="nc-scan-clip" aria-hidden="true">
+          <div className="nc-scan-line" />
+        </div>
       )}
     </div>
   );

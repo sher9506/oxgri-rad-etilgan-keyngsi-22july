@@ -67,6 +67,10 @@ function msgsKey(userId: string, chatId: string): string {
   return `${MSGS_KEY_PREFIX}_${userId}_${chatId}`;
 }
 
+function msgsKeyPrefix(userId: string): string {
+  return `${MSGS_KEY_PREFIX}_${userId}_`;
+}
+
 function legacyHistoryKey(userId: string): string {
   return `${LEGACY_HISTORY_PREFIX}_${userId}`;
 }
@@ -120,6 +124,10 @@ function loadChatMessages(userId: string, chatId: string): { messages: ChatMessa
 
 function saveChatMessages(userId: string, chatId: string, messages: ChatMessage[], pendingJobId?: string) {
   try {
+    if (messages.length === 0) {
+      localStorage.removeItem(msgsKey(userId, chatId));
+      return;
+    }
     localStorage.setItem(msgsKey(userId, chatId), JSON.stringify({
       messages: messages.slice(-MAX_HISTORY),
       pendingJobId: pendingJobId || undefined,
@@ -129,6 +137,30 @@ function saveChatMessages(userId: string, chatId: string, messages: ChatMessage[
 
 function deleteChatMessages(userId: string, chatId: string) {
   try { localStorage.removeItem(msgsKey(userId, chatId)); } catch { /* ignore */ }
+}
+
+function rebuildChatsFromStorage(userId: string): ChatMeta[] {
+  const prefix = msgsKeyPrefix(userId);
+  const metas: ChatMeta[] = [];
+  const chatIds = new Set<string>();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(prefix)) continue;
+    const chatId = key.slice(prefix.length);
+    if (!chatId) continue;
+    const { messages } = loadChatMessages(userId, chatId);
+    if (messages.length === 0) {
+      try { localStorage.removeItem(key); } catch { /* ignore */ }
+      continue;
+    }
+    const firstUser = messages.find(m => m.role === 'user');
+    const title = firstUser ? firstUser.content.slice(0, 40) : 'Suhbat';
+    const createdAt = messages[0].createdAt;
+    const updatedAt = messages[messages.length - 1].createdAt;
+    metas.push({ chatId, title, createdAt, updatedAt });
+    chatIds.add(chatId);
+  }
+  return metas.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 async function callEdgeFunction(fn: string, body: Record<string, unknown>) {
@@ -154,7 +186,7 @@ async function callEdgeFunction(fn: string, body: Record<string, unknown>) {
 function migrateLegacyChats(userId: string): ChatMeta[] {
   try {
     const existing = localStorage.getItem(chatsKey(userId));
-    if (existing) return []; // already migrated
+    if (existing) return [];
     const legacyRaw = localStorage.getItem(legacyHistoryKey(userId));
     const legacyChatId = localStorage.getItem(legacyChatIdKey(userId));
     if (legacyChatId) {
@@ -184,6 +216,7 @@ function migrateLegacyChats(userId: string): ChatMeta[] {
 
 export function useNexusAiChat(userId: string | undefined) {
   const [chats, setChats] = useState<ChatMeta[]>([]);
+  const [chatsHydrated, setChatsHydrated] = useState(false);
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -191,6 +224,7 @@ export function useNexusAiChat(userId: string | undefined) {
   const [chatsStatus, setChatsStatus] = useState<ChatsStatusResponse | null>(null);
   const [serverOffset, setServerOffset] = useState(0);
   const [chatLimitError, setChatLimitError] = useState<string | null>(null);
+  const [pendingChatId, setPendingChatId] = useState<string | null>(null);
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStart = useRef<number>(0);
@@ -198,14 +232,27 @@ export function useNexusAiChat(userId: string | undefined) {
   const pollingChatId = useRef<string | null>(null);
   const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const wasHidden = useRef(false);
+  const activeChatIdRef = useRef<string>('');
+  const userIdRef = useRef<string | undefined>(userId);
 
-  // ── Initialize: migrate + load chat list + pick active chat ──
+  activeChatIdRef.current = activeChatId;
+  userIdRef.current = userId;
+
+  // ── Initialize: migrate + load chat list + rebuild from storage + pick active chat ──
   useEffect(() => {
     if (!userId) return;
+    setChatsHydrated(false);
     const migrated = migrateLegacyChats(userId);
     const loaded = loadChatsList(userId);
-    const list = loaded.length > 0 ? loaded : migrated;
+    const rebuilt = rebuildChatsFromStorage(userId);
+    const byId = new Map<string, ChatMeta>();
+    for (const m of rebuilt) byId.set(m.chatId, m);
+    for (const m of loaded.length > 0 ? loaded : migrated) {
+      if (!byId.has(m.chatId)) byId.set(m.chatId, m);
+    }
+    const list = Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt);
     setChats(list);
+    setChatsHydrated(true);
     if (list.length > 0) {
       const first = list[0];
       setActiveChatId(first.chatId);
@@ -222,6 +269,7 @@ export function useNexusAiChat(userId: string | undefined) {
           ));
         } else {
           setIsProcessing(true);
+          setPendingChatId(first.chatId);
           pollingJobId.current = pendingJobId;
           pollingChatId.current = first.chatId;
           startPolling(pendingJobId, userId, first.chatId);
@@ -233,11 +281,40 @@ export function useNexusAiChat(userId: string | undefined) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
+  // ── Save chats list when it changes (only after hydration) ──
+  useEffect(() => {
+    if (!userId || !chatsHydrated) return;
+    saveChatsList(userId, chats);
+    // Cleanup expired chats beyond MAX_EXPIRED_CHATS
+    if (chatsStatus?.memory_enabled) {
+      const expired = chats.filter(c => {
+        const info = chatsStatus.chats[c.chatId];
+        if (!info || !info.expires_at) return false;
+        const expires = new Date(info.expires_at).getTime();
+        return expires <= Date.now() + serverOffset;
+      }).sort((a, b) => a.updatedAt - b.updatedAt);
+      if (expired.length > MAX_EXPIRED_CHATS) {
+        const toRemove = expired.slice(0, expired.length - MAX_EXPIRED_CHATS);
+        for (const c of toRemove) {
+          if (c.chatId === activeChatIdRef.current) continue;
+          if (c.chatId === pendingChatId) continue;
+          deleteChatMessages(userId, c.chatId);
+        }
+        const removeIds = new Set(toRemove.map(c => c.chatId));
+        setChats(prev => prev.filter(c => !removeIds.has(c.chatId)));
+      }
+    }
+  }, [chats, userId, chatsHydrated, chatsStatus, serverOffset, pendingChatId]);
+
   // ── Save messages when they change ──
   useEffect(() => {
     if (!userId || !activeChatId) return;
     const pending = messages.find(m => m.jobId && (m.status === 'queued' || m.status === 'running'));
-    saveChatMessages(userId, activeChatId, messages, pending?.jobId);
+    if (messages.length === 0) {
+      deleteChatMessages(userId, activeChatId);
+    } else {
+      saveChatMessages(userId, activeChatId, messages, pending?.jobId);
+    }
   }, [messages, userId, activeChatId]);
 
   // ── Fetch quota ──
@@ -246,6 +323,9 @@ export function useNexusAiChat(userId: string | undefined) {
     try {
       const data = await callEdgeFunction('nexus-quota', { user_id: userId });
       setQuota(data as QuotaInfo);
+      if (data.server_now) {
+        setServerOffset(new Date(data.server_now).getTime() - Date.now());
+      }
     } catch { /* ignore */ }
   }, [userId]);
 
@@ -300,30 +380,49 @@ export function useNexusAiChat(userId: string | undefined) {
   // ── Quota reset timer ──
   useEffect(() => {
     if (!quota?.next_reset_at || quota.remaining >= quota.limit) return;
-    const msUntilReset = new Date(quota.next_reset_at).getTime() - Date.now();
+    const msUntilReset = new Date(quota.next_reset_at).getTime() - (Date.now() + serverOffset);
     if (msUntilReset <= 0) { fetchQuota(); return; }
     const timer = setTimeout(() => fetchQuota(), msUntilReset + 500);
     return () => clearTimeout(timer);
-  }, [quota, fetchQuota]);
+  }, [quota, fetchQuota, serverOffset]);
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
+    setPendingChatId(null);
+  }, []);
+
+  // ── Apply job message update to correct chat (active or background) ──
+  const applyToJobMessage = useCallback((
+    chatId: string,
+    jobId: string,
+    updater: (m: ChatMessage) => ChatMessage,
+  ) => {
+    if (chatId === activeChatIdRef.current) {
+      setMessages(prev => prev.map(m => m.jobId === jobId ? updater(m) : m));
+    } else {
+      const uid = userIdRef.current;
+      if (!uid) return;
+      const { messages: msgs } = loadChatMessages(uid, chatId);
+      if (msgs.length === 0) return;
+      const updated = msgs.map(m => m.jobId === jobId ? updater(m) : m);
+      const pending = updated.find(m => m.jobId && (m.status === 'queued' || m.status === 'running'));
+      saveChatMessages(uid, chatId, updated, pending?.jobId);
+    }
   }, []);
 
   const startPolling = useCallback((jobId: string, uid: string, chatId: string) => {
     stopPolling();
     pollStart.current = Date.now();
+    setPendingChatId(chatId);
 
     pollTimer.current = setInterval(async () => {
       const elapsed = Date.now() - pollStart.current;
       if (elapsed > MAX_POLL_MS) {
         stopPolling();
         setIsProcessing(false);
-        setMessages(prev => prev.map(m =>
-          m.jobId === jobId
-            ? { ...m, status: 'timeout', error: 'Javob hali tayyor emas. Keyinroq urinib ko\'ring.' }
-            : m,
-        ));
+        applyToJobMessage(chatId, jobId, m =>
+          ({ ...m, status: 'timeout' as ChatJobStatus, error: 'Javob hali tayyor emas. Keyinroq urinib ko\'ring.' }),
+        );
         return;
       }
 
@@ -333,51 +432,62 @@ export function useNexusAiChat(userId: string | undefined) {
           stopPolling();
           setIsProcessing(false);
           fetchQuota();
-          setMessages(prev => prev.map(m =>
-            m.jobId === jobId
-              ? {
-                  ...m,
-                  status: 'done',
-                  content: data.answer || '',
-                  error: undefined,
-                  lexionPhase: data.lexion_phase || null,
-                  lexionFallback: data.lexion_fallback || false,
-                  lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : undefined,
-                  jobCreatedAt: data.created_at || m.jobCreatedAt,
-                  serverNow: data.server_now,
-                }
-              : m,
-          ));
-          // Refresh status after job completes
+          applyToJobMessage(chatId, jobId, m => ({
+            ...m,
+            status: 'done',
+            content: data.answer || '',
+            error: undefined,
+            lexionPhase: data.lexion_phase || null,
+            lexionFallback: data.lexion_fallback || false,
+            lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : undefined,
+            jobCreatedAt: data.created_at || m.jobCreatedAt,
+            serverNow: data.server_now,
+          }));
           fetchChatsStatus();
         } else if (data.status === 'error') {
           stopPolling();
           setIsProcessing(false);
-          setMessages(prev => prev.map(m =>
-            m.jobId === jobId
-              ? { ...m, status: 'error', error: data.error || 'Xatolik', content: data.error || 'Xatolik yuz berdi', lexionPhase: data.lexion_phase ?? null }
-              : m,
-          ));
+          applyToJobMessage(chatId, jobId, m => ({
+            ...m,
+            status: 'error',
+            error: data.error || 'Xatolik',
+            content: data.error || 'Xatolik yuz berdi',
+            lexionPhase: data.lexion_phase ?? null,
+          }));
         } else {
-          setMessages(prev => prev.map(m =>
-            m.jobId === jobId
-              ? {
-                  ...m,
-                  status: data.status as ChatJobStatus,
-                  lexionPhase: data.lexion_phase ?? data.phase ?? null,
-                  lexionFallback: data.lexion_fallback ?? false,
-                  lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : m.lexionUrls,
-                  jobCreatedAt: data.created_at || m.jobCreatedAt,
-                  serverNow: data.server_now,
-                }
-              : m,
-          ));
+          applyToJobMessage(chatId, jobId, m => ({
+            ...m,
+            status: data.status as ChatJobStatus,
+            lexionPhase: data.lexion_phase ?? data.phase ?? null,
+            lexionFallback: data.lexion_fallback ?? false,
+            lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : m.lexionUrls,
+            jobCreatedAt: data.created_at || m.jobCreatedAt,
+            serverNow: data.server_now,
+          }));
         }
       } catch {
         // Network error — keep polling
       }
     }, POLL_INTERVAL_MS);
-  }, [stopPolling, fetchQuota, fetchChatsStatus]);
+  }, [stopPolling, fetchQuota, fetchChatsStatus, applyToJobMessage]);
+
+  // ── Get timer info for a chat ──
+  const getChatTimer = useCallback((chatId: string, nowMs?: number): { remaining: number; status: 'active' | 'expired' | 'none' } => {
+    if (!chatsStatus?.memory_enabled) return { remaining: 0, status: 'none' };
+    const info = chatsStatus.chats[chatId];
+    if (!info || !info.expires_at) return { remaining: 0, status: 'none' };
+    const expires = new Date(info.expires_at).getTime();
+    const now = (nowMs ?? Date.now()) + serverOffset;
+    const remaining = expires - now;
+    if (remaining <= 0) return { remaining: 0, status: 'expired' };
+    return { remaining, status: 'active' };
+  }, [chatsStatus, serverOffset]);
+
+  // ── Is chat expired ──
+  const isChatExpired = useCallback((chatId: string): boolean => {
+    if (!chatsStatus?.memory_enabled) return false;
+    return getChatTimer(chatId).status === 'expired';
+  }, [chatsStatus, getChatTimer]);
 
   const switchChat = useCallback((chatId: string) => {
     if (!userId || chatId === activeChatId) return;
@@ -385,13 +495,13 @@ export function useNexusAiChat(userId: string | undefined) {
     setChatLimitError(null);
     const { messages: msgs, pendingJobId } = loadChatMessages(userId, chatId);
     setMessages(msgs);
-    // If there's a pending job for this chat, resume polling
     if (pendingJobId) {
       const pendingMsg = msgs.find(m => m.jobId === pendingJobId);
       if (pendingMsg && (pendingMsg.status === 'queued' || pendingMsg.status === 'running')) {
         const jobAgeMs = pendingMsg?.createdAt ? Date.now() - pendingMsg.createdAt : 0;
         if (jobAgeMs <= 20 * 60 * 1000) {
           setIsProcessing(true);
+          setPendingChatId(chatId);
           pollingJobId.current = pendingJobId;
           pollingChatId.current = chatId;
           startPolling(pendingJobId, userId, chatId);
@@ -399,9 +509,7 @@ export function useNexusAiChat(userId: string | undefined) {
         }
       }
     }
-    // Check if there's a job running for any other chat
     if (pollingJobId.current && pollingChatId.current && pollingChatId.current !== chatId) {
-      // Polling continues in background; isProcessing stays true
       setIsProcessing(true);
     } else {
       setIsProcessing(false);
@@ -410,7 +518,6 @@ export function useNexusAiChat(userId: string | undefined) {
 
   const createNewChat = useCallback(() => {
     if (!userId) return;
-    // Don't create if at limit
     const activeCount = chatsStatus?.active_count ?? 0;
     const maxActive = chatsStatus?.max_active ?? MAX_ACTIVE_CHATS;
     if (activeCount >= maxActive) return;
@@ -428,6 +535,9 @@ export function useNexusAiChat(userId: string | undefined) {
     if (!userId || !text.trim() || isProcessing) return;
     const trimmed = text.trim();
     if (trimmed.length < MIN_CHAT_INPUT || trimmed.length > MAX_CHAT_INPUT) return;
+
+    // Block sending in expired chat
+    if (isChatExpired(activeChatId)) return;
 
     setChatLimitError(null);
     const currentChatId = activeChatId || crypto.randomUUID();
@@ -468,7 +578,6 @@ export function useNexusAiChat(userId: string | undefined) {
         ));
         pollingJobId.current = data.id;
 
-        // Add to chat list if first message
         setChats(prev => {
           const existing = prev.find(c => c.chatId === currentChatId);
           if (existing) {
@@ -496,9 +605,8 @@ export function useNexusAiChat(userId: string | undefined) {
       const e = err as Error & { code?: string; next_reset_at?: string; max?: number };
       let errorMsg = e.message || 'Xatolik yuz berdi';
 
-      if (e.code === 'chat_limit') {
+      if (e.code === 'chat_limit' || e.code === 'chat_expired') {
         setChatLimitError(errorMsg);
-        // Remove the user+ai messages — text stays in composer
         setMessages(prev => prev.filter(m => m.id !== userMsg.id && m.id !== aiMsgId));
         fetchChatsStatus();
         return;
@@ -512,22 +620,34 @@ export function useNexusAiChat(userId: string | undefined) {
       ));
       fetchQuota();
     }
-  }, [userId, isProcessing, activeChatId, startPolling, fetchQuota, fetchChatsStatus]);
+  }, [userId, isProcessing, activeChatId, startPolling, fetchQuota, fetchChatsStatus, isChatExpired]);
 
-  const retry = useCallback(async (jobId: string | undefined, originalText: string) => {
-    if (!jobId || !userId) return;
-    setMessages(prev => prev.filter(m => m.jobId !== jobId));
-    await sendMessage(originalText);
+  const retry = useCallback(async (aiMsgId: string) => {
+    if (!userId) return;
+    setMessages(prev => {
+      const aiIdx = prev.findIndex(m => m.id === aiMsgId);
+      if (aiIdx < 0) return prev;
+      let userText = '';
+      for (let i = aiIdx - 1; i >= 0; i--) {
+        if (prev[i].role === 'user') {
+          userText = prev[i].content;
+          break;
+        }
+      }
+      if (!userText) return prev;
+      const toRemove = new Set([aiMsgId, prev[aiIdx - 1]?.id].filter(Boolean) as string[]);
+      const filtered = prev.filter(m => !toRemove.has(m.id));
+      setTimeout(() => sendMessage(userText), 0);
+      return filtered;
+    });
   }, [userId, sendMessage]);
 
   const deleteChat = useCallback(async (chatId: string) => {
     if (!userId) return;
-    // Call backend to expire the notebook
     try {
       await callEdgeFunction('nexus-chat-delete', { user_id: userId, chat_id: chatId });
-    } catch { /* ignore — local delete still happens */ }
+    } catch { /* ignore */ }
 
-    // Remove from chats list
     setChats(prev => {
       const filtered = prev.filter(c => c.chatId !== chatId);
       saveChatsList(userId, filtered);
@@ -535,7 +655,6 @@ export function useNexusAiChat(userId: string | undefined) {
     });
     deleteChatMessages(userId, chatId);
 
-    // Switch to another chat or create new
     if (activeChatId === chatId) {
       const remaining = chats.filter(c => c.chatId !== chatId);
       if (remaining.length > 0) {
@@ -568,19 +687,6 @@ export function useNexusAiChat(userId: string | undefined) {
     fetchChatsStatus();
   }, [userId, activeChatId, stopPolling, fetchChatsStatus]);
 
-  // ── Get timer info for a chat ──
-  const getChatTimer = useCallback((chatId: string): { remaining: number; status: 'active' | 'expired' | 'none' } => {
-    if (!chatsStatus?.memory_enabled) return { remaining: 0, status: 'none' };
-    const info = chatsStatus.chats[chatId];
-    if (!info || !info.expires_at) return { remaining: 0, status: 'none' };
-    const expires = new Date(info.expires_at).getTime();
-    const now = Date.now() + serverOffset;
-    const remaining = expires - now;
-    if (remaining <= 0) return { remaining: 0, status: 'expired' };
-    return { remaining, status: 'active' };
-  }, [chatsStatus, serverOffset]);
-
-  // ── Get memory_enabled flag ──
   const memoryEnabled = chatsStatus?.memory_enabled ?? false;
 
   useEffect(() => () => stopPolling(), [stopPolling]);
@@ -595,6 +701,7 @@ export function useNexusAiChat(userId: string | undefined) {
     memoryEnabled,
     serverOffset,
     chatLimitError,
+    pendingChatId,
     sendMessage,
     retry,
     clearChat,
@@ -602,6 +709,7 @@ export function useNexusAiChat(userId: string | undefined) {
     switchChat,
     createNewChat,
     getChatTimer,
+    isChatExpired,
     fetchChatsStatus,
     minInput: MIN_CHAT_INPUT,
     maxInput: MAX_CHAT_INPUT,
