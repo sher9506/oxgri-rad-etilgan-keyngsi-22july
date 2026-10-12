@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useNexusAiChat } from '@/hooks/useNexusAiChat';
 import { AI_NAME, AI_TAGLINE, SAMPLE_QUESTIONS, NEXUS_NOTES } from '@/constants/nexus';
+import NexusErrorBoundary from './NexusErrorBoundary';
 import './nexus-claude.css';
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -375,6 +376,14 @@ function NexusComposer({
 /* ───────────────────────── Main Component ───────────────────────── */
 
 export default function NexusAI({ userId }: { userId: string }) {
+  return (
+    <NexusErrorBoundary>
+      <NexusAIInner userId={userId} />
+    </NexusErrorBoundary>
+  );
+}
+
+function NexusAIInner({ userId }: { userId: string }) {
   const { messages, isProcessing, quota, sendMessage, retry, clearChat, minInput, maxInput } = useNexusAiChat(userId);
   const [input, setInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);

@@ -62,8 +62,14 @@ function loadHistory(userId: string): { messages: ChatMessage[]; pendingJobId?: 
     const raw = localStorage.getItem(storageKey(userId));
     if (!raw) return { messages: [] };
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed.messages)) return { messages: [] };
-    const messages = parsed.messages.slice(-MAX_HISTORY);
+    if (!parsed || typeof parsed !== 'object') return { messages: [] };
+    const rawMessages = parsed.messages;
+    if (!Array.isArray(rawMessages)) return { messages: [] };
+    const messages = rawMessages
+      .filter((m: unknown): m is ChatMessage =>
+        m !== null && typeof m === 'object' && typeof (m as ChatMessage).id === 'string' && typeof (m as ChatMessage).role === 'string'
+      )
+      .slice(-MAX_HISTORY);
     const pendingJobId = typeof parsed.pendingJobId === 'string' ? parsed.pendingJobId : undefined;
     return { messages, pendingJobId };
   } catch {
@@ -119,7 +125,16 @@ export function useNexusAiChat(userId: string | undefined) {
   // Load history from localStorage on mount
   useEffect(() => {
     if (!userId) return;
-    const { messages: loaded, pendingJobId } = loadHistory(userId);
+    let loaded: ChatMessage[] = [];
+    let pendingJobId: string | undefined;
+    try {
+      const result = loadHistory(userId);
+      loaded = Array.isArray(result.messages) ? result.messages : [];
+      pendingJobId = typeof result.pendingJobId === 'string' ? result.pendingJobId : undefined;
+    } catch {
+      loaded = [];
+      pendingJobId = undefined;
+    }
     setMessages(loaded);
     if (pendingJobId) {
       // Check if pending job is stale (>20 min old) before polling
@@ -132,12 +147,13 @@ export function useNexusAiChat(userId: string | undefined) {
             ? { ...m, status: 'error' as ChatJobStatus, error: "Server qayta ishga tushdi, savolni qayta yuboring." }
             : m
         ));
-        saveHistory(userId, loaded.filter(m => m.jobId !== pendingJobId));
+        try { saveHistory(userId, loaded.filter(m => m.jobId !== pendingJobId)); } catch { /* e'tiborsiz */ }
       } else {
         setIsProcessing(true);
         startPolling(pendingJobId, userId);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   // Save to localStorage whenever messages change
