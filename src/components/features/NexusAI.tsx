@@ -1096,6 +1096,7 @@ function NexusAIInner({ userId }: { userId: string }) {
                 activeCount={activeCount}
                 maxActive={maxActive}
                 memoryEnabled={memoryEnabled}
+                chatsHydrated={chatsHydrated}
               />
             </aside>
           </>
