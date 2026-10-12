@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowUp, Scale, Sparkles, Trash2, RotateCcw, Copy, Check,
   FileText, ExternalLink, AlertCircle, Clock, ChevronDown, Loader2,
-  Plus, MessageCircle, Info, X,
+  Plus, MessageCircle, Info, X, PanelLeft,
 } from 'lucide-react';
 import { useNexusAiChat } from '@/hooks/useNexusAiChat';
 import type { ChatMeta } from '@/hooks/useNexusAiChat';
@@ -11,6 +11,7 @@ import {
   AI_NAME, AI_TAGLINE, SAMPLE_QUESTIONS, NEXUS_NOTES,
   MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS,
   formatRemainingShort, getTimerTone, formatRelativeDate,
+  COPY_LABEL, COPIED_LABEL,
 } from '@/constants/nexus';
 import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
@@ -96,11 +97,14 @@ interface NexusShellProps {
   onToggleChats: () => void;
   activeChatCount: number;
   timerPill: React.ReactNode;
+  headerLeft: boolean;
+  onToggleHeaderLeft: () => void;
 }
 
 function NexusShell({
   children, onClear, showClear, quotaPill, resetLine,
   onToggleChats, activeChatCount, timerPill,
+  headerLeft, onToggleHeaderLeft,
 }: NexusShellProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
@@ -145,38 +149,48 @@ function NexusShell({
   }, []);
 
   return (
-    <div className="nexus-claude" ref={shellRef}>
+    <div className={`nexus-claude ${headerLeft ? 'nc-header-left-mode' : ''}`} ref={shellRef}>
       <BgShapes reducedMotion={reducedMotion} />
-      <div className="nc-header">
-        <div className="nc-header-left">
-          <button
-            className="nc-chats-toggle lg:hidden"
-            onClick={onToggleChats}
-            aria-label="Suhbatlar ro'yxati"
-          >
-            <MessageCircle style={{ width: 18, height: 18 }} />
-            {activeChatCount > 0 && (
-              <span className="nc-chats-badge">{activeChatCount}</span>
-            )}
-          </button>
-          <div className="nc-header-icon-tile" aria-hidden="true">
-            <Scale className="nc-header-icon" />
-          </div>
-          <div>
-            <h1 className="nc-header-title">{AI_NAME}</h1>
-            <p className="nc-header-sub">{AI_TAGLINE}</p>
-          </div>
-        </div>
-        <div className="nc-header-right">
-          {timerPill}
-          {quotaPill}
-          {showClear && (
-            <button onClick={onClear} className="nc-icon-btn" aria-label="Shu suhbatni o'chirish" title="Shu suhbatni o'chirish">
-              <Trash2 style={{ width: 16, height: 16 }} />
+      {!headerLeft && (
+        <div className="nc-header">
+          <div className="nc-header-left">
+            <button
+              className="nc-chats-toggle lg:hidden"
+              onClick={onToggleChats}
+              aria-label="Suhbatlar ro'yxati"
+            >
+              <MessageCircle style={{ width: 18, height: 18 }} />
+              {activeChatCount > 0 && (
+                <span className="nc-chats-badge">{activeChatCount}</span>
+              )}
             </button>
-          )}
+            <div className="nc-header-icon-tile" aria-hidden="true">
+              <Scale className="nc-header-icon" />
+            </div>
+            <div>
+              <h1 className="nc-header-title">{AI_NAME}</h1>
+              <p className="nc-header-sub">{AI_TAGLINE}</p>
+            </div>
+          </div>
+          <div className="nc-header-right">
+            <button
+              onClick={onToggleHeaderLeft}
+              className="nc-icon-btn nc-header-move-btn"
+              aria-label="Sarlavhani chap panelga ko'chirish"
+              title="Sarlavhani chap panelga ko'chirish"
+            >
+              <PanelLeft style={{ width: 16, height: 16 }} />
+            </button>
+            {timerPill}
+            {quotaPill}
+            {showClear && (
+              <button onClick={onClear} className="nc-icon-btn" aria-label="Shu suhbatni o'chirish" title="Shu suhbatni o'chirish">
+                <Trash2 style={{ width: 16, height: 16 }} />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       {resetLine}
       {children}
     </div>
@@ -385,10 +399,10 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
           </div>
         </div>
       )}
-      <div className="nc-actions">
-        <button onClick={() => onCopy(msg.id, msg.content)} className="nc-action-btn" aria-label="Nusxalash">
+      <div className="nc-actions" aria-live="polite">
+        <button onClick={() => onCopy(msg.id, msg.content)} className="nc-action-btn" aria-label={copiedId === msg.id ? COPIED_LABEL : COPY_LABEL}>
           {copiedId === msg.id ? <Check /> : <Copy />}
-          {copiedId === msg.id ? 'Nusxalandi' : 'Nusxalash'}
+          {copiedId === msg.id ? COPIED_LABEL : COPY_LABEL}
         </button>
         {finalSeconds !== null && (
           <span className="nc-answer-meta">
@@ -513,11 +527,13 @@ function NexusComposer({
         <div className="nc-composer-footer">
           <button onClick={onPillClick} className="nc-lexion-pill" aria-label="Lexion AI">
             <span className="nc-lexion-dot" />
-            Lexion AI
+            <span className="nc-lexion-text">Lexion AI</span>
           </button>
-          <span className={`nc-counter ${counterWarn || inputTooLong ? 'nc-counter-warn' : ''}`}>
-            {input.length} / {maxInput}
-          </span>
+          {input.length > 0 && (
+            <span className={`nc-counter nc-counter-sm ${counterWarn || inputTooLong ? 'nc-counter-warn' : ''}`}>
+              {input.length} / {maxInput}
+            </span>
+          )}
         </div>
       </div>
       <div className="nc-composer-notes">
@@ -1000,6 +1016,21 @@ function NexusAIInner({ userId }: { userId: string }) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nowOverride, setNowOverride] = useState(0);
+  const [headerLeft, setHeaderLeft] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    if (window.innerWidth < 1024) return false;
+    return localStorage.getItem('nexus_header_left_v1') === '1';
+  });
+
+  const toggleHeaderLeft = useCallback(() => {
+    setHeaderLeft(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nexus_header_left_v1', next ? '1' : '0');
+      }
+      return next;
+    });
+  }, []);
 
   const isNearBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -1038,9 +1069,28 @@ function NexusAIInner({ userId }: { userId: string }) {
   }, [handleSend]);
 
   const handleCopy = useCallback((id: string, text: string) => {
-    navigator.clipboard.writeText(text)
-      .then(() => { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); })
-      .catch(() => {});
+    const done = () => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch { /* ignore */ }
+        document.body.removeChild(ta);
+      });
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
   }, []);
 
   const handleClear = useCallback(() => {
@@ -1133,10 +1183,47 @@ function NexusAIInner({ userId }: { userId: string }) {
           nowOverride={nowOverride}
         />
       }
+      headerLeft={headerLeft}
+      onToggleHeaderLeft={toggleHeaderLeft}
     >
       <div className="nc-layout">
         {/* Desktop chat list panel */}
         <aside className="nc-chat-sidebar">
+          {headerLeft && (
+            <div className="nc-panel-header">
+              <div className="nc-panel-header-top">
+                <div className="nc-panel-header-icon" aria-hidden="true">
+                  <Scale style={{ width: 18, height: 18 }} />
+                </div>
+                <div className="nc-panel-header-info">
+                  <h2 className="nc-panel-header-title">{AI_NAME}</h2>
+                  <p className="nc-panel-header-sub">{AI_TAGLINE}</p>
+                </div>
+                <button
+                  onClick={toggleHeaderLeft}
+                  className="nc-icon-btn nc-panel-header-back"
+                  aria-label="Sarlavhani yuqoriga qaytarish"
+                  title="Sarlavhani yuqoriga qaytarish"
+                >
+                  <PanelLeft style={{ width: 16, height: 16 }} />
+                </button>
+              </div>
+              <div className="nc-panel-header-controls">
+                <TimerPill
+                  getChatTimer={getChatTimer}
+                  chatId={activeChatId}
+                  memoryEnabled={memoryEnabled}
+                  nowOverride={nowOverride}
+                />
+                {quotaPill}
+                {messages.length > 0 && (
+                  <button onClick={handleClear} className="nc-icon-btn" aria-label="Shu suhbatni o'chirish" title="Shu suhbatni o'chirish">
+                    <Trash2 style={{ width: 16, height: 16 }} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           <ChatListPanel
             chats={chats}
             activeChatId={activeChatId}

@@ -51,6 +51,19 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
   return nodes;
 }
 
+function boldLead(text: string, keyBase: string): ReactNode[] {
+  if (text.startsWith('http')) return renderInline(text, keyBase);
+  const colonIdx = text.indexOf(':');
+  if (colonIdx > 0 && colonIdx <= 60 && !text.slice(0, colonIdx).includes('\n')) {
+    const lead = text.slice(0, colonIdx + 1);
+    const rest = text.slice(colonIdx + 1);
+    const nodes: ReactNode[] = [<strong key={`${keyBase}-lead`}>{lead}</strong>];
+    if (rest) nodes.push(...renderInline(rest, `${keyBase}-rest`));
+    return nodes;
+  }
+  return renderInline(text, keyBase);
+}
+
 interface Block {
   type: 'heading' | 'ul' | 'ol' | 'para';
   lines: string[];
@@ -105,7 +118,7 @@ export default function AnswerText({ text }: { text: string }) {
           return (
             <ul key={key} className="nc-answer-list">
               {block.lines.map((li, j) => (
-                <li key={`${key}-li${j}`}>{renderInline(li, `${key}-li${j}`)}</li>
+                <li key={`${key}-li${j}`}>{boldLead(li, `${key}-li${j}`)}</li>
               ))}
             </ul>
           );
@@ -114,7 +127,7 @@ export default function AnswerText({ text }: { text: string }) {
           return (
             <ol key={key} className="nc-answer-list">
               {block.lines.map((li, j) => (
-                <li key={`${key}-li${j}`}>{renderInline(li, `${key}-li${j}`)}</li>
+                <li key={`${key}-li${j}`}>{boldLead(li, `${key}-li${j}`)}</li>
               ))}
             </ol>
           );
@@ -122,7 +135,7 @@ export default function AnswerText({ text }: { text: string }) {
         const paraText = block.lines.join('\n');
         return (
           <p key={key} className="nc-answer-p">
-            {renderInline(paraText, key)}
+            {boldLead(paraText, key)}
           </p>
         );
       })}

@@ -72,6 +72,7 @@
   max-width: 600px;
   max-height: 600px;
   background: var(--nc-accent);
+  opacity: 0.5;
   top: -10%;
   right: -5%;
   animation: nc-drift-1 24s ease-in-out infinite;
@@ -83,6 +84,7 @@
   max-width: 500px;
   max-height: 500px;
   background: var(--nc-accent);
+  opacity: 0.5;
   bottom: -15%;
   left: 10%;
   animation: nc-drift-2 20s ease-in-out infinite;
@@ -401,11 +403,18 @@
 .nc-messages {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   max-width: 44rem;
   margin: 0 auto;
   position: relative;
   z-index: 2;
+}
+
+.nc-msg-user { margin-top: 28px; }
+.nc-msg-assistant { margin-top: 32px; }
+
+.nc-messages > :first-child {
+  margin-top: 0;
 }
 
 .nc-msg-user {
@@ -436,8 +445,8 @@
 
 .nc-answer {
   font-family: var(--nc-serif);
-  font-size: 17px;
-  line-height: 1.65;
+  font-size: 16px;
+  line-height: 1.6;
   color: var(--nc-text);
   word-break: break-word;
   max-width: 44rem;
@@ -467,6 +476,7 @@
 .nc-answer-list {
   margin: 0 0 0.85em;
   padding-left: 1.3em;
+  list-style-position: outside;
 }
 
 .nc-answer-list:last-child {
@@ -475,6 +485,18 @@
 
 .nc-answer-list li {
   margin-bottom: 0.3em;
+}
+
+ul.nc-answer-list {
+  list-style-type: disc;
+}
+
+ol.nc-answer-list {
+  list-style-type: decimal;
+}
+
+.nc-answer-list li::marker {
+  color: var(--nc-text-3);
 }
 
 .nc-answer-list li:last-child {
@@ -997,7 +1019,7 @@
   border: 1px solid var(--nc-border);
   border-radius: var(--nc-radius);
   box-shadow: var(--nc-shadow);
-  padding: 14px 16px;
+  padding: 10px 14px;
   transition: border-color 200ms var(--nc-ease), box-shadow 200ms var(--nc-ease), transform 200ms var(--nc-ease);
 }
 
@@ -1080,7 +1102,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 8px;
+  margin-top: 4px;
+  min-height: 24px;
 }
 
 .nc-lexion-pill {
@@ -1152,7 +1175,105 @@
   }
 }
 
-/* ── Input warnings ── */
+/* ── Header move-to-panel button ── */
+.nc-header-move-btn {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .nc-header-move-btn {
+    display: flex;
+  }
+}
+
+/* ── Panel header (header-left mode) ── */
+.nc-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--nc-border);
+  flex-shrink: 0;
+}
+
+.nc-panel-header-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nc-panel-header-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, .12), rgba(37, 99, 235, .04));
+  border: 1px solid rgba(37, 99, 235, .14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nc-accent);
+}
+
+.nc-panel-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.nc-panel-header-title {
+  font-family: var(--nc-serif);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--nc-text);
+  line-height: 1.2;
+  margin: 0;
+}
+
+.nc-panel-header-sub {
+  font-size: 11px;
+  color: var(--nc-text-2);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.nc-panel-header-back {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+}
+
+.nc-panel-header-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nc-panel-header-controls .nc-quota-pill {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+.nc-panel-header-controls .nc-timer-pill {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.nc-panel-header-controls .nc-timer-pill-prefix {
+  display: none;
+}
+
+/* Popover in panel mode opens left-aligned */
+.nc-panel-header-controls .nc-timer-popover {
+  right: auto;
+  left: 0;
+}
+
+.nc-header-left-mode .nc-chat-list-panel {
+  padding-top: 0;
+}
+
 .nc-input-warning {
   max-width: 44rem;
   margin: 0 auto 6px;
@@ -2054,8 +2175,8 @@
   .nc-composer-wrap { padding: 6px 16px calc(8px + env(safe-area-inset-bottom)); }
   .nc-suggestions { grid-template-columns: 1fr; }
   .nc-empty-title { font-size: 24px; }
-  .nc-answer { font-size: 16px; line-height: 1.6; }
-  .nc-answer-h { font-size: 16px; }
+  .nc-answer { font-size: 15.5px; line-height: 1.55; }
+  .nc-answer-h { font-size: 15.5px; }
   .nc-timer-pill-prefix { display: none; }
   .nc-msg-user { max-width: 90%; }
   .nc-composer-notes { flex-wrap: wrap; }
@@ -2064,6 +2185,13 @@
   .nc-docstack-viewport { width: 160px; height: 130px; }
   .nc-doc-layer { width: 110px; height: 88px; margin-top: -44px; margin-left: -55px; }
   .nc-bg-shape { filter: blur(60px); }
+  .nc-lexion-text { display: none; }
+  .nc-counter-sm { display: none; }
+  .nc-counter-warn.nc-counter-sm { display: inline; }
+}
+
+@media (max-width: 380px) {
+  .nc-lexion-text { display: none; }
 }
 
 @media (max-width: 1023px) {

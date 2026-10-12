@@ -6,6 +6,9 @@ export const MAX_CHAT_INPUT = 2500;
 export const MAX_ACTIVE_CHATS = 15;
 export const MAX_EXPIRED_CHATS = 30;
 
+export const COPY_LABEL = "Nusxalash";
+export const COPIED_LABEL = "Nusxalandi";
+
 export const TIME_HOUR_UNIT = 'soat';
 export const TIME_MIN_UNIT = 'daq';
 export const TIME_LESS_THAN_MIN = '1 daqiqadan kam';
