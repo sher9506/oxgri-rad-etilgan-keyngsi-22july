@@ -11,6 +11,8 @@ import {
   MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS,
 } from '@/constants/nexus';
 import NexusErrorBoundary from './NexusErrorBoundary';
+import DocStack from './nexus/DocStack';
+import BgShapes from './nexus/BgShapes';
 import './nexus-claude.css';
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -80,8 +82,36 @@ function NexusShell({
   children, onClear, showClear, quotaPill, resetLine,
   onToggleChats, activeChatCount, timerPill,
 }: NexusShellProps) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    const main = el.closest('main');
+    if (!main) return;
+    const update = () => {
+      const h = main.getBoundingClientRect().height;
+      el.style.minHeight = `${h}px`;
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(main);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <div className="nexus-claude">
+    <div className="nexus-claude" ref={shellRef}>
+      <BgShapes reducedMotion={reducedMotion} />
       <div className="nc-header">
         <div className="nc-header-left">
           <button
@@ -94,7 +124,9 @@ function NexusShell({
               <span className="nc-chats-badge">{activeChatCount}</span>
             )}
           </button>
-          <Scale className="nc-header-icon" />
+          <div className="nc-header-icon-tile" aria-hidden="true">
+            <Scale className="nc-header-icon" />
+          </div>
           <div>
             <h1 className="nc-header-title">{AI_NAME}</h1>
             <p className="nc-header-sub">{AI_TAGLINE}</p>
@@ -119,9 +151,30 @@ function NexusShell({
 /* ───────────────────────── NexusEmptyState ───────────────────────── */
 
 function NexusEmptyState({ onPick }: { onPick: (q: string) => void }) {
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [canHover, setCanHover] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const rmq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const hmq = window.matchMedia('(hover: hover)');
+    setReducedMotion(rmq.matches);
+    setCanHover(hmq.matches);
+    const rmHandler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    const hHandler = (e: MediaQueryListEvent) => setCanHover(e.matches);
+    rmq.addEventListener('change', rmHandler);
+    hmq.addEventListener('change', hHandler);
+    return () => {
+      rmq.removeEventListener('change', rmHandler);
+      hmq.removeEventListener('change', hHandler);
+    };
+  }, []);
+
   return (
     <div className="nc-empty">
-      <Scale className="nc-empty-icon" />
+      <div className="nc-empty-docstack" aria-hidden="true">
+        <DocStack phaseB={false} scanning={false} layers={canHover ? 4 : 2} reducedMotion={reducedMotion} canHover={canHover} active={false} />
+      </div>
       <h2 className="nc-empty-title">Huquqiy savol bering</h2>
       <p className="nc-empty-desc">
         O'zbekiston qonunchiligi bo'yicha savolingizni yozing. Tegishli moddalar va tushuntirish bilan javob beradi.
@@ -170,14 +223,30 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
   const visibleChips = lexLinks.slice(0, 6);
   const remaining = lexLinks.length - visibleChips.length;
 
+  const reducedMotion = typeof window !== 'undefined'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const canHover = typeof window !== 'undefined'
+    && window.matchMedia('(hover: hover)').matches;
+  const docLayers = canHover ? 4 : 2;
+
   return (
     <div className="nc-thinking" aria-live="polite">
-      <div className="nc-thinking-row">
+      <div className="nc-thinking-header">
         {isPhaseB ? <FileText className="nc-thinking-icon" /> : <Loader2 className="nc-thinking-icon" />}
         <span className="nc-thinking-text" key={isPhaseB ? 'b' : 'a'}>
           {isPhaseB ? "Ushbu qonun hujjatlari o'rganilmoqda" : "Amaldagi qonunchilik o'rganilmoqda"}
         </span>
         <span className="nc-thinking-timer" aria-hidden="true">{formatClock(elapsedSec)}</span>
+      </div>
+      <div className="nc-thinking-docstack" aria-hidden="true">
+        <DocStack
+          phaseB={isPhaseB}
+          scanning={!reducedMotion}
+          layers={docLayers}
+          reducedMotion={reducedMotion}
+          canHover={canHover}
+          active={true}
+        />
       </div>
       {isPhaseB && visibleChips.length > 0 && (
         <div className="nc-thinking-chips">
@@ -201,6 +270,11 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
           )}
         </div>
       )}
+      <div className="nc-thinking-skeleton" aria-hidden="true">
+        <div className="nc-skeleton-line" style={{ width: '92%' }} />
+        <div className="nc-skeleton-line" style={{ width: '78%' }} />
+        <div className="nc-skeleton-line" style={{ width: '56%' }} />
+      </div>
     </div>
   );
 }
@@ -541,12 +615,12 @@ function ChatListPanel({
 
   const activeChats = chats.filter(c => {
     const t = getChatTimer(c.chatId);
-    return t.status === 'active';
+    return t.status === 'active' || pendingChatIds.has(c.chatId);
   }).sort((a, b) => b.updatedAt - a.updatedAt);
 
   const expiredChats = chats.filter(c => {
     const t = getChatTimer(c.chatId);
-    return t.status === 'expired' || t.status === 'none';
+    return (t.status === 'expired' || t.status === 'none') && !pendingChatIds.has(c.chatId);
   }).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_EXPIRED_CHATS);
 
   const progressPct = Math.min(100, (activeCount / maxActive) * 100);
