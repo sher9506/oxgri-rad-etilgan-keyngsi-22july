@@ -1,30 +1,15 @@
-// HukmKabineti — ustoz uchun Hukm boshqaruvi (3 tab: Yangi viktorina, Viktorinalarim, O'tkazilgan o'yinlar)
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Gavel, Plus, FileText, Clock, Trash2, Edit3, Download, Play, List, BarChart3, Loader2, Sparkles, AlertCircle, CheckCircle2, Copy, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Trophy, Plus, Play, Loader2, ChevronLeft, BarChart2, Users, Clock, Trash2, Eye, Copy, CheckCircle, XCircle, Sparkles, FileText, UploadCloud, AlignLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { createQuiz, listQuizzes, getQuiz, updateQuiz, deleteQuiz, saveQuestions, parseText, startAIJob, getAIJob, createGame, listSessions, getSession, getReport } from '@/lib/hukmApi';
-import { HukmHostScreen } from './HukmHostScreen';
-import { HukmReport } from './HukmReport';
-import { exportHukmDocx } from '@/lib/hukmDocx';
+import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 
-const EASE = [0.22, 1, 0.36, 1] as const;
-
-interface Question {
-  type: string;
-  text: string;
-  case_text?: string;
-  options: { text: string; is_correct: boolean }[];
-  time_limit_s: number;
-  explanation: string;
-  legal_basis: string;
-  hint?: string;
-  basis_check?: string | null;
-  source?: string;
-}
-
-interface Quiz {
+interface HukmQuiz {
   id: string;
   owner: string;
   title: string;
@@ -34,1067 +19,843 @@ interface Quiz {
   is_active?: boolean;
 }
 
-type TabKey = 'new' | 'list' | 'sessions';
-type NewTab = 'ai' | 'manual' | 'text';
+interface HukmQuestion {
+  id?: string;
+  type: string;
+  text: string;
+  case_text: string;
+  options: { text: string; is_correct: boolean }[];
+  time_limit_s: number;
+  explanation: string;
+  legal_basis: string;
+  hint: string;
+  source?: string;
+}
 
-export function HukmKabineti() {
+interface HukmSession {
+  id: string;
+  quiz_id: string;
+  game_id: string;
+  pin: string;
+  started_at: string;
+  ended_at?: string;
+  player_count: number;
+  avg_correct_pct: number;
+  avg_points: number;
+  finishers_pct: number;
+  hukm_quizzes?: { title: string };
+}
+
+type HukmView = 'list' | 'create_quiz' | 'edit_questions' | 'host_game' | 'sessions' | 'session_detail' | 'ai_job';
+
+async function hukmFetch(path: string, method = 'GET', body?: any) {
+  const url = `${supabaseUrl}/functions/v1/hukm-api/${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${supabaseAnonKey}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.json();
+}
+
+export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string; onNavigate?: (tab: string) => void }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [tab, setTab] = useState<TabKey>('list');
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingQuiz, setEditingQuiz] = useState<{ id: string; title: string; questions: Question[] } | null>(null);
-  const [hostScreen, setHostScreen] = useState<{ gameId: string; hostToken: string; quizTitle: string } | null>(null);
-  const [reportSession, setReportSession] = useState<{ sessionId: string } | null>(null);
+  const effectiveUstozId = ustozId || user?.ustoz_id;
 
-  const ustozId = user?.ustoz_id || '';
+  const [view, setView] = useState<HukmView>('list');
+  const [quizzes, setQuizzes] = useState<HukmQuiz[]>([]);
+  const [sessions, setSessions] = useState<HukmSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeQuiz, setActiveQuiz] = useState<HukmQuiz | null>(null);
+  const [questions, setQuestions] = useState<HukmQuestion[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+
+  // Quiz form
+  const [quizTitle, setQuizTitle] = useState('');
+  const [quizDesc, setQuizDesc] = useState('');
+  const [savingQuiz, setSavingQuiz] = useState(false);
+
+  // Game hosting
+  const [activeGame, setActiveGame] = useState<any>(null);
+  const [hostToken, setHostToken] = useState('');
+  const [creatingGame, setCreatingGame] = useState(false);
+  const [copiedPin, setCopiedPin] = useState(false);
+
+  // AI savol yaratish
+  const [aiText, setAiText] = useState('');
+  const [aiCount, setAiCount] = useState(10);
+  const [aiDifficulty, setAiDifficulty] = useState("o'rta");
+  const [aiJobId, setAiJobId] = useState('');
+  const [aiJobStatus, setAiJobStatus] = useState<'idle' | 'queued' | 'processing' | 'done' | 'error'>('idle');
+  const [aiQuestions, setAiQuestions] = useState<HukmQuestion[]>([]);
+  const [aiError, setAiError] = useState('');
+
+  // Question editor
+  const [editingQuestion, setEditingQuestion] = useState<HukmQuestion | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [savingQuestions, setSavingQuestions] = useState(false);
+
+  // Parse text
+  const [parseText, setParseText] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [showParseInput, setShowParseInput] = useState(false);
 
   const loadQuizzes = useCallback(async () => {
-    if (!ustozId) return;
+    if (!effectiveUstozId) return;
     setLoading(true);
-    try {
-      const data = await listQuizzes(ustozId);
-      setQuizzes(data.quizzes || []);
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    } finally {
-      setLoading(false);
+    const data = await hukmFetch(`quiz?ustoz_id=${effectiveUstozId}`);
+    setQuizzes(data?.quizzes || []);
+    setLoading(false);
+  }, [effectiveUstozId]);
+
+  const loadSessions = useCallback(async () => {
+    if (!effectiveUstozId) return;
+    setLoading(true);
+    const data = await hukmFetch(`sessions?ustoz_id=${effectiveUstozId}`);
+    setSessions(data?.sessions || []);
+    setLoading(false);
+  }, [effectiveUstozId]);
+
+  useEffect(() => {
+    if (view === 'list') loadQuizzes();
+    else if (view === 'sessions') loadSessions();
+  }, [view, loadQuizzes, loadSessions]);
+
+  useEffect(() => {
+    if (view === 'edit_questions' && activeQuiz) {
+      setQuestionsLoading(true);
+      hukmFetch(`quiz/${activeQuiz.id}?ustoz_id=${effectiveUstozId}`).then(data => {
+        setQuestions(data?.questions || []);
+        setQuestionsLoading(false);
+      });
     }
-  }, [ustozId, toast]);
+  }, [view, activeQuiz, effectiveUstozId]);
 
-  useEffect(() => { loadQuizzes(); }, [loadQuizzes]);
+  // AI job polling
+  useEffect(() => {
+    if (!aiJobId || aiJobStatus === 'idle' || aiJobStatus === 'done' || aiJobStatus === 'error') return;
+    const interval = setInterval(async () => {
+      const data = await hukmFetch(`quiz-ai/${aiJobId}?ustoz_id=${effectiveUstozId}`);
+      const job = data?.job;
+      if (!job) return;
+      if (job.status === 'done') {
+        setAiJobStatus('done');
+        setAiQuestions(job.result?.questions || []);
+        clearInterval(interval);
+      } else if (job.status === 'error') {
+        setAiJobStatus('error');
+        setAiError(job.error || 'AI xatosi');
+        clearInterval(interval);
+      } else {
+        setAiJobStatus(job.status);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [aiJobId, aiJobStatus, effectiveUstozId]);
 
-  if (hostScreen) {
-    return (
-      <HukmHostScreen
-        gameId={hostScreen.gameId}
-        hostToken={hostScreen.hostToken}
-        quizTitle={hostScreen.quizTitle}
-        onExit={() => { setHostScreen(null); loadQuizzes(); }}
-      />
-    );
-  }
+  // Host game polling
+  useEffect(() => {
+    if (!activeGame || !hostToken) return;
+    const interval = setInterval(async () => {
+      const data = await hukmFetch(`game/${activeGame.id}?host_token=${hostToken}`);
+      if (data?.id) setActiveGame(data);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [activeGame?.id, hostToken]);
 
-  if (reportSession) {
-    return (
-      <HukmReport
-        sessionId={reportSession.sessionId}
-        ustozId={ustozId}
-        onExit={() => setReportSession(null)}
-      />
-    );
-  }
-
-  if (editingQuiz) {
-    return (
-      <HukmEditor
-        quizId={editingQuiz.id}
-        title={editingQuiz.title}
-        initialQuestions={editingQuiz.questions}
-        ustozId={ustozId}
-        onExit={() => { setEditingQuiz(null); loadQuizzes(); }}
-      />
-    );
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--navy-1), var(--gold))' }}>
-          <Gavel className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h1 className="ff-serif text-xl md:text-2xl" style={{ color: 'var(--ink)' }}>Hukm kabineti</h1>
-          <p className="text-sm" style={{ color: 'var(--ink-muted)' }}>Jonli viktorina boshqaruvi</p>
-        </div>
-      </div>
-
-      {/* Tablar */}
-      <div className="flex gap-2 mb-6 p-1 rounded-xl" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-        <TabBtn icon={<List className="w-4 h-4" />} label="Viktorinalarim" active={tab === 'list'} onClick={() => setTab('list')} />
-        <TabBtn icon={<Plus className="w-4 h-4" />} label="Yangi viktorina" active={tab === 'new'} onClick={() => setTab('new')} />
-        <TabBtn icon={<BarChart3 className="w-4 h-4" />} label="O'tkazilgan o'yinlar" active={tab === 'sessions'} onClick={() => setTab('sessions')} />
-      </div>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={tab}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
-          transition={{ duration: 0.3, ease: EASE }}
-        >
-          {tab === 'list' && (
-            <QuizList
-              quizzes={quizzes}
-              loading={loading}
-              ustozId={ustozId}
-              onEdit={async (q) => {
-                try {
-                  const data = await getQuiz(q.id, ustozId);
-                  setEditingQuiz({ id: q.id, title: q.title, questions: data.questions || [] });
-                } catch (err: any) {
-                  toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-                }
-              }}
-              onStart={async (q) => {
-                try {
-                  const data = await getQuiz(q.id, ustozId);
-                  if (!data.questions || data.questions.length === 0) {
-                    toast({ title: 'Savollar yo\'q', description: 'Avval savol qo\'shing', variant: 'destructive' });
-                    return;
-                  }
-                  const game = await createGame(ustozId, q.id);
-                  setHostScreen({ gameId: game.game.id, hostToken: game.host_token, quizTitle: q.title });
-                } catch (err: any) {
-                  toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-                }
-              }}
-              onExport={(q, questions) => exportHukmDocx(q.title, questions)}
-              onDelete={async (q) => {
-                if (!confirm('Viktorinani o\'chirishni xohlaysizmi?')) return;
-                try {
-                  await deleteQuiz(q.id, ustozId);
-                  toast({ title: 'O\'chirildi' });
-                  loadQuizzes();
-                } catch (err: any) {
-                  toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-                }
-              }}
-              onGetQuestions={async (q) => {
-                const data = await getQuiz(q.id, ustozId);
-                return data.questions || [];
-              }}
-            />
-          )}
-          {tab === 'new' && (
-            <NewQuizTab ustozId={ustozId} onCreated={(id, title, questions) => {
-              setEditingQuiz({ id, title, questions });
-            }} />
-          )}
-          {tab === 'sessions' && (
-            <SessionsTab ustozId={ustozId} onOpen={(sessionId) => setReportSession({ sessionId })} />
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function TabBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all"
-      style={{
-        background: active ? 'var(--ff-card)' : 'transparent',
-        color: active ? 'var(--ink)' : 'var(--ink-muted)',
-        boxShadow: active ? '0 2px 8px -2px rgba(13,27,66,.15)' : 'none',
-      }}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </button>
-  );
-}
-
-// ── Viktorinalar ro'yxati ──────────────────────────────────────────────────────
-
-function QuizList({ quizzes, loading, ustozId, onEdit, onStart, onExport, onDelete, onGetQuestions }: {
-  quizzes: Quiz[];
-  loading: boolean;
-  ustozId: string;
-  onEdit: (q: Quiz) => void;
-  onStart: (q: Quiz) => void;
-  onExport: (q: Quiz, questions: Question[]) => void;
-  onDelete: (q: Quiz) => void;
-  onGetQuestions: (q: Quiz) => Promise<Question[]>;
-}) {
-  const { toast } = useToast();
-  if (loading) {
-    return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--cobalt-1)' }} /></div>;
-  }
-  if (quizzes.length === 0) {
-    return (
-      <div className="text-center py-12 rounded-2xl" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-        <Gavel className="w-10 h-10 mx-auto mb-3 opacity-30" style={{ color: 'var(--ink-muted)' }} />
-        <p className="text-sm" style={{ color: 'var(--ink-muted)' }}>Hozircha viktorina yo'q. "Yangi viktorina" tabidan yarating.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-3">
-      {quizzes.map((q, i) => (
-        <motion.div
-          key={q.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.05, ease: EASE }}
-          className="rounded-xl p-4 flex items-center gap-3"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)' }}
-        >
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm truncate" style={{ color: 'var(--ink)' }}>{q.title}</h3>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-              {new Date(q.created_at).toLocaleDateString('uz-UZ')}
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <IconBtn icon={<Edit3 className="w-4 h-4" />} title="Tahrirlash" onClick={() => onEdit(q)} />
-            <IconBtn icon={<Play className="w-4 h-4" />} title="O'yinni boshlash" onClick={() => onStart(q)} color="var(--success)" />
-            <IconBtn icon={<Download className="w-4 h-4" />} title="Word'ga yuklash" onClick={async () => {
-              try {
-                const questions = await onGetQuestions(q);
-                onExport(q, questions);
-              } catch (err: any) {
-                toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-              }
-            }} />
-            <IconBtn icon={<Trash2 className="w-4 h-4" />} title="O'chirish" onClick={() => onDelete(q)} color="#C2303D" />
-          </div>
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-function IconBtn({ icon, title, onClick, color }: { icon: React.ReactNode; title: string; onClick: () => void; color?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-      style={{ background: 'var(--panel-2)', color: color || 'var(--ink-body)' }}
-    >
-      {icon}
-    </button>
-  );
-}
-
-// ── Yangi viktorina tabi ───────────────────────────────────────────────────────
-
-function NewQuizTab({ ustozId, onCreated }: { ustozId: string; onCreated: (id: string, title: string, questions: Question[]) => void }) {
-  const [newTab, setNewTab] = useState<NewTab>('manual');
-  const [title, setTitle] = useState('');
-  const { toast } = useToast();
-  const [creating, setCreating] = useState(false);
-
-  const ensureQuiz = async (): Promise<string | null> => {
-    if (!title.trim()) {
-      toast({ title: 'Sarlavha kerak', description: 'Viktorina nomini kiriting', variant: 'destructive' });
-      return null;
-    }
-    setCreating(true);
-    try {
-      const data = await createQuiz(ustozId, title.trim());
-      const id = data.quiz.id;
+  const handleCreateQuiz = async () => {
+    if (!quizTitle.trim()) { toast({ title: 'Sarlavha kerak', variant: 'destructive' }); return; }
+    setSavingQuiz(true);
+    const data = await hukmFetch('quiz', 'POST', { ustoz_id: effectiveUstozId, title: quizTitle.trim(), description: quizDesc.trim() });
+    setSavingQuiz(false);
+    if (data?.quiz) {
       toast({ title: 'Viktorina yaratildi' });
-      return id;
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-      return null;
-    } finally {
-      setCreating(false);
+      setActiveQuiz(data.quiz);
+      setQuizTitle('');
+      setQuizDesc('');
+      setView('edit_questions');
+    } else {
+      toast({ title: data?.error || 'Xatolik', variant: 'destructive' });
     }
   };
 
-  return (
-    <div>
-      <div className="mb-4">
-        <label className="text-sm font-semibold mb-1.5 block" style={{ color: 'var(--ink)' }}>Viktorina nomi</label>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Masalan: Jinoyat huquqi bo'yicha sinov"
-          className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
+  const handleDeleteQuiz = async (id: string) => {
+    if (!confirm("Bu viktorinani o'chirishni istaysizmi? Barcha savollar ham o'chiriladi.")) return;
+    const data = await hukmFetch(`quiz/${id}?ustoz_id=${effectiveUstozId}`, 'DELETE');
+    if (data?.success) { toast({ title: "O'chirildi" }); loadQuizzes(); }
+    else toast({ title: data?.error || 'Xatolik', variant: 'destructive' });
+  };
+
+  const handleSaveQuestions = async (qs: HukmQuestion[]) => {
+    if (!activeQuiz) return;
+    setSavingQuestions(true);
+    const data = await hukmFetch(`quiz/${activeQuiz.id}/questions`, 'POST', { ustoz_id: effectiveUstozId, questions: qs });
+    setSavingQuestions(false);
+    if (data?.success) {
+      toast({ title: `${data.count} ta savol saqlandi` });
+      setQuestions(qs);
+    } else {
+      toast({ title: data?.error || 'Xatolik', variant: 'destructive' });
+    }
+  };
+
+  const handleStartGame = async (quiz: HukmQuiz) => {
+    if (!effectiveUstozId) return;
+    setCreatingGame(true);
+    const data = await hukmFetch('game', 'POST', { ustoz_id: effectiveUstozId, quiz_id: quiz.id });
+    setCreatingGame(false);
+    if (data?.game && data?.host_token) {
+      setActiveGame(data.game);
+      setHostToken(data.host_token);
+      setActiveQuiz(quiz);
+      setView('host_game');
+    } else {
+      toast({ title: data?.error || "O'yin yaratilmadi", variant: 'destructive' });
+    }
+  };
+
+  const handleGameAction = async (action: string, extra?: any) => {
+    if (!activeGame || !hostToken) return;
+    const data = await hukmFetch(`game/${activeGame.id}/${action}`, 'POST', { host_token: hostToken, ...extra });
+    if (data?.success) {
+      const updated = await hukmFetch(`game/${activeGame.id}?host_token=${hostToken}`);
+      if (updated?.id) setActiveGame(updated);
+      if (data?.finished) {
+        toast({ title: "O'yin yakunlandi" });
+        setActiveGame(null);
+        setHostToken('');
+        setView('sessions');
+      }
+    } else {
+      toast({ title: data?.error || 'Xatolik', variant: 'destructive' });
+    }
+  };
+
+  const handleAiGenerate = async () => {
+    if (!effectiveUstozId) return;
+    if (aiText.trim().length < 30) { toast({ title: 'Kamida 30 belgi matn kerak', variant: 'destructive' }); return; }
+    if (!activeQuiz) { toast({ title: 'Avval viktorinani oching', variant: 'destructive' }); return; }
+    setAiJobStatus('queued');
+    setAiError('');
+    const data = await hukmFetch('quiz-ai', 'POST', {
+      ustoz_id: effectiveUstozId,
+      quiz_id: activeQuiz.id,
+      sources: [{ type: 'text', content: aiText }],
+      settings: { count: aiCount, difficulty: aiDifficulty },
+    });
+    if (data?.job_id) {
+      setAiJobId(data.job_id);
+    } else {
+      setAiJobStatus('error');
+      setAiError(data?.error || 'Job yaratilmadi');
+    }
+  };
+
+  const handleApplyAiQuestions = () => {
+    const merged = [...questions, ...aiQuestions];
+    setQuestions(merged);
+    handleSaveQuestions(merged);
+    setAiJobStatus('idle');
+    setAiQuestions([]);
+    setAiText('');
+    setView('edit_questions');
+    toast({ title: `${aiQuestions.length} ta savol qo'shildi` });
+  };
+
+  const handleParseText = async () => {
+    if (!activeQuiz || !parseText.trim()) return;
+    setParsing(true);
+    const data = await hukmFetch(`quiz/${activeQuiz.id}/parse-text`, 'POST', { ustoz_id: effectiveUstozId, text: parseText });
+    setParsing(false);
+    if (data?.questions?.length) {
+      const merged = [...questions, ...data.questions];
+      setQuestions(merged);
+      await handleSaveQuestions(merged);
+      setParseText('');
+      setShowParseInput(false);
+      toast({ title: `${data.questions.length} ta savol tahlil qilindi` });
+    } else {
+      toast({ title: 'Savollar topilmadi. Formatni tekshiring.', variant: 'destructive' });
+    }
+  };
+
+  const handleCopyPin = () => {
+    if (activeGame?.pin) {
+      navigator.clipboard.writeText(activeGame.pin).catch(() => {});
+      setCopiedPin(true);
+      setTimeout(() => setCopiedPin(false), 2000);
+    }
+  };
+
+  // Question editor helpers
+  const openEditQuestion = (q: HukmQuestion, idx: number) => { setEditingQuestion({ ...q }); setEditingIndex(idx); };
+  const openNewQuestion = () => setEditingQuestion({ type: 'variant4', text: '', case_text: '', options: [{ text: '', is_correct: true }, { text: '', is_correct: false }, { text: '', is_correct: false }, { text: '', is_correct: false }], time_limit_s: 20, explanation: '', legal_basis: '', hint: '' });
+
+  const handleSaveQuestion = () => {
+    if (!editingQuestion) return;
+    if (!editingQuestion.text.trim()) { toast({ title: 'Savol matni kerak', variant: 'destructive' }); return; }
+    if (editingQuestion.options.filter(o => o.is_correct).length !== 1) { toast({ title: 'Aynan 1 ta to\'g\'ri variant kerak', variant: 'destructive' }); return; }
+    const updated = editingIndex !== null
+      ? questions.map((q, i) => i === editingIndex ? editingQuestion : q)
+      : [...questions, editingQuestion];
+    handleSaveQuestions(updated);
+    setEditingQuestion(null);
+    setEditingIndex(null);
+  };
+
+  const handleDeleteQuestion = (idx: number) => {
+    const updated = questions.filter((_, i) => i !== idx);
+    handleSaveQuestions(updated);
+  };
+
+  if (!effectiveUstozId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <Trophy className="h-12 w-12 text-gray-300 mb-3" />
+        <p className="text-sm text-gray-500">Bu bo'lim faqat ustozlar uchun</p>
       </div>
-
-      <div className="flex gap-2 mb-6 p-1 rounded-xl" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-        <TabBtn icon={<Edit3 className="w-4 h-4" />} label="Qo'lda qo'shish" active={newTab === 'manual'} onClick={() => setNewTab('manual')} />
-        <TabBtn icon={<Sparkles className="w-4 h-4" />} label="FanFaster AI bilan" active={newTab === 'ai'} onClick={() => setNewTab('ai')} />
-        <TabBtn icon={<FileText className="w-4 h-4" />} label="Matndan qo'yish" active={newTab === 'text'} onClick={() => setNewTab('text')} />
-      </div>
-
-      {newTab === 'manual' && <ManualEditor ustozId={ustozId} ensureQuiz={ensureQuiz} onCreated={onCreated} creating={creating} />}
-      {newTab === 'ai' && <AIEditor ustozId={ustozId} ensureQuiz={ensureQuiz} onCreated={onCreated} />}
-      {newTab === 'text' && <TextImport ustozId={ustozId} ensureQuiz={ensureQuiz} onCreated={onCreated} />}
-    </div>
-  );
-}
-
-// ── Qo'lda savol muharriri ─────────────────────────────────────────────────────
-
-function ManualEditor({ ustozId, ensureQuiz, onCreated, creating }: {
-  ustozId: string;
-  ensureQuiz: () => Promise<string | null>;
-  onCreated: (id: string, title: string, questions: Question[]) => void;
-  creating: boolean;
-}) {
-  const { toast } = useToast();
-  const [questions, setQuestions] = useState<Question[]>([emptyQuestion()]);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [saving, setSaving] = useState(false);
-
-  function emptyQuestion(): Question {
-    return {
-      type: 'variant4',
-      text: '',
-      options: [{ text: '', is_correct: true }, { text: '', is_correct: false }, { text: '', is_correct: false }, { text: '', is_correct: false }],
-      time_limit_s: 20,
-      explanation: '',
-      legal_basis: '',
-      hint: '',
-      source: 'manual',
-    };
+    );
   }
 
-  const current = questions[activeIdx] || questions[0];
+  // ── HOST GAME VIEW ──────────────────────────────────────────────────────────
+  if (view === 'host_game' && activeGame) {
+    const status = activeGame.status;
+    const players = activeGame.players || [];
+    const question = activeGame.question;
+    const reveal = activeGame.reveal;
+    const leaderboard = activeGame.leaderboard || [];
+    const totalQ = activeGame.total_questions || 0;
+    const currentIdx = activeGame.current_index ?? -1;
+    const isFinished = status === 'finished';
 
-  function updateCurrent(updater: (q: Question) => Question) {
-    setQuestions(prev => prev.map((q, i) => i === activeIdx ? updater(q) : q));
-  }
+    const answerColors = ['#C2303D', '#2F6BE0', '#12805C', '#F2A93B'];
+    const answerLabels = ['A', 'B', 'C', 'D'];
 
-  function validateQuestion(q: Question): boolean {
-    if (!q.text.trim()) return false;
-    if (q.options.length < 2) return false;
-    const hasEmpty = q.options.some(o => !o.text.trim());
-    if (hasEmpty) return false;
-    const correctCount = q.options.filter(o => o.is_correct).length;
-    if (correctCount !== 1) return false;
-    return true;
-  }
-
-  async function handleSaveAll() {
-    const validQuestions = questions.filter(validateQuestion);
-    if (validQuestions.length === 0) {
-      toast({ title: 'Savol yo\'q', description: 'Kamida bitta to\'liq savol kerak', variant: 'destructive' });
-      return;
-    }
-    const quizId = await ensureQuiz();
-    if (!quizId) return;
-    setSaving(true);
-    try {
-      await saveQuestions(quizId, ustozId, validQuestions);
-      toast({ title: 'Saqlandi', description: `${validQuestions.length} ta savol` });
-      onCreated(quizId, '', validQuestions);
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleSaveAll();
-    }
-  }
-
-  return (
-    <div onKeyDown={handleKeyDown}>
-      {/* Savol raqami tanlash */}
-      <div className="flex gap-1.5 mb-4 overflow-x-auto pb-2">
-        {questions.map((q, i) => (
-          <button
-            key={i}
-            onClick={() => setActiveIdx(i)}
-            className="flex-shrink-0 w-9 h-9 rounded-lg text-xs font-bold transition-all"
-            style={{
-              background: i === activeIdx ? 'var(--cobalt-1)' : validateQuestion(q) ? 'var(--success-tint)' : 'var(--panel-2)',
-              color: i === activeIdx ? 'white' : validateQuestion(q) ? 'var(--success)' : 'var(--ink-muted)',
-              border: '1px solid var(--line)',
-            }}
-          >
-            {i + 1}
+    return (
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <button onClick={() => { setActiveGame(null); setHostToken(''); setView('list'); }}
+            className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors">
+            <ChevronLeft className="h-4 w-4" /> Ro'yxatga qaytish
           </button>
-        ))}
-        <button
-          onClick={() => { setQuestions(prev => [...prev, emptyQuestion()]); setActiveIdx(questions.length); }}
-          className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
-          style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--cobalt-1)' }}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-        {questions.length > 1 && (
-          <button
-            onClick={() => {
-              if (questions.length === 1) return;
-              setQuestions(prev => prev.filter((_, i) => i !== activeIdx));
-              setActiveIdx(Math.max(0, activeIdx - 1));
-            }}
-            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
-            style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: '#C2303D' }}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          <Badge variant={isFinished ? 'secondary' : 'default'} className="text-xs">
+            {status === 'lobby' ? 'Lobby' : status === 'question' ? `Savol ${currentIdx + 1}/${totalQ}` : status === 'reveal' ? 'Natija' : status === 'leaderboard' ? 'Reyting' : 'Yakunlangan'}
+          </Badge>
+        </div>
+
+        {/* PIN Card */}
+        {status === 'lobby' && (
+          <div className="rounded-3xl overflow-hidden shadow-xl" style={{ background: 'linear-gradient(135deg, #1e3a8a, #2563eb)' }}>
+            <div className="p-6 text-white text-center space-y-2">
+              <p className="text-sm font-bold opacity-70">Qo'shilish PIN kodi</p>
+              <div className="flex items-center justify-center gap-3">
+                <span className="text-5xl font-black tracking-widest" style={{ fontFamily: 'Source Serif 4, Georgia, serif', letterSpacing: '0.12em', color: '#fbbf24' }}>
+                  {activeGame.pin?.slice(0, 3)} {activeGame.pin?.slice(3)}
+                </span>
+                <button onClick={handleCopyPin} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition" aria-label="PIN'ni nusxalash">
+                  {copiedPin ? <CheckCircle className="h-5 w-5 text-green-300" /> : <Copy className="h-5 w-5 text-white/70" />}
+                </button>
+              </div>
+              <p className="text-xs opacity-60">O'yinchilar bu PIN bilan qo'shiladi</p>
+            </div>
+            <div className="bg-white/10 px-6 py-3 flex items-center justify-between">
+              <span className="text-xs font-bold text-white/70">{players.length} ta o'yinchi</span>
+              <div className="flex flex-wrap gap-1.5 max-w-[70%] justify-end">
+                {players.slice(0, 8).map((p: any) => (
+                  <span key={p.id} className="text-[11px] font-bold bg-white/15 px-2 py-0.5 rounded-full text-white">{p.nickname}</span>
+                ))}
+                {players.length > 8 && <span className="text-[11px] text-white/60">+{players.length - 8}</span>}
+              </div>
+            </div>
+          </div>
         )}
-      </div>
 
-      {/* Savol matni */}
-      <textarea
-        value={current.text}
-        onChange={(e) => updateCurrent(q => ({ ...q, text: e.target.value }))}
-        placeholder="Savol matni..."
-        rows={3}
-        className="w-full px-4 py-3 rounded-xl text-sm mb-3 outline-none resize-none"
-        style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-      />
-
-      {/* Variantlar */}
-      <div className="space-y-2 mb-3">
-        {current.options.map((opt, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <button
-              onClick={() => updateCurrent(q => ({ ...q, options: q.options.map((o, oi) => ({ ...o, is_correct: oi === i })) }))}
-              className="w-6 h-6 rounded-full border-2 flex-shrink-0 transition-all"
-              style={{
-                borderColor: opt.is_correct ? 'var(--success)' : 'var(--line)',
-                background: opt.is_correct ? 'var(--success)' : 'transparent',
-              }}
-              aria-label={`Variant ${String.fromCharCode(65 + i)} to'g'ri`}
-            >
-              {opt.is_correct && <CheckCircle2 className="w-4 h-4 text-white mx-auto" />}
-            </button>
-            <span className="text-xs font-bold w-5" style={{ color: 'var(--ink-muted)' }}>{String.fromCharCode(65 + i)}</span>
-            <input
-              value={opt.text}
-              onChange={(e) => updateCurrent(q => ({ ...q, options: q.options.map((o, oi) => oi === i ? { ...o, text: e.target.value } : o) }))}
-              placeholder={`Variant ${String.fromCharCode(65 + i)}`}
-              className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-              style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-            />
+        {/* Question display */}
+        {status === 'question' && question && (
+          <div className="rounded-3xl bg-white border border-gray-100/80 shadow-lg p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-blue-600">{currentIdx + 1}/{totalQ}</span>
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <Users className="h-3.5 w-3.5" />
+                {activeGame.answered_count}/{players.length} javob berdi
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <Clock className="h-3.5 w-3.5" />
+                {question.time_limit_s}s
+              </div>
+            </div>
+            <p className="text-base font-bold text-gray-900 leading-snug">{question.text}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(question.options || []).map((o: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-white font-bold text-sm" style={{ background: answerColors[i] || '#666' }}>
+                  <span className="w-6 h-6 rounded-lg bg-black/20 flex items-center justify-center text-xs shrink-0">{answerLabels[i]}</span>
+                  <span className="flex-1 truncate">{o.text}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
+        )}
 
-      {/* Izoh va asos modda */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-        <input
-          value={current.explanation}
-          onChange={(e) => updateCurrent(q => ({ ...q, explanation: e.target.value }))}
-          placeholder="Izoh (ixtiyoriy)"
-          className="px-3 py-2 rounded-lg text-sm outline-none"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
-        <input
-          value={current.legal_basis}
-          onChange={(e) => updateCurrent(q => ({ ...q, legal_basis: e.target.value }))}
-          placeholder="Asos modda (ixtiyoriy, masalan: JK 97-modda)"
-          className="px-3 py-2 rounded-lg text-sm outline-none"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
-      </div>
+        {/* Reveal */}
+        {status === 'reveal' && reveal && (
+          <div className="rounded-3xl bg-white border border-gray-100/80 shadow-lg p-5 space-y-3">
+            <h3 className="text-sm font-bold text-gray-900">{reveal.text}</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {(reveal.options || []).map((o: any, i: number) => (
+                <div key={i} className={`flex items-center gap-2 rounded-2xl px-3 py-2.5 font-bold text-sm border-2 ${i === reveal.correct_index ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-500 opacity-60'}`}>
+                  <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: answerColors[i] || '#666', color: '#fff' }}>{answerLabels[i]}</span>
+                  <span className="flex-1 truncate">{o.text}</span>
+                  {i === reveal.correct_index && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
+                </div>
+              ))}
+            </div>
+            {reveal.explanation && (
+              <div className="rounded-xl bg-blue-50 border border-blue-100/60 p-3">
+                <p className="text-xs font-bold text-blue-700 mb-0.5">Izoh</p>
+                <p className="text-xs text-gray-700">{reveal.explanation}</p>
+              </div>
+            )}
+            {reveal.legal_basis && (
+              <p className="text-xs text-blue-600 font-medium">📋 Asos: {reveal.legal_basis}</p>
+            )}
+            {/* Taqsimot */}
+            {activeGame.distribution && (
+              <div className="flex gap-2 items-end h-12 mt-2">
+                {activeGame.distribution.map((cnt: number, i: number) => {
+                  const max = Math.max(...activeGame.distribution, 1);
+                  const h = Math.round((cnt / max) * 44) + 4;
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                      <span className="text-[10px] font-bold text-gray-500">{cnt}</span>
+                      <div className="w-full rounded-t-md" style={{ height: h, background: i === reveal.correct_index ? '#22c55e' : '#e5e7eb' }} />
+                      <span className="text-[10px] font-bold" style={{ color: answerColors[i] || '#666' }}>{answerLabels[i]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* Taymer */}
-      <div className="flex items-center gap-2 mb-4">
-        <Clock className="w-4 h-4" style={{ color: 'var(--ink-muted)' }} />
-        <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Vaqt:</span>
-        {[10, 20, 30, 60].map(t => (
-          <button
-            key={t}
-            onClick={() => updateCurrent(q => ({ ...q, time_limit_s: t }))}
-            className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
-            style={{
-              background: current.time_limit_s === t ? 'var(--cobalt-1)' : 'var(--panel-2)',
-              color: current.time_limit_s === t ? 'white' : 'var(--ink-body)',
-              border: '1px solid var(--line)',
-            }}
-          >
-            {t}s
-          </button>
-        ))}
-      </div>
+        {/* Leaderboard */}
+        {(status === 'leaderboard' || status === 'finished') && (
+          <div className="rounded-3xl bg-white border border-gray-100/80 shadow-lg p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              <h3 className="text-sm font-bold text-gray-900">{status === 'finished' ? 'Yakuniy reyting' : 'Reyting'}</h3>
+            </div>
+            {leaderboard.slice(0, 5).map((p: any, i: number) => (
+              <div key={p.player_id} className="flex items-center gap-3 rounded-2xl bg-gray-50/80 border border-gray-100/60 px-3 py-2">
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-gray-100 text-gray-600' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-50 text-gray-400'}`}>{i + 1}</span>
+                <span className="flex-1 text-sm font-bold text-gray-900 truncate">{p.nickname}</span>
+                <span className="text-sm font-black" style={{ color: '#2563eb' }}>{p.total_points}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
-      <button
-        onClick={handleSaveAll}
-        disabled={saving || creating}
-        className="w-full py-3 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all"
-        style={{ background: 'linear-gradient(135deg, var(--cobalt-1), var(--cobalt-2))' }}
-      >
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-        {saving ? 'Saqlanmoqda...' : 'Saqlash va keyingisi (Ctrl+Enter)'}
-      </button>
-    </div>
-  );
-}
-
-// ── AI savol tuzish ────────────────────────────────────────────────────────────
-
-function AIEditor({ ustozId, ensureQuiz, onCreated }: {
-  ustozId: string;
-  ensureQuiz: () => Promise<string | null>;
-  onCreated: (id: string, title: string, questions: Question[]) => void;
-}) {
-  const { toast } = useToast();
-  const [sourceText, setSourceText] = useState('');
-  const [count, setCount] = useState(10);
-  const [difficulty, setDifficulty] = useState<'oson' | 'o\'rta' | 'qiyin'>('o\'rta');
-  const [instruction, setInstruction] = useState('');
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<'idle' | 'queued' | 'processing' | 'done' | 'error'>('idle');
-  const [jobError, setJobError] = useState('');
-  const [aiQuestions, setAiQuestions] = useState<Question[]>([]);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    if (jobId && jobStatus !== 'done' && jobStatus !== 'error') {
-      pollRef.current = setInterval(async () => {
-        try {
-          const data = await getAIJob(jobId, ustozId);
-          setJobStatus(data.job.status);
-          if (data.job.status === 'done') {
-            setAiQuestions(data.job.result?.questions || []);
-            if (pollRef.current) clearInterval(pollRef.current);
-          } else if (data.job.status === 'error') {
-            setJobError(data.job.error || 'Xato');
-            if (pollRef.current) clearInterval(pollRef.current);
-          }
-        } catch {
-          // network error — keep polling
-        }
-      }, 2000);
-    }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [jobId, jobStatus, ustozId]);
-
-  async function handleStart() {
-    if (!sourceText.trim() || sourceText.trim().length < 20) {
-      toast({ title: 'Manba yetarli emas', description: 'Kamida 20 belgi kerak', variant: 'destructive' });
-      return;
-    }
-    const quizId = await ensureQuiz();
-    if (!quizId) return;
-    try {
-      setJobStatus('queued');
-      setJobError('');
-      setAiQuestions([]);
-      const data = await startAIJob(ustozId, [{ type: 'text', content: sourceText }], { count, difficulty, instruction }, quizId);
-      setJobId(data.job_id);
-      toast({ title: 'AI ishga tushdi', description: 'Savollar tuzilmoqda...' });
-    } catch (err: any) {
-      setJobStatus('error');
-      setJobError(err.message);
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    }
-  }
-
-  async function handleAcceptAI() {
-    if (!jobId || aiQuestions.length === 0) return;
-    const quizId = await ensureQuiz();
-    if (!quizId) return;
-    try {
-      await saveQuestions(quizId, ustozId, aiQuestions);
-      toast({ title: 'Saqlandi', description: `${aiQuestions.length} ta AI savol` });
-      onCreated(quizId, '', aiQuestions);
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    }
-  }
-
-  return (
-    <div>
-      <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--cobalt-tint)', border: '1px solid var(--cobalt-line)' }}>
-        <p className="text-sm" style={{ color: 'var(--ink-body)' }}>
-          FanFaster AI manbangizdan 4 variantli savollar tuzadi, har savolga qisqa izoh va (manbada bo'lsa) asos modda yozadi.
-          Manbada yo'q narsani yozmaslikka harakat qiladi, lekin siz baribir tekshirib chiqasiz.
-        </p>
-      </div>
-
-      <label className="text-sm font-semibold mb-1.5 block" style={{ color: 'var(--ink)' }}>Manba matni</label>
-      <textarea
-        value={sourceText}
-        onChange={(e) => setSourceText(e.target.value)}
-        placeholder="Manba matnini shu yerga qo'ying..."
-        rows={6}
-        className="w-full px-4 py-3 rounded-xl text-sm mb-4 outline-none resize-none"
-        style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-      />
-
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div>
-          <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--ink-muted)' }}>Savollar soni (1-40)</label>
-          <input
-            type="number"
-            min={1}
-            max={40}
-            value={count}
-            onChange={(e) => setCount(Math.min(40, Math.max(1, parseInt(e.target.value) || 10)))}
-            className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-            style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-          />
-        </div>
-        <div>
-          <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--ink-muted)' }}>Qiyinlik</label>
-          <select
-            value={difficulty}
-            onChange={(e) => setDifficulty(e.target.value as any)}
-            className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-            style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-          >
-            <option value="oson">Oson</option>
-            <option value="o'rta">O'rta</option>
-            <option value="qiyin">Qiyin</option>
-          </select>
+        {/* Host Controls */}
+        <div className="flex flex-wrap gap-2">
+          {status === 'lobby' && (
+            <>
+              <Button onClick={() => handleGameAction('start')} className="rounded-xl shadow-md shadow-blue-500/15">
+                <Play className="h-4 w-4 mr-1.5" /> Boshlash
+              </Button>
+              <Button variant="outline" onClick={() => handleGameAction('lock', { locked: !activeGame.settings?.lobby_locked })} className="rounded-xl text-xs">
+                {activeGame.settings?.lobby_locked ? 'Lobby qulfini ochish' : 'Lobbini qulflash'}
+              </Button>
+            </>
+          )}
+          {status === 'question' && (
+            <Button onClick={() => handleGameAction('reveal')} className="rounded-xl shadow-md shadow-blue-500/15">Natijani ko'rsat</Button>
+          )}
+          {status === 'reveal' && (
+            <>
+              <Button onClick={() => handleGameAction('next')} className="rounded-xl shadow-md shadow-blue-500/15">
+                {currentIdx + 1 >= totalQ ? 'Yakunlash' : 'Keyingi savol'}
+              </Button>
+              <Button variant="outline" onClick={() => handleGameAction('leaderboard')} className="rounded-xl text-xs">Reytingni ko'rsat</Button>
+            </>
+          )}
+          {status === 'leaderboard' && (
+            <Button onClick={() => handleGameAction('next')} className="rounded-xl shadow-md shadow-blue-500/15">
+              {currentIdx + 1 >= totalQ ? 'Yakunlash' : 'Davom etish'}
+            </Button>
+          )}
+          {status !== 'finished' && (
+            <Button variant="outline" onClick={() => handleGameAction('finish')} className="rounded-xl text-xs text-red-600 hover:text-red-700 border-red-200">
+              O'yinni yakunlash
+            </Button>
+          )}
+          {status === 'finished' && (
+            <Button onClick={() => { setActiveGame(null); setHostToken(''); setView('sessions'); }} className="rounded-xl">
+              Natijalarga o'tish
+            </Button>
+          )}
         </div>
       </div>
+    );
+  }
 
-      <input
-        value={instruction}
-        onChange={(e) => setInstruction(e.target.value)}
-        placeholder="Qo'shimcha izoh (ixtiyoriy)"
-        className="w-full px-3 py-2 rounded-lg text-sm mb-4 outline-none"
-        style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-      />
-
-      {jobStatus === 'idle' && (
-        <button
-          onClick={handleStart}
-          className="w-full py-3 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
-          style={{ background: 'linear-gradient(135deg, var(--navy-1), var(--gold))' }}
-        >
-          <Sparkles className="w-4 h-4" />
-          FanFaster AI bilan tuzish
+  // ── QUESTION EDITOR ─────────────────────────────────────────────────────────
+  if (editingQuestion) {
+    const q = editingQuestion;
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <button onClick={() => { setEditingQuestion(null); setEditingIndex(null); }} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors">
+          <ChevronLeft className="h-4 w-4" /> Savollar ro'yxatiga qaytish
         </button>
-      )}
-
-      {(jobStatus === 'queued' || jobStatus === 'processing') && (
-        <div className="text-center py-6 rounded-xl" style={{ background: 'var(--panel-2)' }}>
-          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" style={{ color: 'var(--cobalt-1)' }} />
-          <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
-            {jobStatus === 'queued' ? 'Manbalar tayyorlanmoqda...' : 'Savollar tuzilmoqda...'}
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--ink-muted)' }}>Sahifa yopilsa ham ish davom etadi</p>
-        </div>
-      )}
-
-      {jobStatus === 'error' && (
-        <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
-          <AlertCircle className="w-5 h-5 flex-shrink-0" style={{ color: '#C2303D' }} />
-          <p className="text-sm" style={{ color: 'var(--ink)' }}>{jobError}</p>
-        </div>
-      )}
-
-      {jobStatus === 'done' && aiQuestions.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--success)' }} />
-            <span className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{aiQuestions.length} ta savol tayyor</span>
-            <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-              ({aiQuestions.filter(q => q.basis_check === 'unverified').length} ta modda raqamini tekshiring)
-            </span>
+        <div className="rounded-3xl bg-white border border-gray-100/80 shadow-lg p-5 space-y-4">
+          <h3 className="text-sm font-bold text-gray-800">{editingIndex !== null ? 'Savolni tahrirlash' : 'Yangi savol'}</h3>
+          <div>
+            <Label className="text-xs font-bold">Savol matni *</Label>
+            <Textarea value={q.text} onChange={e => setEditingQuestion({ ...q, text: e.target.value })} placeholder="Savol matnini yozing..." className="mt-1.5 rounded-xl" />
           </div>
-          <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
-            {aiQuestions.map((q, i) => (
-              <div key={i} className="rounded-lg p-3" style={{ background: 'var(--ff-card)', border: '1px solid var(--line)' }}>
-                <div className="flex items-start gap-2">
-                  <span className="text-xs font-bold flex-shrink-0" style={{ color: 'var(--cobalt-1)' }}>{i + 1}.</span>
-                  <div className="flex-1">
-                    <p className="text-sm" style={{ color: 'var(--ink)' }}>{q.text}</p>
-                    {q.legal_basis && (
-                      <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded" style={{ background: 'var(--gold-tint)', color: 'var(--gold-ink)' }}>
-                        {q.legal_basis}
-                      </span>
-                    )}
-                    {q.basis_check === 'unverified' && (
-                      <span className="inline-block mt-1 ml-1 text-xs px-2 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                        Modda raqamini tekshiring
-                      </span>
-                    )}
+          <div>
+            <Label className="text-xs font-bold">Kazus matni (ixtiyoriy)</Label>
+            <Textarea value={q.case_text} onChange={e => setEditingQuestion({ ...q, case_text: e.target.value })} placeholder="Kazus vaziyatini yozing..." className="mt-1.5 rounded-xl min-h-[80px]" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs font-bold">Variantlar (1 ta to'g'ri) *</Label>
+            {q.options.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingQuestion({ ...q, options: q.options.map((o, j) => ({ ...o, is_correct: j === i })) })}
+                  className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center font-black text-xs transition ${opt.is_correct ? 'bg-green-100 text-green-700 border-2 border-green-400' : 'bg-gray-100 text-gray-400 border border-gray-200 hover:border-gray-400'}`}
+                  aria-label={`${['A', 'B', 'C', 'D'][i]} variantini to'g'ri deb belgilash`}
+                >
+                  {['A', 'B', 'C', 'D'][i]}
+                </button>
+                <Input value={opt.text} onChange={e => setEditingQuestion({ ...q, options: q.options.map((o, j) => j === i ? { ...o, text: e.target.value } : o) })} placeholder={`${['A', 'B', 'C', 'D'][i]} varianti`} className="flex-1 rounded-xl" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-bold">Taymer (soniya)</Label>
+              <Input type="number" min={5} max={120} value={q.time_limit_s} onChange={e => setEditingQuestion({ ...q, time_limit_s: parseInt(e.target.value) || 20 })} className="mt-1.5 rounded-xl" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Asos modda (ixtiyoriy)</Label>
+              <Input value={q.legal_basis} onChange={e => setEditingQuestion({ ...q, legal_basis: e.target.value })} placeholder="JK 97-modda..." className="mt-1.5 rounded-xl" />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Izoh (ixtiyoriy)</Label>
+            <Textarea value={q.explanation} onChange={e => setEditingQuestion({ ...q, explanation: e.target.value })} placeholder="Nega bu javob to'g'ri..." className="mt-1.5 rounded-xl min-h-[70px]" />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button onClick={handleSaveQuestion} disabled={savingQuestions} className="flex-1 rounded-xl shadow-md shadow-blue-500/15">
+              {savingQuestions ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+              Saqlash
+            </Button>
+            <Button variant="outline" onClick={() => { setEditingQuestion(null); setEditingIndex(null); }} className="rounded-xl">Bekor qilish</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── EDIT QUESTIONS VIEW ─────────────────────────────────────────────────────
+  if (view === 'edit_questions' && activeQuiz) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <button onClick={() => { setView('list'); setActiveQuiz(null); setQuestions([]); }} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors">
+            <ChevronLeft className="h-4 w-4" /> Ro'yxatga qaytish
+          </button>
+          <Badge variant="secondary" className="text-xs">{questions.length} ta savol</Badge>
+        </div>
+
+        <div className="rounded-3xl bg-white border border-gray-100/80 shadow-sm p-4">
+          <h2 className="text-sm font-bold text-gray-900 truncate">{activeQuiz.title}</h2>
+          {activeQuiz.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{activeQuiz.description}</p>}
+        </div>
+
+        {/* Asboblar */}
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={openNewQuestion} className="rounded-xl shadow-md shadow-blue-500/15">
+            <Plus className="h-4 w-4 mr-1" /> Savol qo'shish
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setView('ai_job')} className="rounded-xl">
+            <Sparkles className="h-4 w-4 mr-1 text-violet-500" /> AI bilan yaratish
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowParseInput(!showParseInput)} className="rounded-xl">
+            <AlignLeft className="h-4 w-4 mr-1 text-gray-500" /> Matndan import
+          </Button>
+        </div>
+
+        {/* Parse text input */}
+        {showParseInput && (
+          <div className="rounded-2xl border border-dashed border-gray-300/80 bg-gray-50/50 p-4 space-y-2">
+            <Label className="text-xs font-bold">Matndan savol tahlil qilish</Label>
+            <p className="text-[11px] text-gray-400">Format: <code>1. Savol? A) Variant B) Variant... To'g'ri: A Izoh: ...</code></p>
+            <Textarea value={parseText} onChange={e => setParseText(e.target.value)} placeholder="Savollar matnini shu yerga yapishting..." className="rounded-xl min-h-[100px]" />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleParseText} disabled={parsing} className="rounded-xl">
+                {parsing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
+                Tahlil qilish
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setShowParseInput(false); setParseText(''); }} className="rounded-xl">Bekor</Button>
+            </div>
+          </div>
+        )}
+
+        {/* Questions list */}
+        {questionsLoading ? (
+          <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+        ) : questions.length === 0 ? (
+          <div className="text-center py-12 rounded-3xl border-2 border-dashed border-gray-200">
+            <UploadCloud className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">Hozircha savollar yo'q</p>
+            <p className="text-xs text-gray-400 mt-1">Qo'lda, AI yordamida yoki matndan qo'shing</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {questions.map((q, i) => (
+              <div key={i} className="group rounded-2xl bg-white border border-gray-100/80 shadow-sm hover:shadow-md transition-all duration-200 p-3.5">
+                <div className="flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-xl bg-blue-50 text-blue-700 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900 line-clamp-2">{q.text}</p>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {q.options.map((o, j) => (
+                        <span key={j} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.is_correct ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {['A','B','C','D'][j]}: {o.text.slice(0, 20)}{o.text.length > 20 ? '…' : ''}
+                        </span>
+                      ))}
+                      <span className="text-[10px] text-gray-400 px-1">{q.time_limit_s}s</span>
+                      {q.source === 'ai' && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">AI</span>}
+                      {q.legal_basis && <span className="text-[10px] text-blue-600">📋 {q.legal_basis.slice(0, 20)}</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button size="sm" variant="ghost" onClick={() => openEditQuestion(q, i)} className="h-7 w-7 p-0 rounded-lg">
+                      <Eye className="h-3.5 w-3.5 text-gray-400" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDeleteQuestion(i)} className="h-7 w-7 p-0 rounded-lg text-red-400 hover:text-red-600">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          <button
-            onClick={handleAcceptAI}
-            className="w-full py-3 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
-            style={{ background: 'var(--success)' }}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            Qabul qilish va saqlash
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
 
-// ── Matndan import ─────────────────────────────────────────────────────────────
-
-function TextImport({ ustozId, ensureQuiz, onCreated }: {
-  ustozId: string;
-  ensureQuiz: () => Promise<string | null>;
-  onCreated: (id: string, title: string, questions: Question[]) => void;
-}) {
-  const { toast } = useToast();
-  const [rawText, setRawText] = useState('');
-  const [parsed, setParsed] = useState<Question[]>([]);
-  const [parsedMode, setParsedMode] = useState(false);
-
-  async function handleParse() {
-    if (!rawText.trim()) {
-      toast({ title: 'Matn kerak' });
-      return;
-    }
-    const quizId = await ensureQuiz();
-    if (!quizId) return;
-    try {
-      const data = await parseText(quizId, ustozId, rawText);
-      setParsed(data.questions || []);
-      setParsedMode(true);
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    }
-  }
-
-  function isValid(q: Question): boolean {
-    return !!q.text.trim() && q.options.length >= 2 && !q.options.some(o => !o.text.trim()) && q.options.filter(o => o.is_correct).length === 1;
-  }
-
-  async function handleSave(validOnly: boolean) {
-    const toSave = validOnly ? parsed.filter(isValid) : parsed;
-    if (toSave.length === 0) {
-      toast({ title: 'Saqlash uchun savol yo\'q', variant: 'destructive' });
-      return;
-    }
-    const quizId = await ensureQuiz();
-    if (!quizId) return;
-    try {
-      await saveQuestions(quizId, ustozId, toSave);
-      toast({ title: 'Saqlandi', description: `${toSave.length} ta savol` });
-      onCreated(quizId, '', toSave);
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    }
-  }
-
-  if (!parsedMode) {
-    return (
-      <div>
-        <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--cobalt-tint)', border: '1px solid var(--cobalt-line)' }}>
-          <p className="text-sm" style={{ color: 'var(--ink-body)' }}>
-            Format: "1. Savol" keyin A) B) C) D) qatorlari, to'g'ri javob "*" yoki "To'g'ri: B" bilan.
-          </p>
-        </div>
-        <textarea
-          value={rawText}
-          onChange={(e) => setRawText(e.target.value)}
-          placeholder={`1. Jinoyat kodeksining qaysi moddasi...\nA) birinchi variant\nB) ikkinchi variant\n* C) uchinchi variant\nD) to'rtinchi variant\nIzoh: ...`}
-          rows={10}
-          className="w-full px-4 py-3 rounded-xl text-sm mb-4 outline-none resize-none font-mono text-xs"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
-        <button
-          onClick={handleParse}
-          className="w-full py-3 rounded-xl font-semibold text-sm text-white"
-          style={{ background: 'var(--cobalt-1)' }}
-        >
-          Ko'rib chiqish
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
-          {parsed.length} ta savol topildi ({parsed.filter(isValid).length} to'g'ri)
-        </span>
-        <button onClick={() => setParsedMode(false)} className="text-xs" style={{ color: 'var(--cobalt-1)' }}>Orqaga</button>
-      </div>
-      <div className="space-y-2 mb-4 max-h-96 overflow-y-auto">
-        {parsed.map((q, i) => {
-          const valid = isValid(q);
-          return (
-            <div key={i} className="rounded-lg p-3" style={{ background: 'var(--ff-card)', border: `1px solid ${valid ? 'var(--line)' : '#FECACA'}` }}>
-              <div className="flex items-start gap-2">
-                {valid ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--success)' }} /> : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#C2303D' }} />}
-                <div className="flex-1">
-                  <p className="text-sm" style={{ color: 'var(--ink)' }}>{i + 1}. {q.text}</p>
-                  <div className="mt-1 space-y-0.5">
-                    {q.options.map((o, oi) => (
-                      <div key={oi} className="text-xs flex items-center gap-1.5" style={{ color: o.is_correct ? 'var(--success)' : 'var(--ink-muted)' }}>
-                        <span className="font-bold">{String.fromCharCode(65 + oi)})</span>
-                        {o.text}
-                        {o.is_correct && <CheckCircle2 className="w-3 h-3" />}
-                      </div>
-                    ))}
-                  </div>
-                  {!valid && <p className="text-xs mt-1" style={{ color: '#C2303D' }}>To'ldirilmagan yoki to'g'ri javob yo'q</p>}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-2">
-        <button onClick={() => handleSave(true)} className="flex-1 py-3 rounded-xl font-semibold text-sm text-white" style={{ background: 'var(--success)' }}>
-          Faqat to'g'rilarini saqlash ({parsed.filter(isValid).length})
-        </button>
-        <button onClick={() => handleSave(false)} className="py-3 px-4 rounded-xl font-semibold text-sm" style={{ background: 'var(--panel-2)', color: 'var(--ink)', border: '1px solid var(--line)' }}>
-          Hammasini saqlash
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Sessiyalar tabi ────────────────────────────────────────────────────────────
-
-function SessionsTab({ ustozId, onOpen }: { ustozId: string; onOpen: (sessionId: string) => void }) {
-  const { toast } = useToast();
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await listSessions(ustozId);
-        setSessions(data.sessions || []);
-      } catch (err: any) {
-        toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [ustozId, toast]);
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--cobalt-1)' }} /></div>;
-  if (sessions.length === 0) {
-    return (
-      <div className="text-center py-12 rounded-2xl" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-        <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-30" style={{ color: 'var(--ink-muted)' }} />
-        <p className="text-sm" style={{ color: 'var(--ink-muted)' }}>Hozircha o'tkazilgan o'yin yo'q.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-3">
-      {sessions.map((s, i) => (
-        <motion.button
-          key={s.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.05, ease: EASE }}
-          onClick={() => onOpen(s.id)}
-          className="w-full rounded-xl p-4 text-left transition-all hover:scale-[1.01]"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)' }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>{s.hukm_quizzes?.title || 'Viktorina'}</h3>
-            <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>{new Date(s.started_at).toLocaleDateString('uz-UZ')}</span>
-          </div>
-          <div className="flex gap-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
-            <span>{s.player_count} o'quvchi</span>
-            <span>O'rtacha: {s.avg_correct_pct}%</span>
-            <span>PIN: {s.pin}</span>
-          </div>
-        </motion.button>
-      ))}
-    </div>
-  );
-}
-
-// ── Savol muharriri (tahrirlash uchun) ───────────────────────────────────────
-
-function HukmEditor({ quizId, title, initialQuestions, ustozId, onExit }: {
-  quizId: string;
-  title: string;
-  initialQuestions: Question[];
-  ustozId: string;
-  onExit: () => void;
-}) {
-  const { toast } = useToast();
-  const [questions, setQuestions] = useState<Question[]>(initialQuestions);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [quizTitle, setQuizTitle] = useState(title);
-
-  function emptyQuestion(): Question {
-    return {
-      type: 'variant4',
-      text: '',
-      options: [{ text: '', is_correct: true }, { text: '', is_correct: false }, { text: '', is_correct: false }, { text: '', is_correct: false }],
-      time_limit_s: 20,
-      explanation: '',
-      legal_basis: '',
-      source: 'manual',
-    };
-  }
-
-  const current = questions[activeIdx] || questions[0] || emptyQuestion();
-
-  function updateCurrent(updater: (q: Question) => Question) {
-    setQuestions(prev => prev.map((q, i) => i === activeIdx ? updater(q) : q));
-  }
-
-  function validateQuestion(q: Question): boolean {
-    return !!q.text.trim() && q.options.length >= 2 && !q.options.some(o => !o.text.trim()) && q.options.filter(o => o.is_correct).length === 1;
-  }
-
-  async function handleSave() {
-    const valid = questions.filter(validateQuestion);
-    if (valid.length === 0) {
-      toast({ title: 'Savol yo\'q', variant: 'destructive' });
-      return;
-    }
-    setSaving(true);
-    try {
-      await saveQuestions(quizId, ustozId, valid);
-      toast({ title: 'Saqlandi', description: `${valid.length} ta savol` });
-      onExit();
-    } catch (err: any) {
-      toast({ title: 'Xato', description: err.message, variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleExport() {
-    const valid = questions.filter(validateQuestion);
-    if (valid.length === 0) {
-      toast({ title: 'Savol yo\'q', variant: 'destructive' });
-      return;
-    }
-    await exportHukmDocx(quizTitle || 'Viktorina', valid);
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onExit} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-          <X className="w-4 h-4" style={{ color: 'var(--ink)' }} />
-        </button>
-        <input
-          value={quizTitle}
-          onChange={(e) => setQuizTitle(e.target.value)}
-          className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold outline-none"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
-        <button onClick={handleExport} className="w-9 h-9 rounded-lg flex items-center justify-center" title="Word'ga yuklash" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
-          <Download className="w-4 h-4" style={{ color: 'var(--ink)' }} />
-        </button>
-      </div>
-
-      {/* Savol raqamlari */}
-      <div className="flex gap-1.5 mb-4 overflow-x-auto pb-2">
-        {questions.map((q, i) => (
-          <button
-            key={i}
-            onClick={() => setActiveIdx(i)}
-            className="flex-shrink-0 w-9 h-9 rounded-lg text-xs font-bold transition-all"
-            style={{
-              background: i === activeIdx ? 'var(--cobalt-1)' : validateQuestion(q) ? 'var(--success-tint)' : 'var(--panel-2)',
-              color: i === activeIdx ? 'white' : validateQuestion(q) ? 'var(--success)' : 'var(--ink-muted)',
-              border: '1px solid var(--line)',
-            }}
-          >
-            {i + 1}
-          </button>
-        ))}
-        <button
-          onClick={() => { setQuestions(prev => [...prev, emptyQuestion()]); setActiveIdx(questions.length); }}
-          className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
-          style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--cobalt-1)' }}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Savol matni */}
-      <textarea
-        value={current.text}
-        onChange={(e) => updateCurrent(q => ({ ...q, text: e.target.value }))}
-        placeholder="Savol matni..."
-        rows={3}
-        className="w-full px-4 py-3 rounded-xl text-sm mb-3 outline-none resize-none"
-        style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-      />
-
-      {/* Variantlar */}
-      <div className="space-y-2 mb-3">
-        {current.options.map((opt, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <button
-              onClick={() => updateCurrent(q => ({ ...q, options: q.options.map((o, oi) => ({ ...o, is_correct: oi === i })) }))}
-              className="w-6 h-6 rounded-full border-2 flex-shrink-0 transition-all"
-              style={{ borderColor: opt.is_correct ? 'var(--success)' : 'var(--line)', background: opt.is_correct ? 'var(--success)' : 'transparent' }}
-            >
-              {opt.is_correct && <CheckCircle2 className="w-4 h-4 text-white mx-auto" />}
-            </button>
-            <span className="text-xs font-bold w-5" style={{ color: 'var(--ink-muted)' }}>{String.fromCharCode(65 + i)}</span>
-            <input
-              value={opt.text}
-              onChange={(e) => updateCurrent(q => ({ ...q, options: q.options.map((o, oi) => oi === i ? { ...o, text: e.target.value } : o) }))}
-              className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-              style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-        <input
-          value={current.explanation}
-          onChange={(e) => updateCurrent(q => ({ ...q, explanation: e.target.value }))}
-          placeholder="Izoh (ixtiyoriy)"
-          className="px-3 py-2 rounded-lg text-sm outline-none"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
-        <input
-          value={current.legal_basis}
-          onChange={(e) => updateCurrent(q => ({ ...q, legal_basis: e.target.value }))}
-          placeholder="Asos modda (ixtiyoriy)"
-          className="px-3 py-2 rounded-lg text-sm outline-none"
-          style={{ background: 'var(--ff-card)', border: '1px solid var(--line)', color: 'var(--ink)' }}
-        />
-      </div>
-
-      <div className="flex items-center gap-2 mb-4">
-        <Clock className="w-4 h-4" style={{ color: 'var(--ink-muted)' }} />
-        {[10, 20, 30, 60].map(t => (
-          <button
-            key={t}
-            onClick={() => updateCurrent(q => ({ ...q, time_limit_s: t }))}
-            className="px-3 py-1 rounded-lg text-xs font-semibold"
-            style={{
-              background: current.time_limit_s === t ? 'var(--cobalt-1)' : 'var(--panel-2)',
-              color: current.time_limit_s === t ? 'white' : 'var(--ink-body)',
-              border: '1px solid var(--line)',
-            }}
-          >
-            {t}s
-          </button>
-        ))}
-        {current.source === 'ai' && <span className="text-xs px-2 py-1 rounded" style={{ background: 'var(--cobalt-tint)', color: 'var(--cobalt-1)' }}><Sparkles className="w-3 h-3 inline" /> AI</span>}
-        {current.source === 'text' && <span className="text-xs px-2 py-1 rounded" style={{ background: 'var(--gold-tint)', color: 'var(--gold-ink)' }}>Matndan</span>}
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex-1 py-3 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
-          style={{ background: 'var(--cobalt-1)' }}
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-          Saqlash
-        </button>
-        {questions.length > 1 && (
-          <button
-            onClick={() => { setQuestions(prev => prev.filter((_, i) => i !== activeIdx)); setActiveIdx(Math.max(0, activeIdx - 1)); }}
-            className="py-3 px-4 rounded-xl"
-            style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: '#C2303D' }}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+        {questions.length > 0 && (
+          <Button onClick={() => handleStartGame(activeQuiz)} disabled={creatingGame} className="w-full rounded-xl shadow-md shadow-blue-500/15">
+            {creatingGame ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Play className="h-4 w-4 mr-1.5" />}
+            O'yin boshlash ({questions.length} ta savol)
+          </Button>
         )}
       </div>
+    );
+  }
+
+  // ── AI JOB VIEW ─────────────────────────────────────────────────────────────
+  if (view === 'ai_job') {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <button onClick={() => setView('edit_questions')} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors">
+          <ChevronLeft className="h-4 w-4" /> Savollar ro'yxatiga qaytish
+        </button>
+        <div className="rounded-3xl bg-white border border-gray-100/80 shadow-lg p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-violet-500" />
+            <h3 className="text-sm font-bold text-gray-800">AI bilan savol yaratish</h3>
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Manba matni *</Label>
+            <Textarea value={aiText} onChange={e => setAiText(e.target.value)} placeholder="Darslik, qonun matni yoki mavzu tushuntirishini shu yerga joylashtiring..." className="mt-1.5 rounded-xl min-h-[140px]" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-bold">Savollar soni</Label>
+              <Input type="number" min={1} max={40} value={aiCount} onChange={e => setAiCount(parseInt(e.target.value) || 10)} className="mt-1.5 rounded-xl" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Qiyinlik</Label>
+              <select value={aiDifficulty} onChange={e => setAiDifficulty(e.target.value)} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400">
+                <option value="oson">Oson</option>
+                <option value="o'rta">O'rta</option>
+                <option value="qiyin">Qiyin</option>
+              </select>
+            </div>
+          </div>
+          {aiJobStatus === 'idle' || aiJobStatus === 'error' ? (
+            <Button onClick={handleAiGenerate} className="w-full rounded-xl shadow-md shadow-violet-500/15" style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
+              <Sparkles className="h-4 w-4 mr-1.5" /> AI savol tuzsin
+            </Button>
+          ) : null}
+          {(aiJobStatus === 'queued' || aiJobStatus === 'processing') && (
+            <div className="flex items-center gap-3 rounded-2xl bg-violet-50 border border-violet-200 p-4">
+              <Loader2 className="h-5 w-5 animate-spin text-violet-600 shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-violet-700">AI savollar tayyorlanmoqda...</p>
+                <p className="text-xs text-gray-500">Bu 1-3 daqiqa olishi mumkin. Sahifani yopmang.</p>
+              </div>
+            </div>
+          )}
+          {aiJobStatus === 'error' && (
+            <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-100 p-3">
+              <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+              <p className="text-xs text-red-700">{aiError}</p>
+            </div>
+          )}
+          {aiJobStatus === 'done' && aiQuestions.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <p className="text-sm font-bold text-green-700">{aiQuestions.length} ta savol tayyor!</p>
+              </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {aiQuestions.map((q, i) => (
+                  <div key={i} className="rounded-xl bg-gray-50/80 border border-gray-100/60 p-3">
+                    <p className="text-xs font-bold text-gray-900 line-clamp-2">{i + 1}. {q.text}</p>
+                    {q.legal_basis && <p className="text-[10px] text-blue-600 mt-0.5">📋 {q.legal_basis}</p>}
+                  </div>
+                ))}
+              </div>
+              <Button onClick={handleApplyAiQuestions} className="w-full rounded-xl shadow-md shadow-blue-500/15">
+                Savollarni qo'shish ({aiQuestions.length} ta)
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── SESSIONS VIEW ───────────────────────────────────────────────────────────
+  if (view === 'sessions') {
+    return (
+      <div className="space-y-4 max-w-3xl mx-auto">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setView('list')} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors">
+            <ChevronLeft className="h-4 w-4" /> Ro'yxatga qaytish
+          </button>
+          <BarChart2 className="h-5 w-5 text-blue-600 ml-2" />
+          <h2 className="text-base font-bold text-gray-900">O'tkazilgan o'yinlar</h2>
+        </div>
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+        ) : sessions.length === 0 ? (
+          <div className="text-center py-16">
+            <BarChart2 className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">Hozircha o'tkazilgan o'yinlar yo'q</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {sessions.map(s => (
+              <div key={s.id} className="rounded-3xl bg-white border border-gray-100/80 shadow-sm hover:shadow-md transition-all duration-200 p-4 space-y-3">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 line-clamp-1">{s.hukm_quizzes?.title || 'Viktorina'}</h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{new Date(s.started_at).toLocaleString('uz-UZ')}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-blue-50/80 p-2 text-center">
+                    <p className="text-lg font-black text-blue-700">{s.player_count}</p>
+                    <p className="text-[10px] text-gray-500">O'yinchi</p>
+                  </div>
+                  <div className="rounded-xl bg-green-50/80 p-2 text-center">
+                    <p className="text-lg font-black text-green-700">{Math.round(s.avg_correct_pct)}%</p>
+                    <p className="text-[10px] text-gray-500">To'g'ri</p>
+                  </div>
+                  <div className="rounded-xl bg-amber-50/80 p-2 text-center">
+                    <p className="text-lg font-black text-amber-700">{Math.round(s.avg_points)}</p>
+                    <p className="text-[10px] text-gray-500">O'rt.ball</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── CREATE QUIZ VIEW ────────────────────────────────────────────────────────
+  if (view === 'create_quiz') {
+    return (
+      <div className="max-w-lg mx-auto space-y-4">
+        <button onClick={() => setView('list')} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-blue-600 transition-colors">
+          <ChevronLeft className="h-4 w-4" /> Ro'yxatga qaytish
+        </button>
+        <div className="rounded-3xl bg-white border border-gray-100/80 shadow-lg p-5 space-y-4">
+          <h3 className="text-sm font-bold text-gray-800">Yangi viktorina yaratish</h3>
+          <div>
+            <Label className="text-xs font-bold">Sarlavha *</Label>
+            <Input value={quizTitle} onChange={e => setQuizTitle(e.target.value)} placeholder="Masalan: JK Umumiy qism bo'yicha test" className="mt-1.5 rounded-xl" onKeyDown={e => { if (e.key === 'Enter') handleCreateQuiz(); }} />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Tavsif (ixtiyoriy)</Label>
+            <Textarea value={quizDesc} onChange={e => setQuizDesc(e.target.value)} placeholder="Qisqacha izoh..." className="mt-1.5 rounded-xl" />
+          </div>
+          <Button onClick={handleCreateQuiz} disabled={savingQuiz} className="w-full rounded-xl shadow-md shadow-blue-500/15">
+            {savingQuiz ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+            Yaratish va savollar qo'shish
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── MAIN LIST VIEW ──────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-4 max-w-3xl mx-auto">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Trophy className="h-5 w-5 text-amber-500" />
+          <h2 className="text-base font-bold text-gray-900">Hukm Viktorina</h2>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setView('sessions')} className="rounded-xl text-xs">
+            <BarChart2 className="h-4 w-4 mr-1" /> Natijalar
+          </Button>
+          <Button size="sm" onClick={() => setView('create_quiz')} className="rounded-xl shadow-md shadow-blue-500/15">
+            <Plus className="h-4 w-4 mr-1" /> Yangi viktorina
+          </Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+      ) : quizzes.length === 0 ? (
+        <div className="text-center py-16 rounded-3xl border-2 border-dashed border-gray-200">
+          <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Hozircha viktorinalar yo'q</p>
+          <p className="text-xs text-gray-400 mt-1">"Yangi viktorina" tugmasini bosing</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {quizzes.map(quiz => (
+            <div key={quiz.id} className="group rounded-3xl bg-white border border-gray-100/80 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 line-clamp-2">{quiz.title}</h3>
+                {quiz.description && <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{quiz.description}</p>}
+                <p className="text-[10px] text-gray-400 mt-1">{new Date(quiz.created_at).toLocaleDateString('uz-UZ')}</p>
+              </div>
+              <div className="flex gap-1.5 pt-2 border-t border-gray-100/60 flex-wrap">
+                <Button size="sm" variant="ghost" onClick={() => { setActiveQuiz(quiz); setView('edit_questions'); }} className="text-xs h-7 rounded-lg">
+                  <Eye className="h-3 w-3 mr-1" /> Savollar
+                </Button>
+                <Button size="sm" onClick={() => handleStartGame(quiz)} disabled={creatingGame} className="text-xs h-7 rounded-xl shadow-sm shadow-blue-500/15">
+                  {creatingGame ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Play className="h-3 w-3 mr-1" />}
+                  O'yin
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => handleDeleteQuiz(quiz.id)} className="text-xs h-7 rounded-lg text-red-400 hover:text-red-600 ml-auto">
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 {
   "overrides": {
+    "@radix-ui/react-toggle": "1.0.3",
     "@supabase/functions-js": "2.4.4",
     "@supabase/auth-js": "2.116.0",
     "@supabase/supabase-js": "2.116.0",
