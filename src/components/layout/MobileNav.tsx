@@ -347,7 +347,7 @@ function MobileBottomNav({
       }}
     >
       <Cell tabId="haqida" label="Bosh" icon={Home} onClick={() => onTabChange('haqida')} active={isActive('haqida')} />
-      <Cell tabId="nexus_ai" label="Nexus" icon={Scale} onClick={() => onTabChange('nexus_ai')} active={isActive('nexus_ai')} />
+      <Cell tabId="nexus_ai" label="NaSher" icon={Scale} onClick={() => onTabChange('nexus_ai')} active={isActive('nexus_ai')} />
       <Cell tabId="oqmatlar" label="Materiallar" icon={Library} onClick={() => onTabChange('oqmatlar')} active={isActive('oqmatlar')} />
       <Cell tabId="sinov" label="Sinov" icon={ClipboardCheck} onClick={onOpenSinov} active={isSinovActive} hasPopup />
       <Cell tabId="yana" label="Yana" icon={MoreHorizontal} onClick={onOpenYana} active={isYanaActive} hasPopup />

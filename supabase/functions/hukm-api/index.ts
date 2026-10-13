@@ -6,11 +6,11 @@
 // v3.1: rejoin tugagan o'yinga natija qaytaradi, FN_VERSION belgisi qo'shildi.
 // v3.3: broadcast REST API orqali (WebSocket subscribe/send/remove poyga xavfi yo'q).
 
-const FN_VERSION = 'hukm-api-v4.2';
+const FN_VERSION = 'hukm-api-v5.0';
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
-import { calculatePoints } from '../_shared/hukm-scoring.ts';
+import { calculatePoints, calculateMultiPoints, totalScore, autoTimeSeconds, type ScoreMode, type Confidence } from '../_shared/hukm-scoring.ts';
 import { callAIWithFallback } from '../_shared/ai-provider.ts';
 import { analyzeQuestion, analyzeStudentInGame, analyzeStudentCrossGame, computeGrade, ANALYTICS, readingFloorMs, isGuess } from '../_shared/hukm-analytics.ts';
 
@@ -186,14 +186,17 @@ function sanitizeQuestionForPlayer(q: any, index: number, showText: boolean) {
 }
 
 function revealQuestionForPlayer(q: any, index: number) {
-  const correctIdx = (q.options || []).findIndex((o: any) => o.is_correct);
+  const correctIndices = (q.options || [])
+    .map((o: any, i: number) => o.is_correct ? i : -1)
+    .filter((i: number) => i >= 0);
   return {
     index,
     type: q.type,
     text: q.text,
     case_text: q.case_text,
     options: q.options,
-    correct_index: correctIdx,
+    correct_index: correctIndices.length === 1 ? correctIndices[0] : -1,
+    correct_indices: correctIndices,
     explanation: q.explanation || '',
     legal_basis: q.legal_basis || '',
   };
@@ -206,6 +209,21 @@ async function getQuizQuestions(quizId: string) {
     .eq('quiz_id', quizId)
     .order('position', { ascending: true });
   return data || [];
+}
+
+// Snapshot'dan savollarni o'qish — gameplay uchun asosiy manba.
+// Snapshot bo'sh bo'lsa, live table'ga fallback.
+async function getGameQuestions(gameId: string): Promise<any[]> {
+  const { data: game } = await supabaseAdmin
+    .from('hukm_games')
+    .select('questions_snapshot, quiz_id')
+    .eq('id', gameId)
+    .maybeSingle();
+  if (!game) return [];
+  if (game.questions_snapshot && Array.isArray(game.questions_snapshot) && game.questions_snapshot.length > 0) {
+    return game.questions_snapshot;
+  }
+  return getQuizQuestions(game.quiz_id);
 }
 
 async function getGamePlayers(gameId: string) {
@@ -283,7 +301,7 @@ async function createSession(gameId: string): Promise<void> {
     ? Math.round((answers || []).reduce((s, a) => s + a.points, 0) / playerCount)
     : 0;
 
-  const questions = await getQuizQuestions(game.quiz_id);
+  const questions = await getGameQuestions(gameId);
   const totalQ = questions.length;
   const finisherCount = totalQ > 0
     ? players.filter(p => {
@@ -433,7 +451,7 @@ async function buildGameState(gameId: string, isHost: boolean, playerId?: string
   if (!game) return null;
 
   const players = await getGamePlayers(game.id);
-  const questions = await getQuizQuestions(game.quiz_id);
+  const questions = await getGameQuestions(game.id);
   const serverNow = Date.now();
 
   const base: any = {
@@ -467,17 +485,19 @@ async function buildGameState(gameId: string, isHost: boolean, playerId?: string
         if (valid) {
           const { data: myAnswer } = await supabaseAdmin
             .from('hukm_answers')
-            .select('choice')
+            .select('choice, choices')
             .eq('game_id', game.id)
             .eq('player_id', playerId)
             .eq('question_index', game.current_index)
             .maybeSingle();
-          base.my_answer = myAnswer?.choice ?? null;
+          base.my_answer = myAnswer?.choices ?? myAnswer?.choice ?? null;
         }
       }
 
       if (isHost) {
-        base.correct_index = (q.options || []).findIndex((o: any) => o.is_correct);
+        const correctIndices = (q.options || []).map((o: any, i: number) => o.is_correct ? i : -1).filter((i: number) => i >= 0);
+        base.correct_index = correctIndices.length === 1 ? correctIndices[0] : -1;
+        base.correct_indices = correctIndices;
       }
     }
   }
@@ -488,11 +508,11 @@ async function buildGameState(gameId: string, isHost: boolean, playerId?: string
       base.reveal = revealQuestionForPlayer(q, game.current_index);
       const { data: answers } = await supabaseAdmin
         .from('hukm_answers')
-        .select('choice')
+        .select('choice, choices')
         .eq('game_id', game.id)
         .eq('question_index', game.current_index);
       const distribution = (q.options || []).map((_: any, i: number) =>
-        (answers || []).filter(a => a.choice === i).length
+        (answers || []).filter(a => a.choice === i || (Array.isArray(a.choices) && a.choices.includes(i))).length
       );
       base.distribution = distribution;
 
@@ -501,12 +521,12 @@ async function buildGameState(gameId: string, isHost: boolean, playerId?: string
         if (valid) {
           const { data: myAnswer } = await supabaseAdmin
             .from('hukm_answers')
-            .select('choice, correct, points')
+            .select('choice, choices, correct, points')
             .eq('game_id', game.id)
             .eq('player_id', playerId)
             .eq('question_index', game.current_index)
             .maybeSingle();
-          base.my_result = myAnswer || null;
+          base.my_result = myAnswer ? { ...myAnswer, choice: myAnswer.choices ?? myAnswer.choice } : null;
         }
       }
     }
@@ -765,7 +785,7 @@ Deno.serve(async (req: Request) => {
           .from('hukm_answers')
           .select('correct, points')
           .eq('player_id', p.id);
-        const totalPoints = (answers || []).reduce((s, a) => s + a.points, 0);
+        const totalPoints = totalScore((answers || []).map(a => a.points));
         const correctCount = (answers || []).filter(a => a.correct).length;
         const totalCount = (answers || []).length;
         gameResults.push({
@@ -796,7 +816,7 @@ Deno.serve(async (req: Request) => {
           .from('hukm_answers')
           .select('points')
           .in('player_id', pids);
-        talabaScores.set(tid, (ans || []).reduce((s, a) => s + a.points, 0));
+        talabaScores.set(tid, totalScore((ans || []).map(a => a.points)));
       }
 
       const sortedScores = Array.from(talabaScores.entries())
@@ -832,7 +852,7 @@ Deno.serve(async (req: Request) => {
           .from('hukm_answers')
           .select('points, correct')
           .in('player_id', info.player_ids);
-        const totalPoints = (ans || []).reduce((s, a) => s + a.points, 0);
+        const totalPoints = totalScore((ans || []).map(a => a.points));
         const correctCount = (ans || []).filter(a => a.correct).length;
         const totalCount = (ans || []).length;
         board.push({
@@ -883,6 +903,7 @@ Deno.serve(async (req: Request) => {
         speed_bonus: body.speed_bonus !== false,
         lobby_locked: false,
         show_text_on_phone: body.show_text_on_phone !== false,
+        score_mode: body.score_mode || 'aniqlik',
       };
       const hostToken = randomToken(32);
       const hostTokenHash = await sha256Hex(hostToken);
@@ -1143,13 +1164,8 @@ Deno.serve(async (req: Request) => {
     if (method === 'POST' && segments[0] === 'game' && segments[1] && segments[2] === 'start') {
       const body = await req.json();
       if (!await verifyHostToken(segments[1], body.host_token)) return errorResponse('Vakolat yo\'q', 403);
-      const { data: game } = await supabaseAdmin
-        .from('hukm_games')
-        .select('quiz_id')
-        .eq('id', segments[1])
-        .maybeSingle();
-      if (!game) return errorResponse('O\'yin topilmadi', 404);
-      const questions = await getQuizQuestions(game.quiz_id);
+      if (!await verifyHostToken(segments[1], body.host_token)) return errorResponse('Vakolat yo\'q', 403);
+      const questions = await getGameQuestions(segments[1]);
       if (questions.length === 0) return errorResponse('Savollar yo\'q', 400);
       const openedAt = nowIso();
       await supabaseAdmin
@@ -1165,11 +1181,11 @@ Deno.serve(async (req: Request) => {
       if (!await verifyHostToken(segments[1], body.host_token)) return errorResponse('Vakolat yo\'q', 403);
       const { data: game } = await supabaseAdmin
         .from('hukm_games')
-        .select('quiz_id, current_index')
+        .select('current_index')
         .eq('id', segments[1])
         .maybeSingle();
       if (!game) return errorResponse('O\'yin topilmadi', 404);
-      const questions = await getQuizQuestions(game.quiz_id);
+      const questions = await getGameQuestions(segments[1]);
       const nextIndex = game.current_index + 1;
       if (nextIndex >= questions.length) {
         await supabaseAdmin
@@ -1261,7 +1277,7 @@ Deno.serve(async (req: Request) => {
 
     if (method === 'POST' && segments[0] === 'game' && segments[1] && segments[2] === 'answer') {
       const body = await req.json();
-      const { player_id, player_token, choice } = body;
+      const { player_id, player_token, choice, choices } = body;
       if (!player_id || !player_token) return errorResponse('player_id va player_token kerak', 400);
 
       const { valid, kicked } = await verifyPlayerToken(player_id, player_token);
@@ -1270,14 +1286,14 @@ Deno.serve(async (req: Request) => {
 
       const { data: game } = await supabaseAdmin
         .from('hukm_games')
-        .select('id, quiz_id, status, current_index, opened_at, settings')
+        .select('id, status, current_index, opened_at, settings')
         .eq('id', segments[1])
         .maybeSingle();
       if (!game) return errorResponse('O\'yin topilmadi', 404);
       if (game.status !== 'question') return errorResponse('Savol yopilgan', 403);
       if (game.current_index < 0) return errorResponse('Savol yo\'q', 400);
 
-      const questions = await getQuizQuestions(game.quiz_id);
+      const questions = await getGameQuestions(game.id);
       const q = questions[game.current_index];
       if (!q) return errorResponse('Savol topilmadi', 404);
 
@@ -1287,38 +1303,187 @@ Deno.serve(async (req: Request) => {
         return errorResponse('Vaqt tugagan', 408);
       }
 
-      const correctIdx = (q.options || []).findIndex((o: any) => o.is_correct);
-      const isCorrect = choice === correctIdx;
+      const qType = q.type || 'variant4';
+      const options = q.options || [];
+      const scoreMode: ScoreMode = game.settings?.score_mode || 'aniqlik';
+      const isMulti = qType === 'multi';
+      const correctOptionIndices = options.map((o: any, i: number) => o.is_correct ? i : -1).filter((i: number) => i >= 0);
+
+      // ── Validatsiya (barcha savol turlari uchun) ──
+      if (isMulti) {
+        if (!Array.isArray(choices) || choices.length === 0) {
+          return errorResponse('Kamida bitta variant tanlang', 400);
+        }
+        const uniqueSet = new Set(choices);
+        if (uniqueSet.size !== choices.length) {
+          return errorResponse('Takroriy variantlar', 400);
+        }
+        for (const c of choices) {
+          if (typeof c !== 'number' || c < 0 || c >= options.length) {
+            return errorResponse('Noto\'g\'ri variant indeksi', 400);
+          }
+        }
+      } else {
+        if (choice !== null && choice !== undefined) {
+          if (typeof choice !== 'number' || choice < 0 || choice >= options.length) {
+            return errorResponse('Noto\'g\'ri variant indeksi', 400);
+          }
+        }
+      }
+
+      // ── To'g'rilik tekshiruvi ──
+      let isCorrect: boolean;
+      let fullyCorrect = false;
+      let correctSelected = 0;
+      let wrongSelected = 0;
+
+      if (isMulti) {
+        correctSelected = choices.filter((c: number) => options[c]?.is_correct).length;
+        wrongSelected = choices.filter((c: number) => !options[c]?.is_correct).length;
+        fullyCorrect = correctSelected === correctOptionIndices.length && wrongSelected === 0;
+        isCorrect = fullyCorrect;
+      } else {
+        const correctIdx = correctOptionIndices[0] ?? -1;
+        isCorrect = choice === correctIdx;
+        fullyCorrect = isCorrect;
+      }
+
       const consecutive = await getConsecutiveCorrect(game.id, player_id);
       const newConsecutive = isCorrect ? consecutive + 1 : 0;
-      const points = calculatePoints(
-        isCorrect,
-        elapsed,
-        limitMs,
-        newConsecutive,
-        game.settings?.speed_bonus !== false
-      );
-
       const elapsedMs = Math.min(elapsed, limitMs + 1000);
+
+      let points: number;
+      if (isMulti) {
+        points = calculateMultiPoints(
+          fullyCorrect,
+          correctSelected,
+          wrongSelected,
+          correctOptionIndices.length,
+          elapsedMs,
+          limitMs,
+          newConsecutive,
+          game.settings?.speed_bonus !== false,
+          scoreMode,
+          null
+        );
+      } else {
+        points = calculatePoints(
+          isCorrect,
+          elapsedMs,
+          limitMs,
+          newConsecutive,
+          game.settings?.speed_bonus !== false,
+          scoreMode,
+          null
+        );
+      }
+
+      const insertData: any = {
+        game_id: game.id,
+        player_id,
+        question_index: game.current_index,
+        received_at: nowIso(),
+        correct: isCorrect,
+        points,
+        elapsed_ms: elapsedMs,
+      };
+      if (isMulti) {
+        insertData.choices = choices;
+        insertData.choice = null;
+      } else {
+        insertData.choice = choice ?? null;
+      }
+
       const { error } = await supabaseAdmin
         .from('hukm_answers')
-        .insert({
-          game_id: game.id,
-          player_id,
-          question_index: game.current_index,
-          choice: choice ?? null,
-          received_at: nowIso(),
-          correct: isCorrect,
-          points,
-          elapsed_ms: elapsedMs,
-        });
+        .insert(insertData);
       if (error) {
         if (error.code === '23505') return errorResponse('Allaqachon javob bergansiz', 409);
         return errorResponse('Javob saqlanmadi', 500);
       }
 
-      // Javobda signal yuborilmaydi — host polling bilan ko'radi
       return jsonResponse({ received: true });
+    }
+
+    // ── PLAYER: ishonch belgilash (ishonch rejimi uchun) ───────────────────
+    if (method === 'POST' && segments[0] === 'game' && segments[1] && segments[2] === 'confidence') {
+      const body = await req.json();
+      const { player_id, player_token, confidence } = body;
+      if (!player_id || !player_token) return errorResponse('player_id va player_token kerak', 400);
+      if (confidence !== 'aniq' && confidence !== 'taxmin') {
+        return errorResponse('confidence "aniq" yoki "taxmin" bo\'lishi kerak', 400);
+      }
+
+      const { valid, kicked } = await verifyPlayerToken(player_id, player_token);
+      if (!valid) return errorResponse('Vakolat yo\'q', 403);
+      if (kicked) return errorResponse('Siz o\'yindan chiqarilgansiz', 403);
+
+      const { data: game } = await supabaseAdmin
+        .from('hukm_games')
+        .select('id, status, current_index, opened_at, settings')
+        .eq('id', segments[1])
+        .maybeSingle();
+      if (!game) return errorResponse('O\'yin topilmadi', 404);
+
+      // Timer oynasi ichida bo'lishi kerak
+      const questions = await getGameQuestions(game.id);
+      const q = questions[game.current_index];
+      if (!q) return errorResponse('Savol topilmadi', 404);
+      const limitMs = (q.time_limit_s || 20) * 1000;
+      const elapsed = Date.now() - new Date(game.opened_at).getTime();
+      if (elapsed > limitMs + 1000) {
+        return errorResponse('Vaqt tugagan', 408);
+      }
+
+      // Avval javob berilgan bo'lishi kerak
+      const { data: existingAnswer } = await supabaseAdmin
+        .from('hukm_answers')
+        .select('id, choice, choices, correct, points, elapsed_ms, confidence')
+        .eq('game_id', game.id)
+        .eq('player_id', player_id)
+        .eq('question_index', game.current_index)
+        .maybeSingle();
+      if (!existingAnswer) {
+        return errorResponse('Avval javob bering', 400);
+      }
+
+      // Bir martalik, o'zgartirib bo'lmaydi
+      if (existingAnswer.confidence !== null) {
+        return errorResponse('Ishonch allaqachon belgilangan', 409);
+      }
+
+      // Ballni qayta hisoblash
+      const scoreMode: ScoreMode = game.settings?.score_mode || 'aniqlik';
+      const consecutive = await getConsecutiveCorrect(game.id, player_id);
+      const conf = confidence as Confidence;
+      const isMulti = Array.isArray(existingAnswer.choices);
+      const qOptions = q.options || [];
+
+      let newPoints: number;
+      if (isMulti) {
+        const correctOptionIndices = qOptions.map((o: any, i: number) => o.is_correct ? i : -1).filter((i: number) => i >= 0);
+        const userChoices = existingAnswer.choices || [];
+        const correctSelected = userChoices.filter((c: number) => qOptions[c]?.is_correct).length;
+        const wrongSelected = userChoices.filter((c: number) => !qOptions[c]?.is_correct).length;
+        const fullyCorrect = correctSelected === correctOptionIndices.length && wrongSelected === 0;
+        newPoints = calculateMultiPoints(
+          fullyCorrect, correctSelected, wrongSelected, correctOptionIndices.length,
+          existingAnswer.elapsed_ms, limitMs, consecutive,
+          game.settings?.speed_bonus !== false, scoreMode, conf
+        );
+      } else {
+        newPoints = calculatePoints(
+          existingAnswer.correct, existingAnswer.elapsed_ms, limitMs, consecutive,
+          game.settings?.speed_bonus !== false, scoreMode, conf
+        );
+      }
+
+      await supabaseAdmin
+        .from('hukm_answers')
+        .update({ confidence, points: newPoints })
+        .eq('id', existingAnswer.id);
+
+      return jsonResponse({ received: true, points: newPoints });
     }
 
     // ── PLAYER: o'z xatolari ────────────────────────────────────────────────
@@ -1337,10 +1502,10 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (!game) return errorResponse('O\'yin topilmadi', 404);
 
-      const questions = await getQuizQuestions(game.quiz_id);
+      const questions = await getGameQuestions(segments[1]);
       const { data: answers } = await supabaseAdmin
         .from('hukm_answers')
-        .select('question_index, choice, correct')
+        .select('question_index, choice, choices, correct')
         .eq('game_id', segments[1])
         .eq('player_id', playerId);
       const mistakes = (answers || [])
@@ -1348,11 +1513,13 @@ Deno.serve(async (req: Request) => {
         .map(a => {
           const q = questions[a.question_index];
           if (!q) return null;
+          const correctIndices = (q.options || []).map((o: any, i: number) => o.is_correct ? i : -1).filter((i: number) => i >= 0);
           return {
             question_index: a.question_index,
             text: q.text,
-            my_choice: a.choice,
-            correct_index: (q.options || []).findIndex((o: any) => o.is_correct),
+            my_choice: a.choices ?? a.choice,
+            correct_index: correctIndices.length === 1 ? correctIndices[0] : -1,
+            correct_indices: correctIndices,
             options: q.options,
             explanation: q.explanation || '',
             legal_basis: q.legal_basis || '',
@@ -1447,7 +1614,7 @@ Deno.serve(async (req: Request) => {
       const players = await getGamePlayers(gameId);
       const { data: answers } = await supabaseAdmin
         .from('hukm_answers')
-        .select('player_id, question_index, choice, correct, points, elapsed_ms')
+        .select('player_id, question_index, choice, choices, correct, points, elapsed_ms, confidence')
         .eq('game_id', gameId);
 
       // Baho shkalasi
@@ -1500,8 +1667,8 @@ Deno.serve(async (req: Request) => {
       const students = players.map((p, idx) => {
         const pAns = (answers || []).filter(a => a.player_id === p.id);
         const ranked = [...players].sort((a, b) => {
-          const ap = (answers || []).filter(x => x.player_id === a.id).reduce((s, x) => s + x.points, 0);
-          const bp = (answers || []).filter(x => x.player_id === b.id).reduce((s, x) => s + x.points, 0);
+          const ap = totalScore((answers || []).filter(x => x.player_id === a.id).map(x => x.points));
+          const bp = totalScore((answers || []).filter(x => x.player_id === b.id).map(x => x.points));
           return bp - ap;
         });
         const rank = ranked.findIndex(r => r.id === p.id) + 1;
@@ -1797,11 +1964,11 @@ async function getFullReport(gameId: string) {
     .maybeSingle();
   if (!game) return { per_question: [], players: [] };
 
-  const questions = await getQuizQuestions(game.quiz_id);
+  const questions = await getGameQuestions(gameId);
   const players = await getGamePlayers(gameId);
   const { data: answers } = await supabaseAdmin
     .from('hukm_answers')
-    .select('player_id, question_index, choice, correct, points, received_at')
+    .select('player_id, question_index, choice, choices, correct, points, received_at')
     .eq('game_id', gameId);
 
   const perQuestion = questions.map((q, i) => {
@@ -1810,17 +1977,22 @@ async function getFullReport(gameId: string) {
     const correctCount = qAnswers.filter(a => a.correct).length;
     const correctPct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
     const optionCounts = (q.options || []).map((_: any, oi: number) =>
-      qAnswers.filter(a => a.choice === oi).length
+      qAnswers.filter(a => a.choice === oi || (Array.isArray(a.choices) && a.choices.includes(oi))).length
     );
     const noAnswer = players.length - total;
     const wrongAnswers = qAnswers.filter(a => !a.correct);
     const mostCommonWrong = wrongAnswers.length > 0
-      ? wrongAnswers.reduce((acc, a) => { acc[a.choice] = (acc[a.choice] || 0) + 1; return acc; }, {} as Record<number, number>)
+      ? wrongAnswers.reduce((acc, a) => {
+          const userChoices = Array.isArray(a.choices) ? a.choices : (a.choice !== null ? [a.choice] : []);
+          for (const c of userChoices) { acc[c] = (acc[c] || 0) + 1; }
+          return acc;
+        }, {} as Record<number, number>)
       : {};
     const mostCommonWrongIdx = Object.entries(mostCommonWrong).sort((a, b) => b[1] - a[1])[0]?.[0];
     const mostCommonWrongPct = wrongAnswers.length > 0 && total > 0
       ? Math.round((parseInt(Object.entries(mostCommonWrong).sort((a, b) => b[1] - a[1])[0][1]) / total) * 100)
       : 0;
+    const correctIndices = (q.options || []).map((o: any, i: number) => o.is_correct ? i : -1).filter((i: number) => i >= 0);
     return {
       question_index: i,
       text: q.text,
@@ -1834,14 +2006,15 @@ async function getFullReport(gameId: string) {
       most_common_wrong_pct: mostCommonWrongPct,
       explanation: q.explanation || '',
       legal_basis: q.legal_basis || '',
-      correct_index: (q.options || []).findIndex((o: any) => o.is_correct),
+      correct_index: correctIndices.length === 1 ? correctIndices[0] : -1,
+      correct_indices: correctIndices,
       options: q.options,
     };
   });
 
   const playerResults = players.map(p => {
     const pAnswers = (answers || []).filter(a => a.player_id === p.id);
-    const totalPoints = pAnswers.reduce((s, a) => s + a.points, 0);
+    const totalPoints = totalScore(pAnswers.map(a => a.points));
     const correctCount = pAnswers.filter(a => a.correct).length;
     const totalCount = pAnswers.length;
     const avgTime = totalCount > 0
@@ -1861,7 +2034,7 @@ async function getFullReport(gameId: string) {
       avg_time_s: avgTime,
       answers: pAnswers.map(a => ({
         question_index: a.question_index,
-        choice: a.choice,
+        choice: a.choices ?? a.choice,
         correct: a.correct,
         points: a.points,
       })),
@@ -2024,13 +2197,7 @@ Muhim:
 // ─── YORDAMCHI ────────────────────────────────────────────────────────────────
 
 async function getQuizQuestionsByGame(gameId: string) {
-  const { data: game } = await supabaseAdmin
-    .from('hukm_games')
-    .select('quiz_id')
-    .eq('id', gameId)
-    .maybeSingle();
-  if (!game) return [];
-  return getQuizQuestions(game.quiz_id);
+  return getGameQuestions(gameId);
 }
 
 
