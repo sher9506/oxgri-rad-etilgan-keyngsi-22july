@@ -33,6 +33,9 @@ interface HukmQuestion {
   legal_basis: string;
   hint: string;
   source?: string;
+  kodeks_nomi?: string;
+  mavzu?: string;
+  modda_raqami?: string;
 }
 
 interface HukmSession {
@@ -46,10 +49,14 @@ interface HukmSession {
   avg_correct_pct: number;
   avg_points: number;
   finishers_pct: number;
+  group_label?: string;
   hukm_quizzes?: { title: string };
 }
 
 type HukmView = 'list' | 'create_quiz' | 'edit_questions' | 'host_game' | 'sessions' | 'session_detail' | 'ai_job';
+
+// Lazy import HukmReport to avoid circular dependency issues
+import { HukmReport } from '@/components/features/HukmReport';
 
 async function hukmFetch(path: string, method = 'GET', body?: any) {
   const url = `${supabaseUrl}/functions/v1/hukm-api/${path}`;
@@ -89,6 +96,7 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
   const [copiedPin, setCopiedPin] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   // Host resume
   const [resumableGame, setResumableGame] = useState<any>(null);
@@ -133,6 +141,9 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
   const [aiJobStatus, setAiJobStatus] = useState<'idle' | 'queued' | 'processing' | 'done' | 'error'>('idle');
   const [aiQuestions, setAiQuestions] = useState<HukmQuestion[]>([]);
   const [aiError, setAiError] = useState('');
+
+  // Game start group label
+  const [gameGroupLabel, setGameGroupLabel] = useState('');
 
   // Question editor
   const [editingQuestion, setEditingQuestion] = useState<HukmQuestion | null>(null);
@@ -238,12 +249,13 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
   const handleStartGame = async (quiz: HukmQuiz) => {
     if (!effectiveUstozId) return;
     setCreatingGame(true);
-    const data = await hukmFetch('game', 'POST', { ustoz_id: effectiveUstozId, quiz_id: quiz.id });
+    const data = await hukmFetch('game', 'POST', { ustoz_id: effectiveUstozId, quiz_id: quiz.id, group_label: gameGroupLabel.trim() || undefined });
     setCreatingGame(false);
     if (data?.game && data?.host_token) {
       setActiveGame(data.game);
       setHostToken(data.host_token);
       setActiveQuiz(quiz);
+      setGameGroupLabel('');
       setView('host_game');
     } else {
       toast({ title: data?.error || "O'yin yaratilmadi", variant: 'destructive' });
@@ -360,7 +372,7 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
 
   // Question editor helpers
   const openEditQuestion = (q: HukmQuestion, idx: number) => { setEditingQuestion({ ...q }); setEditingIndex(idx); };
-  const openNewQuestion = () => setEditingQuestion({ type: 'variant4', text: '', case_text: '', options: [{ text: '', is_correct: true }, { text: '', is_correct: false }, { text: '', is_correct: false }, { text: '', is_correct: false }], time_limit_s: 20, explanation: '', legal_basis: '', hint: '' });
+  const openNewQuestion = () => setEditingQuestion({ type: 'variant4', text: '', case_text: '', options: [{ text: '', is_correct: true }, { text: '', is_correct: false }, { text: '', is_correct: false }, { text: '', is_correct: false }], time_limit_s: 20, explanation: '', legal_basis: '', hint: '', kodeks_nomi: '', mavzu: '', modda_raqami: '' });
 
   const handleSaveQuestion = () => {
     if (!editingQuestion) return;
@@ -627,6 +639,20 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
               <Input value={q.legal_basis} onChange={e => setEditingQuestion({ ...q, legal_basis: e.target.value })} placeholder="JK 97-modda..." className="mt-1.5 rounded-xl" />
             </div>
           </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs font-bold">Kodeks</Label>
+              <Input value={q.kodeks_nomi || ''} onChange={e => setEditingQuestion({ ...q, kodeks_nomi: e.target.value })} placeholder="JK..." className="mt-1.5 rounded-xl text-xs" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Mavzu</Label>
+              <Input value={q.mavzu || ''} onChange={e => setEditingQuestion({ ...q, mavzu: e.target.value })} placeholder="Jinoyat tarkibi..." className="mt-1.5 rounded-xl text-xs" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Modda raqami</Label>
+              <Input value={q.modda_raqami || ''} onChange={e => setEditingQuestion({ ...q, modda_raqami: e.target.value })} placeholder="97..." className="mt-1.5 rounded-xl text-xs" />
+            </div>
+          </div>
           <div>
             <Label className="text-xs font-bold">Izoh (ixtiyoriy)</Label>
             <Textarea value={q.explanation} onChange={e => setEditingQuestion({ ...q, explanation: e.target.value })} placeholder="Nega bu javob to'g'ri..." className="mt-1.5 rounded-xl min-h-[70px]" />
@@ -706,6 +732,8 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-900 line-clamp-2">{q.text}</p>
                     <div className="flex flex-wrap gap-1 mt-1.5">
+                      {q.kodeks_nomi && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{q.kodeks_nomi}</span>}
+                      {q.mavzu && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">{q.mavzu}</span>}
                       {q.options.map((o, j) => (
                         <span key={j} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.is_correct ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                           {['A','B','C','D'][j]}: {o.text.slice(0, 20)}{o.text.length > 20 ? '…' : ''}
@@ -731,10 +759,17 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
         )}
 
         {questions.length > 0 && (
-          <Button onClick={() => handleStartGame(activeQuiz)} disabled={creatingGame} className="w-full rounded-xl shadow-md shadow-blue-500/15">
-            {creatingGame ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Play className="h-4 w-4 mr-1.5" />}
-            O'yin boshlash ({questions.length} ta savol)
-          </Button>
+          <>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50/50 p-3">
+              <Label className="text-xs font-bold">Guruh nomi (ixtiyoriy)</Label>
+              <Input value={gameGroupLabel} onChange={e => setGameGroupLabel(e.target.value)} placeholder="Masalan: 2024-Yuridik-1..." className="mt-1.5 rounded-xl text-sm" />
+              <p className="text-[10px] text-gray-400 mt-1">Analitika uchun guruh belgilash</p>
+            </div>
+            <Button onClick={() => handleStartGame(activeQuiz)} disabled={creatingGame} className="w-full rounded-xl shadow-md shadow-blue-500/15">
+              {creatingGame ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Play className="h-4 w-4 mr-1.5" />}
+              O'yin boshlash ({questions.length} ta savol)
+            </Button>
+          </>
         )}
       </div>
     );
@@ -835,10 +870,11 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {sessions.map(s => (
-              <div key={s.id} className="rounded-3xl bg-white border border-gray-100/80 shadow-sm hover:shadow-md transition-all duration-200 p-4 space-y-3">
+              <div key={s.id} onClick={() => { setActiveSessionId(s.id); setView('session_detail'); }} className="cursor-pointer rounded-3xl bg-white border border-gray-100/80 shadow-sm hover:shadow-md transition-all duration-200 p-4 space-y-3">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900 line-clamp-1">{s.hukm_quizzes?.title || 'Viktorina'}</h3>
                   <p className="text-[11px] text-gray-400 mt-0.5">{new Date(s.started_at).toLocaleString('uz-UZ')}</p>
+                  {s.group_label && <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 mt-1">{s.group_label}</span>}
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-xl bg-blue-50/80 p-2 text-center">
@@ -860,6 +896,11 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
         )}
       </div>
     );
+  }
+
+  // ── SESSION DETAIL (REPORT) VIEW ────────────────────────────────────────────
+  if (view === 'session_detail' && activeSessionId && effectiveUstozId) {
+    return <HukmReport sessionId={activeSessionId} ustozId={effectiveUstozId} onExit={() => { setActiveSessionId(null); setView('sessions'); }} />;
   }
 
   // ── CREATE QUIZ VIEW ────────────────────────────────────────────────────────

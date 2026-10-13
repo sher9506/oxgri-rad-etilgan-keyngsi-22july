@@ -6,12 +6,13 @@
 // v3.1: rejoin tugagan o'yinga natija qaytaradi, FN_VERSION belgisi qo'shildi.
 // v3.3: broadcast REST API orqali (WebSocket subscribe/send/remove poyga xavfi yo'q).
 
-const FN_VERSION = 'hukm-api-v3.3';
+const FN_VERSION = 'hukm-api-v4.2';
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { calculatePoints } from '../_shared/hukm-scoring.ts';
 import { callAIWithFallback } from '../_shared/ai-provider.ts';
+import { analyzeQuestion, analyzeStudentInGame, analyzeStudentCrossGame, computeGrade, ANALYTICS, readingFloorMs, isGuess } from '../_shared/hukm-analytics.ts';
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -298,6 +299,13 @@ async function createSession(gameId: string): Promise<void> {
     .eq('id', game.quiz_id)
     .maybeSingle();
 
+  // Snapshot va group_label ni game'dan session'ga nusxalash
+  const { data: gameRow } = await supabaseAdmin
+    .from('hukm_games')
+    .select('questions_snapshot, group_label')
+    .eq('id', gameId)
+    .maybeSingle();
+
   await supabaseAdmin.from('hukm_sessions').insert({
     quiz_id: game.quiz_id,
     game_id: gameId,
@@ -309,6 +317,8 @@ async function createSession(gameId: string): Promise<void> {
     avg_correct_pct: avgCorrectPct,
     avg_points: avgPoints,
     finishers_pct: finishersPct,
+    questions_snapshot: gameRow?.questions_snapshot || null,
+    group_label: gameRow?.group_label || null,
   });
 }
 
@@ -583,9 +593,12 @@ Deno.serve(async (req: Request) => {
       if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
       if (!await verifyUstoz(body.ustoz_id)) return errorResponse('Vakolat yo\'q', 403);
       if (!await verifyQuizOwner(segments[1], body.ustoz_id)) return errorResponse('Vakolat yo\'q', 403);
+      const updates: Record<string, any> = { title: body.title, description: body.description || '', updated_at: new Date().toISOString() };
+      if (body.default_kodeks !== undefined) updates.default_kodeks = body.default_kodeks || null;
+      if (body.default_mavzu !== undefined) updates.default_mavzu = body.default_mavzu || null;
       const { data, error } = await supabaseAdmin
         .from('hukm_quizzes')
-        .update({ title: body.title, description: body.description || '', updated_at: new Date().toISOString() })
+        .update(updates)
         .eq('id', segments[1])
         .select()
         .single();
@@ -630,6 +643,9 @@ Deno.serve(async (req: Request) => {
           hint: q.hint || '',
           basis_check: q.basis_check || null,
           source: q.source || 'manual',
+          kodeks_nomi: q.kodeks_nomi || null,
+          mavzu: q.mavzu || null,
+          modda_raqami: q.modda_raqami || null,
         }));
         const { error } = await supabaseAdmin.from('hukm_questions').insert(rows);
         if (error) return errorResponse('Savollar saqlanmadi', 500);
@@ -883,6 +899,31 @@ Deno.serve(async (req: Request) => {
         pin = randomPin();
       }
 
+      // Snapshot: savollarni o'yin yaratilganda nusxalash
+      const quizQuestions = await getQuizQuestions(body.quiz_id);
+      const { data: quizRow } = await supabaseAdmin
+        .from('hukm_quizzes')
+        .select('default_kodeks, default_mavzu')
+        .eq('id', body.quiz_id)
+        .maybeSingle();
+      const defKodeks = quizRow?.default_kodeks || null;
+      const defMavzu = quizRow?.default_mavzu || null;
+      const questionsSnapshot = quizQuestions.map((q: any, i: number) => ({
+        question_id: q.id,
+        position: i,
+        type: q.type,
+        text: q.text,
+        case_text: q.case_text || '',
+        options: q.options,
+        correct_index: (q.options || []).findIndex((o: any) => o.is_correct),
+        time_limit_s: q.time_limit_s || 20,
+        explanation: q.explanation || '',
+        legal_basis: q.legal_basis || '',
+        kodeks_nomi: q.kodeks_nomi || defKodeks,
+        mavzu: q.mavzu || defMavzu,
+        modda_raqami: q.modda_raqami || null,
+      }));
+
       const { data, error } = await supabaseAdmin
         .from('hukm_games')
         .insert({
@@ -891,6 +932,8 @@ Deno.serve(async (req: Request) => {
           status: 'lobby',
           host_token_hash: hostTokenHash,
           settings,
+          questions_snapshot: questionsSnapshot,
+          group_label: body.group_label || null,
         })
         .select()
         .single();
@@ -1256,6 +1299,7 @@ Deno.serve(async (req: Request) => {
         game.settings?.speed_bonus !== false
       );
 
+      const elapsedMs = Math.min(elapsed, limitMs + 1000);
       const { error } = await supabaseAdmin
         .from('hukm_answers')
         .insert({
@@ -1266,6 +1310,7 @@ Deno.serve(async (req: Request) => {
           received_at: nowIso(),
           correct: isCorrect,
           points,
+          elapsed_ms: elapsedMs,
         });
       if (error) {
         if (error.code === '23505') return errorResponse('Allaqachon javob bergansiz', 409);
@@ -1324,6 +1369,415 @@ Deno.serve(async (req: Request) => {
       if (!await verifyHostToken(segments[1], hostToken)) return errorResponse('Vakolat yo\'q', 403);
       const report = await getFullReport(segments[1]);
       return jsonResponse(report);
+    }
+
+    // ── ANALITIKA: tag options ─────────────────────────────────────────────
+    if (method === 'GET' && segments[0] === 'tag-options') {
+      const ustozId = url.searchParams.get('ustoz_id') || '';
+      if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
+      if (!await verifyUstoz(ustozId)) return errorResponse('Vakolat yo\'q', 403);
+
+      // Kodeks ro'yxati — qonun_moddalari'dan noyob
+      const { data: kodeksRows } = await supabaseAdmin
+        .from('qonun_moddalari')
+        .select('kodeks_nomi')
+        .order('kodeks_nomi');
+      const kodeksList = [...new Set((kodeksRows || []).map(r => r.kodeks_nomi).filter(Boolean))];
+
+      // Ustozning oldingi mavzulari
+      const { data: quizIds } = await supabaseAdmin
+        .from('hukm_quizzes')
+        .select('id')
+        .eq('owner', ustozId);
+      const ids = (quizIds || []).map(q => q.id);
+      let mavzuList: string[] = [];
+      let groupList: string[] = [];
+      if (ids.length > 0) {
+        const { data: qRows } = await supabaseAdmin
+          .from('hukm_questions')
+          .select('mavzu')
+          .in('quiz_id', ids)
+          .not('mavzu', 'is', null);
+        mavzuList = [...new Set((qRows || []).map(r => r.mavzu).filter(Boolean))];
+        // Guruhlar — session'lardan
+        const { data: sessRows } = await supabaseAdmin
+          .from('hukm_sessions')
+          .select('group_label')
+          .eq('ustoz_id', ustozId)
+          .not('group_label', 'is', null);
+        groupList = [...new Set((sessRows || []).map(r => r.group_label).filter(Boolean))];
+      }
+
+      return jsonResponse({ kodeks: kodeksList, mavzu: mavzuList, groups: groupList });
+    }
+
+    // ── ANALITIKA: session (bir o'yin tahlili) ────────────────────────────
+    if (method === 'GET' && segments[0] === 'analytics_session' && segments[1]) {
+      const ustozId = url.searchParams.get('ustoz_id') || '';
+      if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
+      if (!await verifyUstoz(ustozId)) return errorResponse('Vakolat yo\'q', 403);
+
+      const { data: session } = await supabaseAdmin
+        .from('hukm_sessions')
+        .select('*')
+        .eq('id', segments[1])
+        .maybeSingle();
+      if (!session) return errorResponse('Sessiya topilmadi', 404);
+      if (session.ustoz_id !== ustozId) return errorResponse('Vakolat yo\'q', 403);
+
+      const gameId = session.game_id;
+      if (!gameId) return jsonResponse({ session, questions: [], students: [], grade_scale: null });
+
+      // Snapshot yoki jonli savollar
+      const { data: gameRow } = await supabaseAdmin
+        .from('hukm_games')
+        .select('questions_snapshot')
+        .eq('id', gameId)
+        .maybeSingle();
+      let questions = gameRow?.questions_snapshot || session.questions_snapshot;
+      if (!questions) {
+        questions = (await getQuizQuestions(session.quiz_id)).map((q: any, i: number) => ({
+          question_id: q.id, position: i, type: q.type, text: q.text, case_text: q.case_text || '',
+          options: q.options, correct_index: (q.options || []).findIndex((o: any) => o.is_correct),
+          time_limit_s: q.time_limit_s || 20, explanation: q.explanation || '', legal_basis: q.legal_basis || '',
+          kodeks_nomi: q.kodeks_nomi || null, mavzu: q.mavzu || null, modda_raqami: q.modda_raqami || null,
+        }));
+      }
+
+      const players = await getGamePlayers(gameId);
+      const { data: answers } = await supabaseAdmin
+        .from('hukm_answers')
+        .select('player_id, question_index, choice, correct, points, elapsed_ms')
+        .eq('game_id', gameId);
+
+      // Baho shkalasi
+      const { data: scaleRow } = await supabaseAdmin
+        .from('hukm_grade_scales')
+        .select('*')
+        .eq('ustoz_id', ustozId)
+        .maybeSingle();
+      const scale = scaleRow || { scale: '5', t5: 86, t4: 71, t3: 55 };
+
+      // O'quvchilarning shu savoldan tashqari to'g'ri javoblari (farqlash uchun)
+      const playerCorrectExcl: Record<string, number> = {};
+      for (const p of players) {
+        const pAns = (answers || []).filter(a => a.player_id === p.id);
+        playerCorrectExcl[p.id] = pAns.filter(a => a.correct).length;
+      }
+
+      // Savol tahlili
+      const questionAnalytics = questions.map((q: any, i: number) => {
+        const qAnswers = (answers || []).filter(a => a.question_index === i);
+        const exclMap: Record<string, number> = {};
+        for (const p of players) {
+          exclMap[p.id] = (playerCorrectExcl[p.id] || 0) - (qAnswers.find(a => a.player_id === p.id && a.correct) ? 1 : 0);
+        }
+        const aq = analyzeQuestion({
+          questionIndex: i,
+          question: q,
+          answers: qAnswers,
+          totalPlayers: players.length,
+          playerCorrectExcludingThis: exclMap,
+        });
+        return {
+          ...aq,
+          options: q.options || [],
+          correct_index: (q.options || []).findIndex((o: any) => o.is_correct),
+          explanation: q.explanation || '',
+          legal_basis: q.legal_basis || '',
+          kodeks_nomi: q.kodeks_nomi || null,
+          mavzu: q.mavzu || null,
+          modda_raqami: q.modda_raqami || null,
+          total_answers: aq.answered_count,
+          total_players: players.length,
+          most_common_wrong: aq.most_common_wrong_index,
+          most_common_wrong_pct: aq.most_common_wrong_pct,
+          flags: aq.flags.map((f: any) => f.chip),
+        };
+      });
+
+      // O'quvchi tahlili
+      const students = players.map((p, idx) => {
+        const pAns = (answers || []).filter(a => a.player_id === p.id);
+        const ranked = [...players].sort((a, b) => {
+          const ap = (answers || []).filter(x => x.player_id === a.id).reduce((s, x) => s + x.points, 0);
+          const bp = (answers || []).filter(x => x.player_id === b.id).reduce((s, x) => s + x.points, 0);
+          return bp - ap;
+        });
+        const rank = ranked.findIndex(r => r.id === p.id) + 1;
+        const sa = analyzeStudentInGame(p, pAns, questions.length, questions, rank);
+        sa.correct_pct = questions.length > 0 ? Math.round((sa.correct_count / questions.length) * 100) : 0;
+        sa.grade = computeGrade(sa.correct_pct, scale);
+        sa.is_guess = sa.guess_count > 0 && sa.guess_count >= Math.ceil(questions.length * 0.3);
+        return sa;
+      });
+
+      // Talaba_id bor o'quvchilar uchun to'liq ism
+      const talabaIds = students.filter(s => s.talaba_id).map(s => s.talaba_id) as string[];
+      let talabaInfo: Record<string, { ism: string; familiya: string }> = {};
+      if (talabaIds.length > 0) {
+        const { data: talabalar } = await supabaseAdmin
+          .from('talabalar')
+          .select('id, ism, familiya')
+          .in('id', talabaIds);
+        for (const t of talabalar || []) {
+          talabaInfo[t.id] = { ism: t.ism || '', familiya: t.familiya || '' };
+        }
+      }
+      for (const s of students) {
+        if (s.talaba_id && talabaInfo[s.talaba_id]) {
+          s.full_name = `${talabaInfo[s.talaba_id].ism} ${talabaInfo[s.talaba_id].familiya}`.trim();
+        }
+      }
+
+      const guestCount = students.filter(s => !s.talaba_id).length;
+
+      return jsonResponse({
+        session,
+        questions: questionAnalytics,
+        students,
+        guest_count: guestCount,
+        grade_scale: scale,
+      });
+    }
+
+    // ── ANALITIKA: student (o'yinlararo) ───────────────────────────────────
+    if (method === 'GET' && segments[0] === 'analytics_student') {
+      const ustozId = url.searchParams.get('ustoz_id') || '';
+      const talabaId = url.searchParams.get('talaba_id') || '';
+      if (!ustozId || !talabaId) return errorResponse('ustoz_id va talaba_id kerak', 400);
+      if (!await verifyUstoz(ustozId)) return errorResponse('Vakolat yo\'q', 403);
+
+      // Ustozning barcha session'lari
+      const { data: sessions } = await supabaseAdmin
+        .from('hukm_sessions')
+        .select('id, game_id, started_at, questions_snapshot')
+        .eq('ustoz_id', ustozId)
+        .order('started_at', { ascending: true });
+      if (!sessions || sessions.length === 0) return jsonResponse({ games: [], tag_stats: [], needs_help: false, help_reasons: [] });
+
+      const gameResults: { session_id: string; correct_pct: number; date: string; guess_share?: number }[] = [];
+      const tagResultsMap: Record<string, { correct: number; total: number }> = {};
+
+      for (const sess of sessions) {
+        if (!sess.game_id) continue;
+        const { data: player } = await supabaseAdmin
+          .from('hukm_players')
+          .select('id')
+          .eq('game_id', sess.game_id)
+          .eq('talaba_id', talabaId)
+          .maybeSingle();
+        if (!player) continue;
+
+        const { data: answers } = await supabaseAdmin
+          .from('hukm_answers')
+          .select('question_index, correct, elapsed_ms')
+          .eq('game_id', sess.game_id)
+          .eq('player_id', player.id);
+        if (!answers || answers.length === 0) continue;
+
+        const correctCount = answers.filter(a => a.correct).length;
+        const pct = Math.round((correctCount / answers.length) * 100);
+
+        // Guess share hisoblash
+        let qs = sess.questions_snapshot;
+        if (!qs) {
+          const { data: gRow } = await supabaseAdmin
+            .from('hukm_games')
+            .select('questions_snapshot')
+            .eq('id', sess.game_id)
+            .maybeSingle();
+          qs = gRow?.questions_snapshot || null;
+        }
+        let guessCount = 0;
+        if (qs) {
+          for (const a of answers) {
+            const q = qs[a.question_index];
+            if (q && isGuess(!a.correct, a.elapsed_ms ?? null, q.text || '', q.case_text || '')) {
+              guessCount++;
+            }
+          }
+        }
+        const guessShare = answers.length > 0 ? Math.round((guessCount / answers.length) * 100) : 0;
+        gameResults.push({ session_id: sess.id, correct_pct: pct, date: sess.started_at || '', guess_share: guessShare });
+
+        // Teg bo'yicha — snapshot'dan
+        if (qs) {
+          for (const a of answers) {
+            const q = qs[a.question_index];
+            if (!q) continue;
+            const tag = q.kodeks_nomi || q.mavzu || 'Teglanmagan';
+            if (!tagResultsMap[tag]) tagResultsMap[tag] = { correct: 0, total: 0 };
+            tagResultsMap[tag].total++;
+            if (a.correct) tagResultsMap[tag].correct++;
+          }
+        }
+      }
+
+      const tagResults = Object.entries(tagResultsMap).map(([tag, v]) => ({
+        tag, correct_count: v.correct, total_count: v.total,
+      }));
+
+      const result = analyzeStudentCrossGame(talabaId, gameResults, tagResults);
+      return jsonResponse(result);
+    }
+
+    // ── ANALITIKA: group (guruh bo'yicha issiqlik xaritasi) ───────────────
+    if (method === 'GET' && segments[0] === 'analytics_group') {
+      const ustozId = url.searchParams.get('ustoz_id') || '';
+      if (!ustozId) return errorResponse('ustoz_id kerak', 400);
+      if (!await verifyUstoz(ustozId)) return errorResponse('Vakolat yo\'q', 403);
+
+      const { data: sessions } = await supabaseAdmin
+        .from('hukm_sessions')
+        .select('id, game_id, group_label, started_at, questions_snapshot')
+        .eq('ustoz_id', ustozId)
+        .order('started_at', { ascending: false });
+      if (!sessions || sessions.length === 0) return jsonResponse({ groups: [], heat: [], weak_topics: [], guest_count: 0 });
+
+      // Guruh nomlari
+      const groupLabels = [...new Set((sessions || []).map(s => s.group_label).filter(Boolean))] as string[];
+
+      // Har bir talaba × teg bo'yicha to'plash
+      const heatMap: Record<string, Record<string, { correct: number; total: number }>> = {};
+      let guestCount = 0;
+      const allTags = new Set<string>();
+
+      for (const sess of sessions || []) {
+        if (!sess.game_id) continue;
+        const players = await getGamePlayers(sess.game_id);
+        for (const p of players) {
+          if (!p.talaba_id) { guestCount++; continue; }
+          if (!heatMap[p.talaba_id]) heatMap[p.talaba_id] = {};
+          const { data: answers } = await supabaseAdmin
+            .from('hukm_answers')
+            .select('question_index, correct')
+            .eq('game_id', sess.game_id)
+            .eq('player_id', p.id);
+          if (!answers) continue;
+
+          let qs = sess.questions_snapshot;
+          if (!qs) {
+            const { data: gRow } = await supabaseAdmin
+              .from('hukm_games')
+              .select('questions_snapshot')
+              .eq('id', sess.game_id)
+              .maybeSingle();
+            qs = gRow?.questions_snapshot || null;
+          }
+          if (!qs) continue;
+
+          for (const a of answers) {
+            const q = qs[a.question_index];
+            if (!q) continue;
+            const tag = q.kodeks_nomi || q.mavzu || 'Teglanmagan';
+            allTags.add(tag);
+            if (!heatMap[p.talaba_id][tag]) heatMap[p.talaba_id][tag] = { correct: 0, total: 0 };
+            heatMap[p.talaba_id][tag].total++;
+            if (a.correct) heatMap[p.talaba_id][tag].correct++;
+          }
+        }
+      }
+
+      // Talaba ismlari
+      const talabaIds = Object.keys(heatMap);
+      let talabaInfo: Record<string, string> = {};
+      if (talabaIds.length > 0) {
+        const { data: talabalar } = await supabaseAdmin
+          .from('talabalar')
+          .select('id, ism, familiya')
+          .in('id', talabaIds);
+        for (const t of talabalar || []) {
+          talabaInfo[t.id] = `${t.ism || ''} ${t.familiya || ''}`.trim();
+        }
+      }
+
+      const tags = Array.from(allTags).sort();
+      const heat = talabaIds.map(tid => ({
+        talaba_id: tid,
+        name: talabaInfo[tid] || 'Noma\'lum',
+        tags: tags.map(tag => {
+          const v = heatMap[tid][tag] || { correct: 0, total: 0 };
+          return { tag, correct_pct: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0, count: v.total };
+        }),
+      }));
+
+      // Eng zaif 5 mavzu
+      const tagTotals: Record<string, { correct: number; total: number; students: Set<string> }> = {};
+      for (const tid of talabaIds) {
+        for (const tag of tags) {
+          const v = heatMap[tid][tag];
+          if (!v || v.total === 0) continue;
+          if (!tagTotals[tag]) tagTotals[tag] = { correct: 0, total: 0, students: new Set() };
+          tagTotals[tag].correct += v.correct;
+          tagTotals[tag].total += v.total;
+          tagTotals[tag].students.add(tid);
+        }
+      }
+      const weakTopics = Object.entries(tagTotals)
+        .map(([tag, v]) => ({
+          tag,
+          correct_pct: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
+          answer_count: v.total,
+          student_count: v.students.size,
+        }))
+        .sort((a, b) => a.correct_pct - b.correct_pct)
+        .slice(0, 5);
+
+      return jsonResponse({ groups: groupLabels, tags, heat, weak_topics: weakTopics, guest_count: guestCount });
+    }
+
+    // ── BAHO SHKALASI ──────────────────────────────────────────────────────
+    if (method === 'GET' && segments[0] === 'grade_scale_get') {
+      const ustozId = url.searchParams.get('ustoz_id') || '';
+      if (!ustozId) return errorResponse('ustoz_id kerak', 400);
+      if (!await verifyUstoz(ustozId)) return errorResponse('Vakolat yo\'q', 403);
+      const { data } = await supabaseAdmin
+        .from('hukm_grade_scales')
+        .select('*')
+        .eq('ustoz_id', ustozId)
+        .maybeSingle();
+      return jsonResponse({ scale: data || { ustoz_id: ustozId, scale: '5', t5: 86, t4: 71, t3: 55 } });
+    }
+
+    if (method === 'POST' && segments[0] === 'grade_scale_set') {
+      const body = await req.json();
+      if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
+      if (!await verifyUstoz(body.ustoz_id)) return errorResponse('Vakolat yo\'q', 403);
+      const scale = body.scale || '5';
+      const t5 = Math.min(100, Math.max(0, parseInt(body.t5) || 86));
+      const t4 = Math.min(t5, Math.max(0, parseInt(body.t4) || 71));
+      const t3 = Math.min(t4, Math.max(0, parseInt(body.t3) || 55));
+      await supabaseAdmin
+        .from('hukm_grade_scales')
+        .upsert({ ustoz_id: body.ustoz_id, scale, t5, t4, t3, updated_at: nowIso() }, { onConflict: 'ustoz_id' });
+      return jsonResponse({ success: true, scale: { ustoz_id: body.ustoz_id, scale, t5, t4, t3 } });
+    }
+
+    // ── SESSIYA GURUHINI O'ZGARTIRISH ──────────────────────────────────────
+    if (method === 'POST' && segments[0] === 'session_set_group' && segments[1]) {
+      const body = await req.json();
+      if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
+      if (!await verifyUstoz(body.ustoz_id)) return errorResponse('Vakolat yo\'q', 403);
+      const { data: session } = await supabaseAdmin
+        .from('hukm_sessions')
+        .select('ustoz_id, game_id')
+        .eq('id', segments[1])
+        .maybeSingle();
+      if (!session) return errorResponse('Sessiya topilmadi', 404);
+      if (session.ustoz_id !== body.ustoz_id) return errorResponse('Vakolat yo\'q', 403);
+      const groupLabel = body.group_label || null;
+      await supabaseAdmin
+        .from('hukm_sessions')
+        .update({ group_label: groupLabel })
+        .eq('id', segments[1]);
+      if (session.game_id) {
+        await supabaseAdmin
+          .from('hukm_games')
+          .update({ group_label: groupLabel })
+          .eq('id', session.game_id);
+      }
+      return jsonResponse({ success: true });
     }
 
     return errorResponse('Noto\'g\'ri yo\'l', 404);
@@ -1578,3 +2032,5 @@ async function getQuizQuestionsByGame(gameId: string) {
   if (!game) return [];
   return getQuizQuestions(game.quiz_id);
 }
+
+

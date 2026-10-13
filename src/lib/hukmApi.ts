@@ -148,3 +148,38 @@ export async function getMyReyting(talabaId: string) {
 export async function getReytingBoard(talabaId?: string) {
   return hukmFetch('/reyting-board', { method: 'GET', query: talabaId ? { talaba_id: talabaId } : {} });
 }
+
+// ── Analitika ──
+export async function getAnalyticsSession(sessionId: string, ustozId: string) {
+  return hukmFetch(`/analytics_session/${sessionId}`, { method: 'GET', query: { ustoz_id: ustozId } });
+}
+
+export async function getAnalyticsStudent(ustozId: string, talabaId: string) {
+  return hukmFetch('/analytics_student', { method: 'GET', query: { ustoz_id: ustozId, talaba_id: talabaId } });
+}
+
+export async function getAnalyticsGroup(ustozId: string) {
+  return hukmFetch('/analytics_group', { method: 'GET', query: { ustoz_id: ustozId } });
+}
+
+export async function getGradeScale(ustozId: string) {
+  return hukmFetch('/grade_scale_get', { method: 'GET', query: { ustoz_id: ustozId } });
+}
+
+export async function setGradeScale(ustozId: string, scale: string, t5: number, t4: number, t3: number) {
+  return hukmFetch('/grade_scale_set', {
+    method: 'POST',
+    body: JSON.stringify({ ustoz_id: ustozId, scale, t5, t4, t3 }),
+  });
+}
+
+export async function setSessionGroup(sessionId: string, ustozId: string, groupLabel: string | null) {
+  return hukmFetch(`/session_set_group/${sessionId}`, {
+    method: 'POST',
+    body: JSON.stringify({ ustoz_id: ustozId, group_label: groupLabel }),
+  });
+}
+
+export async function getTagOptions(ustozId: string) {
+  return hukmFetch('/tag-options', { method: 'GET', query: { ustoz_id: ustozId } });
+}
