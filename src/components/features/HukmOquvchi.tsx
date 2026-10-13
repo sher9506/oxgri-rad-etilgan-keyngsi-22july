@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Trophy, Loader2, ChevronLeft, CheckCircle, XCircle, Clock, Users, Award, AlertCircle, RotateCw } from 'lucide-react';
+import { Trophy, Loader2, ChevronLeft, CheckCircle, XCircle, Clock, Users, Award, AlertCircle, RotateCw, WifiOff } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
+import { joinGame, rejoinGame, getGameState, submitAnswer, getMistakes } from '@/lib/hukmApi';
+import { useHukmGameChannel } from '@/hooks/useHukmGameChannel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,14 +16,36 @@ const ANSWER_COLORS = ['#C2303D', '#2F6BE0', '#12805C', '#F2A93B'];
 const ANSWER_TEXT_COLORS = ['#fff', '#fff', '#fff', '#1A1205'];
 const ANSWER_LABELS = ['A', 'B', 'C', 'D'];
 
-async function hukmFetch(path: string, method = 'GET', body?: any) {
-  const url = `${supabaseUrl}/functions/v1/hukm-api/${path}`;
-  const res = await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return res.json();
+const SESSION_KEY = 'hukm_session';
+
+interface SavedSession {
+  game_id: string;
+  player_id: string;
+  player_token: string;
+  nickname: string;
+  pin: string;
+}
+
+function saveSession(data: SavedSession): void {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); return; } catch {}
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); return; } catch {}
+}
+
+function loadSession(): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function clearSession(): void {
+  try { localStorage.removeItem(SESSION_KEY); } catch {}
+  try { sessionStorage.removeItem(SESSION_KEY); } catch {}
 }
 
 interface Mistake {
@@ -34,7 +58,7 @@ interface Mistake {
   legal_basis: string;
 }
 
-export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+export default function HukmOquvchi({ onNavigate, initialPin }: { onNavigate?: (tab: string) => void; initialPin?: string }) {
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -42,7 +66,7 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
   const defaultNick = user ? `${user.ism} ${user.familiya}`.trim() : '';
 
   const [view, setView] = useState<GameView>('join');
-  const [pin, setPin] = useState('');
+  const [pin, setPin] = useState(initialPin || '');
   const [nickname, setNickname] = useState(defaultNick);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState('');
@@ -59,91 +83,160 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
   const [mistakesLoading, setMistakesLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [alreadyAnswered, setAlreadyAnswered] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastQuestionIndexRef = useRef<number>(-1);
   const lastStatusRef = useRef<string>('');
+  const serverOffsetRef = useRef<number>(0);
 
-  const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-  };
   const stopTimer = () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   };
 
-  const fetchGameState = useCallback(async () => {
-    if (!gameId || !playerId || !playerToken) return;
-    const data = await hukmFetch(`game/${gameId}?player_id=${playerId}&player_token=${playerToken}`);
-    if (!data?.id) return;
-    setGameState(data);
+  // ── useHukmGameChannel — realtime broadcast + zaxira polling ──────────────
+  const handleStateUpdate = useCallback((state: any) => {
+    if (!state?.id) return;
+    setGameState(state);
 
-    const status = data.status;
-    const qIdx = data.current_index;
+    // Server soat farqini hisoblash
+    if (state.server_now) {
+      serverOffsetRef.current = Date.now() - state.server_now;
+    }
 
-    // Reset per-question state when new question arrives
+    const status = state.status;
+    const qIdx = state.current_index;
+
+    // Yangi savol kelganda holatni reset
     if (qIdx !== lastQuestionIndexRef.current && status === 'question') {
       lastQuestionIndexRef.current = qIdx;
       setMyAnswer(null);
       setMyResult(null);
-      setAlreadyAnswered(data.my_answer !== undefined && data.my_answer !== null);
-      const limit = data.question?.time_limit_s || 20;
-      setTimeLeft(limit);
-      setTimerPct(1);
+      setAlreadyAnswered(state.my_answer !== undefined && state.my_answer !== null);
       stopTimer();
-      timerRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          const next = Math.max(0, prev - 1);
-          setTimerPct(next / limit);
-          return next;
-        });
-      }, 1000);
+
+      // Server taymeri — ends_at va server_now asosida
+      if (state.ends_at) {
+        const adjustedEndsAt = state.ends_at + serverOffsetRef.current;
+        const limitMs = (state.question?.time_limit_s || 20) * 1000;
+        timerRef.current = setInterval(() => {
+          const remaining = adjustedEndsAt - Date.now();
+          if (remaining <= 0) {
+            setTimeLeft(0);
+            setTimerPct(0);
+            stopTimer();
+          } else {
+            const sec = Math.ceil(remaining / 1000);
+            setTimeLeft(sec);
+            setTimerPct(Math.max(0, Math.min(1, remaining / limitMs)));
+          }
+        }, 250);
+      } else {
+        const limit = state.question?.time_limit_s || 20;
+        setTimeLeft(limit);
+        setTimerPct(1);
+        timerRef.current = setInterval(() => {
+          setTimeLeft(prev => {
+            const next = Math.max(0, prev - 1);
+            setTimerPct(next / limit);
+            return next;
+          });
+        }, 1000);
+      }
     }
 
     if (status !== lastStatusRef.current) {
       lastStatusRef.current = status;
       if (status === 'lobby') setView('lobby');
       else if (status === 'question') {
-        setView(data.my_answer !== undefined && data.my_answer !== null ? 'answered' : 'question');
+        setView(state.my_answer !== undefined && state.my_answer !== null ? 'answered' : 'question');
       }
       else if (status === 'reveal') {
         stopTimer();
-        setMyResult(data.my_result || null);
+        setMyResult(state.my_result || null);
         setView('reveal');
       }
       else if (status === 'leaderboard') setView('leaderboard');
-      else if (status === 'finished') { setView('finished'); stopPolling(); stopTimer(); }
-    } else if (status === 'question' && data.my_answer !== undefined && data.my_answer !== null) {
+      else if (status === 'finished') {
+        setView('finished');
+        stopTimer();
+        clearSession();
+      }
+    } else if (status === 'question' && state.my_answer !== undefined && state.my_answer !== null) {
       setAlreadyAnswered(true);
       setView('answered');
     }
-  }, [gameId, playerId, playerToken]);
+  }, []);
 
+  const { channelError } = useHukmGameChannel({
+    gameId: gameId || null,
+    tokens: { player_token: playerToken, player_id: playerId },
+    onState: handleStateUpdate,
+    enabled: !!gameId && !!playerId && !!playerToken,
+  });
+
+  useEffect(() => { setReconnecting(channelError); }, [channelError]);
+
+  // ── Qayta ulanish: sahifa ochilganda saqlangan sessiyani tekshirish ──────
   useEffect(() => {
-    if (!gameId || !playerId || !playerToken) return;
-    fetchGameState();
-    stopPolling();
-    pollRef.current = setInterval(fetchGameState, 2000);
-    return () => { stopPolling(); stopTimer(); };
-  }, [gameId, playerId, playerToken, fetchGameState]);
+    const saved = loadSession();
+    if (saved && saved.game_id && saved.player_id && saved.player_token) {
+      setGameId(saved.game_id);
+      setPlayerId(saved.player_id);
+      setPlayerToken(saved.player_token);
+      setNickname(saved.nickname || '');
+      setPin(saved.pin || '');
+      // rejoin chaqiruvi
+      rejoinGame(saved.game_id, saved.player_id, saved.player_token)
+        .then(state => {
+          if (state?.id) {
+            handleStateUpdate(state);
+          } else {
+            // Sessiya yaroqsiz — tozalash
+            clearSession();
+            setGameId(''); setPlayerId(''); setPlayerToken('');
+          }
+        })
+        .catch(() => {
+          clearSession();
+          setGameId(''); setPlayerId(''); setPlayerToken('');
+        });
+    }
+  }, []);
+
+  // initialPin kelganda PIN maydonini to'ldirish
+  useEffect(() => {
+    if (initialPin) setPin(initialPin);
+  }, [initialPin]);
 
   const handleJoin = async () => {
     if (!pin.trim() || pin.trim().length !== 6) { setJoinError("PIN 6 raqamdan iborat bo'lishi kerak"); return; }
-    if (!nickname.trim()) { setJoinError('Ismingizni kiriting'); return; }
-    if (!talabaId) { setJoinError("Kirish kerak. Iltimos, tizimga kiring."); return; }
+    if (!nickname.trim() || nickname.trim().length < 2) { setJoinError("Taxallus kamida 2 belgi bo'lishi kerak"); return; }
     setJoining(true);
     setJoinError('');
-    const data = await hukmFetch('game/join', 'POST', { pin: pin.trim(), nickname: nickname.trim(), talaba_id: talabaId });
-    setJoining(false);
-    if (data?.player && data?.game_id && data?.player_token) {
-      setGameId(data.game_id);
-      setPlayerId(data.player.id);
-      setPlayerToken(data.player_token);
-      lastStatusRef.current = '';
-      lastQuestionIndexRef.current = -1;
-    } else {
-      setJoinError(data?.error || "Qo'shilmadi. Qayta urinib ko'ring.");
+    try {
+      const data = await joinGame(pin.trim(), nickname.trim(), talabaId || null);
+      if (data?.player && data?.game_id && data?.player_token) {
+        setGameId(data.game_id);
+        setPlayerId(data.player.id);
+        setPlayerToken(data.player_token);
+        setNickname(data.player.nickname || nickname.trim());
+        lastStatusRef.current = '';
+        lastQuestionIndexRef.current = -1;
+        saveSession({
+          game_id: data.game_id,
+          player_id: data.player.id,
+          player_token: data.player_token,
+          nickname: data.player.nickname || nickname.trim(),
+          pin: pin.trim(),
+        });
+      } else {
+        setJoinError(data?.error || "Qo'shilmadi. Qayta urinib ko'ring.");
+      }
+    } catch (err: any) {
+      setJoinError(err.message || "Qo'shilmadi. Qayta urinib ko'ring.");
     }
+    setJoining(false);
   };
 
   const handleAnswer = async (choice: number) => {
@@ -151,27 +244,46 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
     setMyAnswer(choice);
     setSubmitting(true);
     stopTimer();
-    const data = await hukmFetch(`game/${gameId}/answer`, 'POST', { player_id: playerId, player_token: playerToken, choice });
-    setSubmitting(false);
-    if (data?.received) {
-      setView('answered');
-      setAlreadyAnswered(true);
-    } else {
-      toast({ title: data?.error || 'Javob qabul qilinmadi', variant: 'destructive' });
+    try {
+      const data = await submitAnswer(gameId, playerId, playerToken, choice);
+      if (data?.received) {
+        setView('answered');
+        setAlreadyAnswered(true);
+      } else {
+        toast({ title: data?.error || 'Javob qabul qilinmadi', variant: 'destructive' });
+        setMyAnswer(null);
+      }
+    } catch (err: any) {
+      toast({ title: err.message || 'Javob qabul qilinmadi', variant: 'destructive' });
       setMyAnswer(null);
     }
+    setSubmitting(false);
   };
 
   const handleLoadMistakes = async () => {
     setMistakesLoading(true);
-    const data = await hukmFetch(`game/${gameId}/mistakes?player_id=${playerId}&player_token=${playerToken}`);
-    setMistakesLoading(false);
-    if (data?.mistakes) {
-      setMistakes(data.mistakes);
-      setView('mistakes');
-    } else {
-      toast({ title: data?.error || 'Xatolar yuklanmadi', variant: 'destructive' });
+    try {
+      const data = await getMistakes(gameId, playerId, playerToken);
+      if (data?.mistakes) {
+        setMistakes(data.mistakes);
+        setView('mistakes');
+      } else {
+        toast({ title: data?.error || 'Xatolar yuklanmadi', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: err.message || 'Xatolar yuklanmadi', variant: 'destructive' });
     }
+    setMistakesLoading(false);
+  };
+
+  const handleReset = () => {
+    clearSession();
+    setView('join');
+    setGameId(''); setPlayerId(''); setPlayerToken('');
+    setGameState(null); setMyAnswer(null); setMyResult(null);
+    setMistakes([]); setAlreadyAnswered(false);
+    lastStatusRef.current = ''; lastQuestionIndexRef.current = -1;
+    stopTimer();
   };
 
   const players = gameState?.players || [];
@@ -194,13 +306,6 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
             <p className="text-sm text-gray-500">PIN kodni kiriting va o'yinga qo'shiling</p>
           </div>
 
-          {!talabaId && (
-            <div className="flex items-center gap-2 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3">
-              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-              <p className="text-xs font-medium text-amber-700">O'yinga kirish uchun tizimga kiring</p>
-            </div>
-          )}
-
           <div className="space-y-3">
             <div>
               <Label className="text-xs font-bold">PIN kod</Label>
@@ -218,7 +323,15 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
             </div>
             <div>
               <Label className="text-xs font-bold">Taxallus (laqab)</Label>
-              <Input value={nickname} onChange={e => setNickname(e.target.value)} placeholder="Ismingiz" className="mt-1.5 rounded-xl" onKeyDown={e => { if (e.key === 'Enter') handleJoin(); }} />
+              <Input
+                value={nickname}
+                onChange={e => setNickname(e.target.value.slice(0, 20))}
+                placeholder="Ismingiz yoki taxallusingiz"
+                className="mt-1.5 rounded-xl"
+                onKeyDown={e => { if (e.key === 'Enter') handleJoin(); }}
+                maxLength={20}
+              />
+              <p className="text-[10px] text-gray-400 mt-1">2-20 belgi. Mehmon sifatida qo'shila olasiz.</p>
             </div>
             {joinError && (
               <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-100 px-3 py-2">
@@ -226,7 +339,7 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
                 <p className="text-xs text-red-700">{joinError}</p>
               </div>
             )}
-            <Button onClick={handleJoin} disabled={joining || !talabaId} className="w-full rounded-xl shadow-md shadow-blue-500/15" style={{ minHeight: '52px' }}>
+            <Button onClick={handleJoin} disabled={joining} className="w-full rounded-xl shadow-md shadow-blue-500/15" style={{ minHeight: '52px' }}>
               {joining ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
               {joining ? 'Qo\'shilmoqda...' : 'O\'yinga kirish'}
             </Button>
@@ -261,6 +374,12 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-xs">Kutilmoqda...</span>
         </div>
+        {reconnecting && (
+          <div className="flex items-center gap-1.5 text-amber-600">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span className="text-[11px] font-medium">Qayta ulanmoqda...</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -276,11 +395,11 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
         {/* Header */}
         <div className="flex items-center justify-between">
           <Badge variant="secondary" className="text-xs">{currentIdx + 1} / {totalQ}</Badge>
-          <svg width="52" height="52" className="shrink-0">
+          <svg width="52" height="52" className="shrink-0" aria-label={`Vaqt: ${timeLeft} soniya`}>
             <circle cx="26" cy="26" r="22" fill="none" stroke="#e5e7eb" strokeWidth="3" />
             <circle cx="26" cy="26" r="22" fill="none" stroke={timerColor} strokeWidth="3" strokeLinecap="round"
               strokeDasharray={circumference} strokeDashoffset={offset} transform="rotate(-90 26 26)"
-              style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.3s' }} />
+              style={{ transition: 'stroke-dashoffset 0.25s linear, stroke 0.3s' }} />
             <text x="26" y="30" textAnchor="middle" fontSize="13" fontWeight="700" fill="#1f2937">{timeLeft}</text>
           </svg>
         </div>
@@ -316,6 +435,12 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
             </button>
           ))}
         </div>
+        {reconnecting && (
+          <div className="flex items-center justify-center gap-1.5 text-amber-600">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span className="text-[11px] font-medium">Qayta ulanmoqda...</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -335,6 +460,12 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-xs">Boshqalar javob berishini kuting</span>
         </div>
+        {reconnecting && (
+          <div className="flex items-center gap-1.5 text-amber-600">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span className="text-[11px] font-medium">Qayta ulanmoqda...</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -483,7 +614,7 @@ export default function HukmOquvchi({ onNavigate }: { onNavigate?: (tab: string)
             {mistakesLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <RotateCw className="h-4 w-4 mr-1.5" />}
             Xatolar daftarim
           </Button>
-          <Button onClick={() => { setView('join'); setGameId(''); setPlayerId(''); setPlayerToken(''); setPin(''); setGameState(null); }} className="w-full rounded-xl" variant="outline">
+          <Button onClick={handleReset} className="w-full rounded-xl" variant="outline">
             Yangi o'yinga qo'shilish
           </Button>
         </div>

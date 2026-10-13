@@ -4,7 +4,7 @@ import {
   Scale, ChevronRight, ChevronDown, X, LogIn, LogOut, User as UserIcon,
   Play, FileText, GraduationCap, Library, Newspaper, Layers,
   TrendingUp, HelpCircle, BookOpen, BookMarked, MessageCircle,
-  ClipboardCheck, MoreHorizontal, Home, Globe,
+  ClipboardCheck, MoreHorizontal, Home, Globe, Gavel,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang, Lang } from '@/contexts/LangContext';
@@ -73,6 +73,7 @@ export function buildNavGroups(
           { id: 'savol_javob', label: 'Savol–javoblar', icon: Layers, desc: "Savollarga javoblar kutubxonasi" },
           { id: 'reyting', label: 'Reyting', icon: TrendingUp, desc: "O'quvchilar reytingi" },
           { id: 'blog', label: 'Blog', icon: Newspaper, desc: 'Yuridik maqolalar va tahlillar' },
+          { id: 'hukm', label: 'Hukm', icon: Gavel, desc: 'Jonli viktorina' },
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },
         ],
   };
@@ -112,7 +113,7 @@ const LANG_OPTIONS: { code: Lang; flag: string; label: string }[] = [
 
 /* ═══ Sinov guruhidagi tab id'lar ═══ */
 const SINOV_TABS = ['sinov', 'mavjud_testlar', 'mavjud_kazuslar', 'moot_court'];
-const YANA_TABS = ['kurslar', 'savol_javob', 'reyting', 'blog', 'yordam'];
+const YANA_TABS = ['kurslar', 'savol_javob', 'reyting', 'blog', 'hukm', 'yordam'];
 
 /* ═════════════════════════════════════════════════════════════════
    MobileSheet — bottom-sheet dialog

@@ -97,7 +97,15 @@ function AppContent() {
     if (deepLink) return deepLink.activeTab;
     return 'haqida';
   };
-  const [activeTab, setActiveTab] = useState(getInitialTab);
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('pin')) return 'hukm';
+    return getInitialTab();
+  });
+  const [hukmInitialPin, setHukmInitialPin] = useState<string | undefined>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('pin') || undefined;
+  });
   const [pendingDeepLink, setPendingDeepLink] = useState<{ subPath: string; tab: string } | null>(() => {
     const deepLink = parseDeepLink();
     if (deepLink && deepLink.subPath) return { subPath: deepLink.subPath, tab: deepLink.activeTab };
@@ -268,7 +276,7 @@ function AppContent() {
       case 'natijalar': return <Suspense fallback={<LazyFallback />}><RealVaqtNatijalar /></Suspense>;
       case 'mavjud_testlar': return <Suspense fallback={<LazyFallback />}><MavjudTestlar /></Suspense>;
       case 'reyting': return <Suspense fallback={<LazyFallback />}><ReytingSahifa /></Suspense>;
-      case 'hukm': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <HukmKabineti ustozId={user?.ustoz_id} onNavigate={handleTabChange} /> : <HukmOquvchi onNavigate={handleTabChange} />}</Suspense>;
+      case 'hukm': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <HukmKabineti ustozId={user?.ustoz_id} onNavigate={handleTabChange} /> : <HukmOquvchi onNavigate={handleTabChange} initialPin={hukmInitialPin} />}</Suspense>;
       case 'mavjud_kazuslar': return <Suspense fallback={<LazyFallback />}><MavjudKazuslar /></Suspense>;
       case 'oqmatlar': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <OquvMateriallarUstoz /> : <OquvMateriallarOquvchi />}</Suspense>;
       case 'savol_javob': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <SavolJavobUstoz /> : <SavolJavobOquvchi />}</Suspense>;

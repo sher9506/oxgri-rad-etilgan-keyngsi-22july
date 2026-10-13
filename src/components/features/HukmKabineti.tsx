@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Trophy, Plus, Play, Loader2, ChevronLeft, BarChart2, Users, Clock, Trash2, Eye, Copy, CheckCircle, XCircle, Sparkles, FileText, UploadCloud, AlignLeft } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import QRCode from 'qrcode';
+import { Trophy, Plus, Play, Loader2, ChevronLeft, BarChart2, Users, Clock, Trash2, Eye, Copy, CheckCircle, XCircle, Sparkles, FileText, UploadCloud, AlignLeft, Gavel, Share2, QrCode } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
+import { hostResume } from '@/lib/hukmApi';
+import { useHukmGameChannel } from '@/hooks/useHukmGameChannel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -84,6 +87,43 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
   const [hostToken, setHostToken] = useState('');
   const [creatingGame, setCreatingGame] = useState(false);
   const [copiedPin, setCopiedPin] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [qrUrl, setQrUrl] = useState('');
+
+  // Host resume
+  const [resumableGame, setResumableGame] = useState<any>(null);
+  const [resumeChecking, setResumeChecking] = useState(true);
+
+  // Host game state via channel
+  const hostStateRef = useRef<any>(null);
+  const handleHostStateUpdate = useCallback((state: any) => {
+    if (!state?.id) return;
+    hostStateRef.current = state;
+    setActiveGame(state);
+  }, []);
+
+  const isLobbyOrQuestion = activeGame?.status === 'lobby' || activeGame?.status === 'question';
+
+  useHukmGameChannel({
+    gameId: activeGame?.id || null,
+    tokens: { host_token: hostToken },
+    onState: handleHostStateUpdate,
+    enabled: !!activeGame?.id && !!hostToken,
+    fastPoll: isLobbyOrQuestion,
+  });
+
+  // Host resume check on mount
+  useEffect(() => {
+    if (!effectiveUstozId) return;
+    hostResume(effectiveUstozId)
+      .then(data => {
+        if (data?.game) {
+          setResumableGame({ ...data.game, host_token: data.host_token });
+        }
+        setResumeChecking(false);
+      })
+      .catch(() => setResumeChecking(false));
+  }, [effectiveUstozId]);
 
   // AI savol yaratish
   const [aiText, setAiText] = useState('');
@@ -157,15 +197,7 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
     return () => clearInterval(interval);
   }, [aiJobId, aiJobStatus, effectiveUstozId]);
 
-  // Host game polling
-  useEffect(() => {
-    if (!activeGame || !hostToken) return;
-    const interval = setInterval(async () => {
-      const data = await hukmFetch(`game/${activeGame.id}?host_token=${hostToken}`);
-      if (data?.id) setActiveGame(data);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [activeGame?.id, hostToken]);
+
 
   const handleCreateQuiz = async () => {
     if (!quizTitle.trim()) { toast({ title: 'Sarlavha kerak', variant: 'destructive' }); return; }
@@ -291,6 +323,41 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
     }
   };
 
+  const handleCopyLink = () => {
+    if (activeGame?.pin) {
+      const link = `${window.location.origin}/?pin=${activeGame.pin}`;
+      navigator.clipboard.writeText(link).catch(() => {});
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
+
+  // QR kod generatsiyasi — lobby'da PIN havolasini kodlash
+  useEffect(() => {
+    if (view === 'host_game' && activeGame?.pin && activeGame.status === 'lobby') {
+      const url = `${window.location.origin}/hukm?pin=${activeGame.pin}`;
+      QRCode.toDataURL(url, { width: 220, margin: 2, color: { dark: '#0D1B42', light: '#FFFFFF' } })
+        .then(setQrUrl)
+        .catch(() => setQrUrl(''));
+    } else {
+      setQrUrl('');
+    }
+  }, [view, activeGame?.pin, activeGame?.status]);
+
+  const handleResumeGame = async () => {
+    if (!resumableGame?.host_token) return;
+    setActiveGame(resumableGame);
+    setHostToken(resumableGame.host_token);
+    setResumableGame(null);
+    setView('host_game');
+  };
+
+  const handleEndResumable = async () => {
+    if (!effectiveUstozId || !resumableGame?.id) return;
+    await hukmFetch(`game/${resumableGame.id}/finish`, 'POST', { host_token: resumableGame.host_token });
+    setResumableGame(null);
+  };
+
   // Question editor helpers
   const openEditQuestion = (q: HukmQuestion, idx: number) => { setEditingQuestion({ ...q }); setEditingIndex(idx); };
   const openNewQuestion = () => setEditingQuestion({ type: 'variant4', text: '', case_text: '', options: [{ text: '', is_correct: true }, { text: '', is_correct: false }, { text: '', is_correct: false }, { text: '', is_correct: false }], time_limit_s: 20, explanation: '', legal_basis: '', hint: '' });
@@ -361,6 +428,22 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
                 </button>
               </div>
               <p className="text-xs opacity-60">O'yinchilar bu PIN bilan qo'shiladi</p>
+              {/* QR kod */}
+              {qrUrl && (
+                <div className="flex flex-col items-center gap-1.5 mt-3">
+                  <div className="rounded-2xl p-3 bg-white shadow-lg">
+                    <img src={qrUrl} alt="QR kod" className="w-[200px] h-[200px]" />
+                  </div>
+                  <p className="text-[11px] opacity-50">Telefon kamerasi bilan skanerlang</p>
+                </div>
+              )}
+              {/* Share link */}
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <button onClick={handleCopyLink} className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-bold transition" aria-label="Havolani nusxalash">
+                  {copiedLink ? <CheckCircle className="h-3.5 w-3.5 text-green-300" /> : <Share2 className="h-3.5 w-3.5" />}
+                  {copiedLink ? 'Nusxalandi' : 'Havolani nusxalash'}
+                </button>
+              </div>
             </div>
             <div className="bg-white/10 px-6 py-3 flex items-center justify-between">
               <span className="text-xs font-bold text-white/70">{players.length} ta o'yinchi</span>
@@ -822,6 +905,23 @@ export default function HukmKabineti({ ustozId, onNavigate }: { ustozId?: string
           </Button>
         </div>
       </div>
+
+      {/* Davom etayotgan o'yin banneri */}
+      {resumableGame && (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Gavel className="h-5 w-5 text-blue-600 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-blue-900 truncate">Davom etayotgan o'yin bor (PIN {resumableGame.pin})</p>
+              <p className="text-xs text-blue-600 truncate">{resumableGame.quiz_title || 'Viktorina'}</p>
+            </div>
+          </div>
+          <div className="flex gap-1.5 shrink-0">
+            <Button size="sm" onClick={handleResumeGame} className="rounded-lg text-xs">Davom ettirish</Button>
+            <Button size="sm" variant="outline" onClick={handleEndResumable} className="rounded-lg text-xs text-red-600 border-red-200">Tugatish</Button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>

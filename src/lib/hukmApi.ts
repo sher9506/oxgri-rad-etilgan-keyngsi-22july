@@ -81,10 +81,24 @@ export async function createGame(ustozId: string, quizId: string, options?: any)
   });
 }
 
-export async function joinGame(pin: string, nickname: string, talabaId: string) {
+export async function joinGame(pin: string, nickname: string, talabaId?: string | null) {
   return hukmFetch('/game/join', {
     method: 'POST',
-    body: JSON.stringify({ pin, nickname, talaba_id: talabaId }),
+    body: JSON.stringify({ pin, nickname, talaba_id: talabaId || null }),
+  });
+}
+
+export async function rejoinGame(gameId: string, playerId: string, playerToken: string) {
+  return hukmFetch('/game/rejoin', {
+    method: 'POST',
+    body: JSON.stringify({ game_id: gameId, player_id: playerId, player_token: playerToken }),
+  });
+}
+
+export async function hostResume(ustozId: string) {
+  return hukmFetch('/host-resume', {
+    method: 'POST',
+    body: JSON.stringify({ ustoz_id: ustozId }),
   });
 }
 

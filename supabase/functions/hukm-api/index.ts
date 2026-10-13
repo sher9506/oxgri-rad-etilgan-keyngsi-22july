@@ -1,7 +1,12 @@
-// hukm-api — Hukm jonli viktorina server yadrosi (v2)
+// hukm-api — Hukm jonli viktorina server yadrosi (v3.3)
 // Auth: ustoz_id ustoz jadvalidan tekshiriladi (quiz CRUD uchun).
 // O'yin holati host/player token orqali (hash saqlanadi).
 // Barcha DB operatsiyalari service role orqali (RLS yoqilgan, anon policy yo'q).
+// v3: mehmon qo'shilish, rejoin, host_resume, server_now/ends_at, broadcast signallari.
+// v3.1: rejoin tugagan o'yinga natija qaytaradi, FN_VERSION belgisi qo'shildi.
+// v3.3: broadcast REST API orqali (WebSocket subscribe/send/remove poyga xavfi yo'q).
+
+const FN_VERSION = 'hukm-api-v3.3';
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -15,6 +20,8 @@ const supabaseAdmin = createClient(
 
 const RATE_LIMIT_JOIN = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
+const MAX_PLAYERS = 100;
+const STALE_GAME_MS = 3 * 60 * 60 * 1000; // 3 soat
 
 // ─── YORDAMCHI FUNKSIYALAR ────────────────────────────────────────────────────
 
@@ -42,6 +49,44 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function errorResponse(message: string, status = 400): Response {
   return jsonResponse({ error: message }, status);
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+// Broadcast signal yuborish — Realtime REST API orqali
+// REST endpoint WebSocket obunasini talab qilmaydi — poyga xavfi yo'q.
+// POST /realtime/v1/api/broadcast { messages: [{ topic, event, payload }] }
+async function broadcastSignal(gameId: string, status: string, currentIndex: number): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const topic = `hukm:${gameId}`;
+    const restUrl = `${supabaseUrl}/realtime/v1/api/broadcast`;
+    const resp = await fetch(restUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+        'apikey': serviceKey,
+      },
+      body: JSON.stringify({
+        messages: [{
+          topic,
+          event: 'state',
+          payload: { status, current_index: currentIndex },
+        }],
+      }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      console.log(`[hukm-api] broadcast REST ${resp.status} (${gameId}): ${body.slice(0, 200)}`);
+    }
+  } catch (e) {
+    // Broadcast xatosi kritik emas — polling zaxira
+    console.log(`[hukm-api] broadcast REST xatosi (${gameId}): ${e.message || e}`);
+  }
 }
 
 // Ustoz vakolatini tekshirish — ustoz_id bo'yicha ustoz jadvalidan
@@ -88,6 +133,7 @@ async function verifyPlayerToken(playerId: string, playerToken: string): Promise
   return { valid: true, kicked: data.kicked };
 }
 
+// Rate limit — FAQAT muvaffaqiyatsiz urinishlar sanaladi
 async function checkRateLimit(key: string): Promise<boolean> {
   const now = Date.now();
   const windowStart = new Date(now - RATE_LIMIT_WINDOW_MS).toISOString();
@@ -95,10 +141,17 @@ async function checkRateLimit(key: string): Promise<boolean> {
     .from('hukm_join_log')
     .select('*', { count: 'exact', head: true })
     .eq('key', key)
+    .eq('success', false)
     .gte('created_at', windowStart) as any;
-  if (count >= RATE_LIMIT_JOIN) return false;
-  await supabaseAdmin.from('hukm_join_log').insert({ key, created_at: new Date().toISOString() });
-  return true;
+  return (count || 0) < RATE_LIMIT_JOIN;
+}
+
+// Eski join_log yozuvlarini tasodifiy tozalash (cron'siz)
+async function maybeCleanupJoinLog(): Promise<void> {
+  if (Math.random() < 0.05) {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    await supabaseAdmin.from('hukm_join_log').delete().lt('created_at', cutoff);
+  }
 }
 
 function sanitizeNickname(nick: string): string {
@@ -106,16 +159,17 @@ function sanitizeNickname(nick: string): string {
   return trimmed.length >= 2 ? trimmed : 'O\'yinchi';
 }
 
-async function uniqueNickname(gameId: string, nickname: string): Promise<string> {
+async function uniqueNickname(gameId: string, nickname: string): Promise<{ name: string; taken: boolean }> {
   const { data } = await supabaseAdmin
     .from('hukm_players')
     .select('nickname')
     .eq('game_id', gameId);
-  const existing = new Set((data || []).map(p => p.nickname));
-  if (!existing.has(nickname)) return nickname;
+  const existing = new Set((data || []).map(p => p.nickname.toLowerCase()));
+  if (!existing.has(nickname.toLowerCase())) return { name: nickname, taken: false };
+  // Avtomatik raqam qo'shish
   let suffix = 2;
-  while (existing.has(`${nickname}${suffix}`)) suffix++;
-  return `${nickname}${suffix}`;
+  while (existing.has(`${nickname}${suffix}`.toLowerCase())) suffix++;
+  return { name: `${nickname}${suffix}`, taken: true };
 }
 
 function sanitizeQuestionForPlayer(q: any, index: number, showText: boolean) {
@@ -207,7 +261,6 @@ async function createSession(gameId: string): Promise<void> {
     .maybeSingle();
   if (!game) return;
 
-  // Avval sessiya bor-yo'qligini tekshir
   const { data: existing } = await supabaseAdmin
     .from('hukm_sessions')
     .select('id')
@@ -229,7 +282,6 @@ async function createSession(gameId: string): Promise<void> {
     ? Math.round((answers || []).reduce((s, a) => s + a.points, 0) / playerCount)
     : 0;
 
-  // Tugatganlar foizi — har o'yinchi necha savolga javob bergan
   const questions = await getQuizQuestions(game.quiz_id);
   const totalQ = questions.length;
   const finisherCount = totalQ > 0
@@ -240,7 +292,6 @@ async function createSession(gameId: string): Promise<void> {
     : 0;
   const finishersPct = playerCount > 0 ? Math.round((finisherCount / playerCount) * 100) : 0;
 
-  // Quiz owner
   const { data: quiz } = await supabaseAdmin
     .from('hukm_quizzes')
     .select('owner')
@@ -269,7 +320,6 @@ function parseQuestionsFromText(raw: string): any[] {
   let currentOptions: any[] = [];
 
   for (const line of lines) {
-    // Savol boshlanishi: "1." yoki "1)" yoki raqamsiz bo'lsa ham yangi savol
     const qMatch = line.match(/^(\d+)[.)]\s*(.+)/);
     if (qMatch) {
       if (current && current.text) {
@@ -280,7 +330,6 @@ function parseQuestionsFromText(raw: string): any[] {
       continue;
     }
 
-    // Variant: A) B) C) D) yoki A. B. C. D.
     const optMatch = line.match(/^([A-D])[.)]\s*(.+)/);
     if (optMatch && current) {
       const isCorrect = optMatch[2].startsWith('*') || optMatch[2].startsWith('✓');
@@ -289,7 +338,6 @@ function parseQuestionsFromText(raw: string): any[] {
       continue;
     }
 
-    // "To'g'ri: B" yoki "To'g'ri javob: B" yoki "✓ B"
     const correctMatch = line.match(/^(?:To'g'ri(?:\s+javob)?\s*[:\s]\s*|✓\s*)([A-D])/i);
     if (correctMatch && currentOptions.length > 0) {
       const idx = correctMatch[1].toUpperCase().charCodeAt(0) - 65;
@@ -297,28 +345,24 @@ function parseQuestionsFromText(raw: string): any[] {
       continue;
     }
 
-    // Izoh: "Izoh:" yoki "Tushuntirish:"
     const explMatch = line.match(/^(?:Izoh|Tushuntirish)\s*[:\s]\s*(.+)/);
     if (explMatch && current) {
       current.explanation = explMatch[1];
       continue;
     }
 
-    // Asos modda: "Asos:" yoki "Modda:"
     const basisMatch = line.match(/^(?:Asos|Modda)\s*[:\s]\s*(.+)/);
     if (basisMatch && current) {
       current.legal_basis = basisMatch[1];
       continue;
     }
 
-    // Vaqt: "Vaqt: 30"
     const timeMatch = line.match(/^(?:Vaqt|Taymer)\s*[:\s]\s*(\d+)/);
     if (timeMatch && current) {
       current.time_limit_s = parseInt(timeMatch[1]);
       continue;
     }
 
-    // Savol matni davomi (agar variant bo'lmasa)
     if (current && currentOptions.length === 0 && !line.match(/^[A-D]/)) {
       current.text += ' ' + line;
     }
@@ -345,6 +389,131 @@ function finalizeQuestion(q: any, options: any[]): any {
   };
 }
 
+// Stale o'yinlarni tugatirish (3 soatdan ortiq faol bo'lmagan)
+async function cleanupStaleGames(ustozId?: string): Promise<void> {
+  const cutoff = new Date(Date.now() - STALE_GAME_MS).toISOString();
+  let query = supabaseAdmin
+    .from('hukm_games')
+    .select('id')
+    .neq('status', 'finished')
+    .lt('created_at', cutoff);
+  if (ustozId) {
+    query = query.in('quiz_id',
+      (await supabaseAdmin.from('hukm_quizzes').select('id').eq('owner', ustozId)).data?.map((q: any) => q.id) || []
+    );
+  }
+  const { data: stale } = await query;
+  if (stale && stale.length > 0) {
+    for (const g of stale) {
+      await supabaseAdmin
+        .from('hukm_games')
+        .update({ status: 'finished', ended_at: new Date().toISOString() })
+        .eq('id', g.id);
+    }
+  }
+}
+
+// O'yin holatini to'liq olish (host yoki player uchun)
+async function buildGameState(gameId: string, isHost: boolean, playerId?: string, playerToken?: string) {
+  const { data: game } = await supabaseAdmin
+    .from('hukm_games')
+    .select('*')
+    .eq('id', gameId)
+    .maybeSingle();
+  if (!game) return null;
+
+  const players = await getGamePlayers(game.id);
+  const questions = await getQuizQuestions(game.quiz_id);
+  const serverNow = Date.now();
+
+  const base: any = {
+    id: game.id,
+    pin: game.pin,
+    status: game.status,
+    current_index: game.current_index,
+    settings: game.settings,
+    players: players.map(p => ({ id: p.id, nickname: p.nickname, talaba_id: p.talaba_id })),
+    total_questions: questions.length,
+    is_host: isHost,
+    server_now: serverNow,
+  };
+
+  if (game.status === 'question' && game.current_index >= 0) {
+    const q = questions[game.current_index];
+    if (q) {
+      const showText = game.settings?.show_text_on_phone !== false;
+      base.question = sanitizeQuestionForPlayer(q, game.current_index, showText);
+      base.ends_at = game.opened_at ? new Date(game.opened_at).getTime() + (q.time_limit_s || 20) * 1000 : null;
+
+      const { count } = await supabaseAdmin
+        .from('hukm_answers')
+        .select('*', { count: 'exact', head: true })
+        .eq('game_id', game.id)
+        .eq('question_index', game.current_index) as any;
+      base.answered_count = count || 0;
+
+      if (playerId && playerToken) {
+        const { valid } = await verifyPlayerToken(playerId, playerToken);
+        if (valid) {
+          const { data: myAnswer } = await supabaseAdmin
+            .from('hukm_answers')
+            .select('choice')
+            .eq('game_id', game.id)
+            .eq('player_id', playerId)
+            .eq('question_index', game.current_index)
+            .maybeSingle();
+          base.my_answer = myAnswer?.choice ?? null;
+        }
+      }
+
+      if (isHost) {
+        base.correct_index = (q.options || []).findIndex((o: any) => o.is_correct);
+      }
+    }
+  }
+
+  if (game.status === 'reveal' && game.current_index >= 0) {
+    const q = questions[game.current_index];
+    if (q) {
+      base.reveal = revealQuestionForPlayer(q, game.current_index);
+      const { data: answers } = await supabaseAdmin
+        .from('hukm_answers')
+        .select('choice')
+        .eq('game_id', game.id)
+        .eq('question_index', game.current_index);
+      const distribution = (q.options || []).map((_: any, i: number) =>
+        (answers || []).filter(a => a.choice === i).length
+      );
+      base.distribution = distribution;
+
+      if (playerId && playerToken) {
+        const { valid } = await verifyPlayerToken(playerId, playerToken);
+        if (valid) {
+          const { data: myAnswer } = await supabaseAdmin
+            .from('hukm_answers')
+            .select('choice, correct, points')
+            .eq('game_id', game.id)
+            .eq('player_id', playerId)
+            .eq('question_index', game.current_index)
+            .maybeSingle();
+          base.my_result = myAnswer || null;
+        }
+      }
+    }
+    base.leaderboard = await getLeaderboard(game.id, 5);
+  }
+
+  if (game.status === 'leaderboard' || game.status === 'finished') {
+    base.leaderboard = await getLeaderboard(game.id, game.status === 'finished' ? 0 : 5);
+  }
+
+  if (game.status === 'finished') {
+    await createSession(game.id);
+  }
+
+  return base;
+}
+
 // ─── ASOSIY HANDLER ───────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -358,9 +527,16 @@ Deno.serve(async (req: Request) => {
     const segments = path.split('/').filter(Boolean);
     const method = req.method;
 
+    // Eski log tozalash (tasodifiy)
+    maybeCleanupJoinLog();
+
+    // Health/version check
+    if (method === 'GET' && segments[0] === 'ping') {
+      return jsonResponse({ ok: true, version: FN_VERSION, server_now: Date.now() });
+    }
+
     // ── QUIZ CRUD (ustoz, vakolat bilan) ───────────────────────────────────
 
-    // POST /hukm-api/quiz — viktorina yaratish
     if (method === 'POST' && segments[0] === 'quiz' && !segments[1]) {
       const body = await req.json();
       if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
@@ -375,7 +551,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ quiz: data });
     }
 
-    // GET /hukm-api/quiz?ustoz_id=... — ustoz viktorinalari
     if (method === 'GET' && segments[0] === 'quiz' && !segments[1]) {
       const ustozId = url.searchParams.get('ustoz_id') || '';
       if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
@@ -388,7 +563,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ quizzes: data || [] });
     }
 
-    // GET /hukm-api/quiz/:id — bitta viktorina savollari bilan (owner tekshiriladi)
     if (method === 'GET' && segments[0] === 'quiz' && segments[1]) {
       const ustozId = url.searchParams.get('ustoz_id') || '';
       if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
@@ -404,7 +578,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ quiz: data, questions });
     }
 
-    // PUT /hukm-api/quiz/:id — viktorina yangilash (owner tekshiriladi)
     if (method === 'PUT' && segments[0] === 'quiz' && segments[1]) {
       const body = await req.json();
       if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
@@ -420,7 +593,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ quiz: data });
     }
 
-    // DELETE /hukm-api/quiz/:id — viktorina o'chirish (owner tekshiriladi)
     if (method === 'DELETE' && segments[0] === 'quiz' && segments[1]) {
       const ustozId = url.searchParams.get('ustoz_id') || '';
       if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
@@ -434,7 +606,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
-    // POST /hukm-api/quiz/:id/questions — savol qo'shish/yangilash (bulk, owner tekshiriladi)
     if (method === 'POST' && segments[0] === 'quiz' && segments[1] && segments[2] === 'questions') {
       const body = await req.json();
       if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
@@ -466,7 +637,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true, count: questions.length });
     }
 
-    // POST /hukm-api/quiz/:id/parse-text — matndan savol parser (owner tekshiriladi)
     if (method === 'POST' && segments[0] === 'quiz' && segments[1] && segments[2] === 'parse-text') {
       const body = await req.json();
       if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
@@ -479,7 +649,6 @@ Deno.serve(async (req: Request) => {
 
     // ── AI SAVOL TIZISH ─────────────────────────────────────────────────────
 
-    // POST /hukm-api/quiz-ai — AI savol tuzish job yaratish
     if (method === 'POST' && segments[0] === 'quiz-ai') {
       const body = await req.json();
       if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
@@ -497,7 +666,6 @@ Deno.serve(async (req: Request) => {
         instruction: body.settings?.instruction || '',
       };
 
-      // Job yaratish
       const { data: job, error } = await supabaseAdmin
         .from('hukm_quiz_jobs')
         .insert({
@@ -511,13 +679,11 @@ Deno.serve(async (req: Request) => {
         .single();
       if (error) return errorResponse('Job yaratilmadi', 500);
 
-      // AI chaqiruvini fonada ishga tushirish
       EdgeRuntime.waitUntil(processAIJob(job.id, body.ustoz_id));
 
       return jsonResponse({ job_id: job.id, status: 'queued' });
     }
 
-    // GET /hukm-api/quiz-ai/:job_id — AI job holati
     if (method === 'GET' && segments[0] === 'quiz-ai' && segments[1]) {
       const ustozId = url.searchParams.get('ustoz_id') || '';
       if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
@@ -533,7 +699,6 @@ Deno.serve(async (req: Request) => {
 
     // ── SESSIYALAR (o'tkazilgan o'yinlar) ───────────────────────────────────
 
-    // GET /hukm-api/sessions?ustoz_id=... — ustoz o'tkazilgan o'yinlari
     if (method === 'GET' && segments[0] === 'sessions' && !segments[1]) {
       const ustozId = url.searchParams.get('ustoz_id') || '';
       if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
@@ -546,7 +711,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ sessions: data || [] });
     }
 
-    // GET /hukm-api/sessions/:id — bitta sessiya natijalari (owner tekshiriladi)
     if (method === 'GET' && segments[0] === 'sessions' && segments[1]) {
       const ustozId = url.searchParams.get('ustoz_id') || '';
       if (!ustozId) return errorResponse('Vakolat yo\'q', 401);
@@ -558,7 +722,6 @@ Deno.serve(async (req: Request) => {
       if (!session) return errorResponse('Sessiya topilmadi', 404);
       if (session.ustoz_id !== ustozId) return errorResponse('Vakolat yo\'q', 403);
 
-      // To'liq natijalar
       if (session.game_id) {
         const report = await getFullReport(session.game_id);
         return jsonResponse({ session, ...report });
@@ -568,12 +731,10 @@ Deno.serve(async (req: Request) => {
 
     // ── O'QUVCHI REYTING ─────────────────────────────────────────────────────
 
-    // GET /hukm-api/reyting?talaba_id=... — o'quvchi Hukm reytingi
     if (method === 'GET' && segments[0] === 'reyting') {
       const talabaId = url.searchParams.get('talaba_id') || '';
       if (!talabaId) return errorResponse('talaba_id kerak', 400);
 
-      // O'quvchining barcha o'yinlari
       const { data: players } = await supabaseAdmin
         .from('hukm_players')
         .select('id, game_id, nickname')
@@ -582,7 +743,6 @@ Deno.serve(async (req: Request) => {
       const playerIds = (players || []).map(p => p.id);
       if (playerIds.length === 0) return jsonResponse({ games: [], my_rank: 0, total_players: 0 });
 
-      // Har o'yin uchun ball
       const gameResults: any[] = [];
       for (const p of players!) {
         const { data: answers } = await supabaseAdmin
@@ -602,13 +762,11 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // Umumiy reyting — barcha o'yinchilarning jami ballari
       const { data: allPlayers } = await supabaseAdmin
         .from('hukm_players')
         .select('id, talaba_id')
         .not('talaba_id', 'is', null);
 
-      // Har talaba uchun jami ball
       const talabaScores = new Map<string, number>();
       const talabaPlayerMap = new Map<string, string[]>();
       for (const ap of allPlayers || []) {
@@ -637,7 +795,6 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // GET /hukm-api/reyting-board — umumiy Hukm reytingi (o'quvchi uchun)
     if (method === 'GET' && segments[0] === 'reyting-board') {
       const { data: allPlayers } = await supabaseAdmin
         .from('hukm_players')
@@ -672,11 +829,9 @@ Deno.serve(async (req: Request) => {
       }
       board.sort((a, b) => b.total_points - a.total_points);
 
-      // O'quvchi o'rnini topish
       const talabaId = url.searchParams.get('talaba_id') || '';
       const myRank = talabaId ? board.findIndex(b => b.talaba_id === talabaId) + 1 : 0;
 
-      // Talaba ismlarini olish
       const talabaIds = board.slice(0, 50).map(b => b.talaba_id);
       const { data: talabalar } = await supabaseAdmin
         .from('talabalar')
@@ -697,7 +852,7 @@ Deno.serve(async (req: Request) => {
 
     // ── GAME LIFECYCLE ─────────────────────────────────────────────────────
 
-    // POST /hukm-api/game — o'yin yaratish (host_token qaytaradi, owner tekshiriladi)
+    // POST /hukm-api/game — o'yin yaratish
     if (method === 'POST' && segments[0] === 'game' && !segments[1]) {
       const body = await req.json();
       if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
@@ -705,9 +860,11 @@ Deno.serve(async (req: Request) => {
       if (!body.quiz_id) return errorResponse('quiz_id kerak', 400);
       if (!await verifyQuizOwner(body.quiz_id, body.ustoz_id)) return errorResponse('Vakolat yo\'q', 403);
 
+      // Eski tugamagan o'yinni tugatirish (stale cleanup)
+      await cleanupStaleGames(body.ustoz_id);
+
       const settings = {
         speed_bonus: body.speed_bonus !== false,
-        registered_only: true, // v2'da kirish majburiy
         lobby_locked: false,
         show_text_on_phone: body.show_text_on_phone !== false,
       };
@@ -742,23 +899,17 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ game: { id: data.id, pin: data.pin, status: data.status, settings }, host_token: hostToken });
     }
 
-    // POST /hukm-api/game/join — o'yinchi qo'shilish (talaba_id majburiy)
+    // POST /hukm-api/game/join — o'yinchi qo'shilish (mehmon yoki tizimga kirgan)
     if (method === 'POST' && segments[0] === 'game' && segments[1] === 'join') {
       const body = await req.json();
       const pin = body.pin?.toString().trim();
       const nickname = sanitizeNickname(body.nickname || '');
       if (!pin || pin.length !== 6) return errorResponse('Noto\'g\'ri PIN', 400);
-      if (!body.talaba_id) return errorResponse('Kirish kerak', 401);
 
-      // Talaba mavjudligini tekshir
-      const { data: talaba } = await supabaseAdmin
-        .from('talabalar')
-        .select('id, ism, familiya')
-        .eq('id', body.talaba_id)
-        .maybeSingle();
-      if (!talaba) return errorResponse('Kirish kerak', 401);
+      // talaba_id ixtiyoriy — mehmon uchun null
+      const talabaId = body.talaba_id || null;
 
-      // Rate limit
+      // Rate limit — faqat muvaffaqiyatsiz urinishlar sanaladi
       const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
       const rateKey = `${clientIp}:${pin}`;
       const allowed = await checkRateLimit(rateKey);
@@ -770,35 +921,64 @@ Deno.serve(async (req: Request) => {
         .eq('pin', pin)
         .neq('status', 'finished')
         .maybeSingle();
-      if (!game) return errorResponse('O\'yin topilmadi', 404);
-      if (game.status !== 'lobby') return errorResponse('O\'yin allaqachon boshlangan', 403);
-      if (game.settings?.lobby_locked) return errorResponse('Lobby qulflangan', 403);
-
-      // Bitta talaba bitta o'yinga bir marta
-      const { data: existingPlayer } = await supabaseAdmin
-        .from('hukm_players')
-        .select('id, kicked, player_token_hash')
-        .eq('game_id', game.id)
-        .eq('talaba_id', body.talaba_id)
-        .maybeSingle();
-
-      if (existingPlayer) {
-        if (existingPlayer.kicked) return errorResponse('Siz bu o\'yindan chiqarilgansiz', 403);
-        // Ikkinchi qurilmadan kirish — eski player'ni yangilash (ball saqlanadi)
-        const newToken = randomToken(32);
-        const newHash = await sha256Hex(newToken);
-        await supabaseAdmin
-          .from('hukm_players')
-          .update({ player_token_hash: newHash, nickname })
-          .eq('id', existingPlayer.id);
-        return jsonResponse({
-          player: { id: existingPlayer.id, nickname },
-          player_token: newToken,
-          game_id: game.id,
-        });
+      if (!game) {
+        // Muvaffaqiyatsiz urinishni logga yozish
+        await supabaseAdmin.from('hukm_join_log').insert({ key: rateKey, success: false });
+        return errorResponse('O\'yin topilmadi', 404);
+      }
+      if (game.status !== 'lobby') {
+        await supabaseAdmin.from('hukm_join_log').insert({ key: rateKey, success: false });
+        return errorResponse('O\'yin allaqachon boshlangan', 403);
+      }
+      if (game.settings?.lobby_locked) {
+        await supabaseAdmin.from('hukm_join_log').insert({ key: rateKey, success: false });
+        return errorResponse('Lobby qulflangan', 403);
       }
 
-      const finalNick = await uniqueNickname(game.id, nickname);
+      // MAX_PLAYERS tekshiruvi
+      const players = await getGamePlayers(game.id);
+      if (players.length >= MAX_PLAYERS) {
+        await supabaseAdmin.from('hukm_join_log').insert({ key: rateKey, success: false });
+        return errorResponse('O\'yin to\'ldi', 403);
+      }
+
+      // Talaba_id bor bo'lsa — bitta talaba bitta o'yinga bir marta
+      if (talabaId) {
+        const { data: existingPlayer } = await supabaseAdmin
+          .from('hukm_players')
+          .select('id, kicked, player_token_hash')
+          .eq('game_id', game.id)
+          .eq('talaba_id', talabaId)
+          .maybeSingle();
+
+        if (existingPlayer) {
+          if (existingPlayer.kicked) {
+            await supabaseAdmin.from('hukm_join_log').insert({ key: rateKey, success: false });
+            return errorResponse('Siz bu o\'yindan chiqarilgansiz', 403);
+          }
+          // Ikkinchi qurilmadan kirish — eski player'ni yangilash
+          const newToken = randomToken(32);
+          const newHash = await sha256Hex(newToken);
+          await supabaseAdmin
+            .from('hukm_players')
+            .update({ player_token_hash: newHash, nickname })
+            .eq('id', existingPlayer.id);
+          // Muvaffaqiyatli — log yozilmaydi
+          return jsonResponse({
+            player: { id: existingPlayer.id, nickname },
+            player_token: newToken,
+            game_id: game.id,
+          });
+        }
+      }
+
+      // Taxallus noyobligi — katta-kichik harfga e'tiborsiz
+      const { name: finalNick, taken } = await uniqueNickname(game.id, nickname);
+      if (taken) {
+        // Band taxallus — rate limit hisobiga kirmaydi (logga yozilmaydi)
+        return errorResponse('Bu taxallus band. Boshqasini tanlang.', 409);
+      }
+
       const playerToken = randomToken(32);
       const playerTokenHash = await sha256Hex(playerToken);
 
@@ -808,116 +988,111 @@ Deno.serve(async (req: Request) => {
           game_id: game.id,
           nickname: finalNick,
           player_token_hash: playerTokenHash,
-          talaba_id: body.talaba_id,
+          talaba_id: talabaId,
         })
         .select('id, nickname')
         .single();
-      if (error) return errorResponse('Qo\'shilmadi', 500);
+      if (error) {
+        await supabaseAdmin.from('hukm_join_log').insert({ key: rateKey, success: false });
+        return errorResponse('Qo\'shilmadi', 500);
+      }
 
+      // Muvaffaqiyatli — logga yozilmaydi (faqat muvaffaqiyatsiz sanaladi)
       return jsonResponse({ player, player_token: playerToken, game_id: game.id });
     }
 
-    // GET /hukm-api/game/:id — o'yin holati (host yoki player token bilan)
+    // POST /hukm-api/game/rejoin — o'yinchini qayta ulash
+    if (method === 'POST' && segments[0] === 'game' && segments[1] === 'rejoin') {
+      const body = await req.json();
+      const { player_id, player_token, game_id } = body;
+      if (!player_id || !player_token || !game_id) {
+        return errorResponse('player_id, player_token va game_id kerak', 400);
+      }
+
+      const { valid, kicked } = await verifyPlayerToken(player_id, player_token);
+      if (!valid) return errorResponse('Sessiya yaroqsiz', 401);
+      if (kicked) return errorResponse('Siz o\'yindan chiqarilgansiz', 403);
+
+      const { data: game } = await supabaseAdmin
+        .from('hukm_games')
+        .select('id, status')
+        .eq('id', game_id)
+        .maybeSingle();
+      if (!game) return errorResponse('O\'yin topilmadi', 404);
+
+      if (game.status === 'finished') {
+        // Tugagan o'yin — to'liq natija qaytaradi (leaderboard bilan)
+        const state = await buildGameState(game_id, false, player_id, player_token);
+        if (!state) return errorResponse('O\'yin holati olinmadi', 500);
+        return jsonResponse({ ...state, finished: true });
+      }
+
+      const state = await buildGameState(game_id, false, player_id, player_token);
+      if (!state) return errorResponse('O\'yin holati olinmadi', 500);
+
+      return jsonResponse(state);
+    }
+
+    // POST /hukm-api/host-resume — ustozning tugamagan o'yinini davom ettirish
+    if (method === 'POST' && segments[0] === 'host-resume') {
+      const body = await req.json();
+      if (!body.ustoz_id) return errorResponse('Vakolat yo\'q', 401);
+      if (!await verifyUstoz(body.ustoz_id)) return errorResponse('Vakolat yo\'q', 403);
+
+      // Stale cleanup
+      await cleanupStaleGames(body.ustoz_id);
+
+      // Shu ustozning tugamagan o'yinini topish
+      const { data: quizzes } = await supabaseAdmin
+        .from('hukm_quizzes')
+        .select('id, title')
+        .eq('owner', body.ustoz_id);
+      if (!quizzes || quizzes.length === 0) return jsonResponse({ game: null });
+
+      const quizIds = quizzes.map(q => q.id);
+      const { data: activeGame } = await supabaseAdmin
+        .from('hukm_games')
+        .select('id, quiz_id, pin, status, current_index, settings, created_at')
+        .in('quiz_id', quizIds)
+        .neq('status', 'finished')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!activeGame) return jsonResponse({ game: null });
+
+      // Yangi host token
+      const newHostToken = randomToken(32);
+      const newHostTokenHash = await sha256Hex(newHostToken);
+      await supabaseAdmin
+        .from('hukm_games')
+        .update({ host_token_hash: newHostTokenHash })
+        .eq('id', activeGame.id);
+
+      const quizTitle = quizzes.find(q => q.id === activeGame.quiz_id)?.title || '';
+      return jsonResponse({
+        game: {
+          id: activeGame.id,
+          pin: activeGame.pin,
+          status: activeGame.status,
+          current_index: activeGame.current_index,
+          settings: activeGame.settings,
+          quiz_title: quizTitle,
+        },
+        host_token: newHostToken,
+      });
+    }
+
+    // GET /hukm-api/game/:id — o'yin holati
     if (method === 'GET' && segments[0] === 'game' && segments[1] && !segments[2]) {
       const hostToken = url.searchParams.get('host_token') || '';
       const playerToken = url.searchParams.get('player_token') || '';
       const playerId = url.searchParams.get('player_id') || '';
 
-      const { data: game } = await supabaseAdmin
-        .from('hukm_games')
-        .select('*')
-        .eq('id', segments[1])
-        .maybeSingle();
-      if (!game) return errorResponse('O\'yin topilmadi', 404);
-
-      const players = await getGamePlayers(game.id);
-      const questions = await getQuizQuestions(game.quiz_id);
-      const isHost = hostToken ? await verifyHostToken(game.id, hostToken) : false;
-
-      const base: any = {
-        id: game.id,
-        pin: game.pin,
-        status: game.status,
-        current_index: game.current_index,
-        settings: game.settings,
-        players: players.map(p => ({ id: p.id, nickname: p.nickname, talaba_id: p.talaba_id })),
-        total_questions: questions.length,
-        is_host: isHost,
-      };
-
-      if (game.status === 'question' && game.current_index >= 0) {
-        const q = questions[game.current_index];
-        if (q) {
-          const showText = game.settings?.show_text_on_phone !== false;
-          base.question = sanitizeQuestionForPlayer(q, game.current_index, showText);
-          const { count } = await supabaseAdmin
-            .from('hukm_answers')
-            .select('*', { count: 'exact', head: true })
-            .eq('game_id', game.id)
-            .eq('question_index', game.current_index) as any;
-          base.answered_count = count || 0;
-
-          if (playerId && playerToken) {
-            const { valid } = await verifyPlayerToken(playerId, playerToken);
-            if (valid) {
-              const { data: myAnswer } = await supabaseAdmin
-                .from('hukm_answers')
-                .select('choice')
-                .eq('game_id', game.id)
-                .eq('player_id', playerId)
-                .eq('question_index', game.current_index)
-                .maybeSingle();
-              base.my_answer = myAnswer?.choice ?? null;
-            }
-          }
-
-          if (isHost) {
-            base.correct_index = (q.options || []).findIndex((o: any) => o.is_correct);
-          }
-        }
-      }
-
-      if (game.status === 'reveal' && game.current_index >= 0) {
-        const q = questions[game.current_index];
-        if (q) {
-          base.reveal = revealQuestionForPlayer(q, game.current_index);
-          const { data: answers } = await supabaseAdmin
-            .from('hukm_answers')
-            .select('choice')
-            .eq('game_id', game.id)
-            .eq('question_index', game.current_index);
-          const distribution = (q.options || []).map((_: any, i: number) =>
-            (answers || []).filter(a => a.choice === i).length
-          );
-          base.distribution = distribution;
-
-          if (playerId && playerToken) {
-            const { valid } = await verifyPlayerToken(playerId, playerToken);
-            if (valid) {
-              const { data: myAnswer } = await supabaseAdmin
-                .from('hukm_answers')
-                .select('choice, correct, points')
-                .eq('game_id', game.id)
-                .eq('player_id', playerId)
-                .eq('question_index', game.current_index)
-                .maybeSingle();
-              base.my_result = myAnswer || null;
-            }
-          }
-        }
-        base.leaderboard = await getLeaderboard(game.id, 5);
-      }
-
-      if (game.status === 'leaderboard' || game.status === 'finished') {
-        base.leaderboard = await getLeaderboard(game.id, game.status === 'finished' ? 0 : 5);
-      }
-
-      if (game.status === 'finished') {
-        // Sessiya yaratish (agar yo'q bo'lsa)
-        await createSession(game.id);
-      }
-
-      return jsonResponse(base);
+      const isHost = hostToken ? await verifyHostToken(segments[1], hostToken) : false;
+      const state = await buildGameState(segments[1], isHost, playerId || undefined, playerToken || undefined);
+      if (!state) return errorResponse('O\'yin topilmadi', 404);
+      return jsonResponse(state);
     }
 
     // ── HOST ACTIONS ───────────────────────────────────────────────────────
@@ -925,13 +1100,20 @@ Deno.serve(async (req: Request) => {
     if (method === 'POST' && segments[0] === 'game' && segments[1] && segments[2] === 'start') {
       const body = await req.json();
       if (!await verifyHostToken(segments[1], body.host_token)) return errorResponse('Vakolat yo\'q', 403);
-      const questions = await getQuizQuestionsByGame(segments[1]);
-      if (questions.length === 0) return errorResponse('Savollar yo\'q', 400);
-      const { error } = await supabaseAdmin
+      const { data: game } = await supabaseAdmin
         .from('hukm_games')
-        .update({ status: 'question', current_index: 0, opened_at: new Date().toISOString() })
+        .select('quiz_id')
+        .eq('id', segments[1])
+        .maybeSingle();
+      if (!game) return errorResponse('O\'yin topilmadi', 404);
+      const questions = await getQuizQuestions(game.quiz_id);
+      if (questions.length === 0) return errorResponse('Savollar yo\'q', 400);
+      const openedAt = nowIso();
+      await supabaseAdmin
+        .from('hukm_games')
+        .update({ status: 'question', current_index: 0, opened_at: openedAt })
         .eq('id', segments[1]);
-      if (error) return errorResponse('Boshlanmadi', 500);
+      await broadcastSignal(segments[1], 'question', 0);
       return jsonResponse({ success: true });
     }
 
@@ -949,26 +1131,34 @@ Deno.serve(async (req: Request) => {
       if (nextIndex >= questions.length) {
         await supabaseAdmin
           .from('hukm_games')
-          .update({ status: 'finished', ended_at: new Date().toISOString() })
+          .update({ status: 'finished', ended_at: nowIso() })
           .eq('id', segments[1]);
         await createSession(segments[1]);
+        await broadcastSignal(segments[1], 'finished', -1);
         return jsonResponse({ success: true, finished: true });
       }
+      const openedAt = nowIso();
       await supabaseAdmin
         .from('hukm_games')
-        .update({ status: 'question', current_index: nextIndex, opened_at: new Date().toISOString() })
+        .update({ status: 'question', current_index: nextIndex, opened_at: openedAt })
         .eq('id', segments[1]);
+      await broadcastSignal(segments[1], 'question', nextIndex);
       return jsonResponse({ success: true, current_index: nextIndex });
     }
 
     if (method === 'POST' && segments[0] === 'game' && segments[1] && segments[2] === 'reveal') {
       const body = await req.json();
       if (!await verifyHostToken(segments[1], body.host_token)) return errorResponse('Vakolat yo\'q', 403);
-      const { error } = await supabaseAdmin
+      await supabaseAdmin
         .from('hukm_games')
         .update({ status: 'reveal' })
         .eq('id', segments[1]);
-      if (error) return errorResponse('Reveal amalga oshmadi', 500);
+      const { data: game } = await supabaseAdmin
+        .from('hukm_games')
+        .select('current_index')
+        .eq('id', segments[1])
+        .maybeSingle();
+      await broadcastSignal(segments[1], 'reveal', game?.current_index ?? -1);
       return jsonResponse({ success: true });
     }
 
@@ -979,6 +1169,7 @@ Deno.serve(async (req: Request) => {
         .from('hukm_games')
         .update({ status: 'leaderboard' })
         .eq('id', segments[1]);
+      await broadcastSignal(segments[1], 'leaderboard', -1);
       return jsonResponse({ success: true });
     }
 
@@ -987,9 +1178,10 @@ Deno.serve(async (req: Request) => {
       if (!await verifyHostToken(segments[1], body.host_token)) return errorResponse('Vakolat yo\'q', 403);
       await supabaseAdmin
         .from('hukm_games')
-        .update({ status: 'finished', ended_at: new Date().toISOString() })
+        .update({ status: 'finished', ended_at: nowIso() })
         .eq('id', segments[1]);
       await createSession(segments[1]);
+      await broadcastSignal(segments[1], 'finished', -1);
       return jsonResponse({ success: true });
     }
 
@@ -1006,6 +1198,7 @@ Deno.serve(async (req: Request) => {
         .from('hukm_games')
         .update({ settings })
         .eq('id', segments[1]);
+      // Lobby lock — signal yubormaymiz (o'yinchilar polling bilan ko'radi)
       return jsonResponse({ success: true, lobby_locked: settings.lobby_locked });
     }
 
@@ -1070,7 +1263,7 @@ Deno.serve(async (req: Request) => {
           player_id,
           question_index: game.current_index,
           choice: choice ?? null,
-          received_at: new Date().toISOString(),
+          received_at: nowIso(),
           correct: isCorrect,
           points,
         });
@@ -1079,6 +1272,7 @@ Deno.serve(async (req: Request) => {
         return errorResponse('Javob saqlanmadi', 500);
       }
 
+      // Javobda signal yuborilmaydi — host polling bilan ko'radi
       return jsonResponse({ received: true });
     }
 
@@ -1156,7 +1350,6 @@ async function getFullReport(gameId: string) {
     .select('player_id, question_index, choice, correct, points, received_at')
     .eq('game_id', gameId);
 
-  // Savol bo'yicha hisobot (izoh va asos modda bilan)
   const perQuestion = questions.map((q, i) => {
     const qAnswers = (answers || []).filter(a => a.question_index === i);
     const total = qAnswers.length;
@@ -1192,7 +1385,6 @@ async function getFullReport(gameId: string) {
     };
   });
 
-  // O'yinchi natijalari
   const playerResults = players.map(p => {
     const pAnswers = (answers || []).filter(a => a.player_id === p.id);
     const totalPoints = pAnswers.reduce((s, a) => s + a.points, 0);
@@ -1222,7 +1414,6 @@ async function getFullReport(gameId: string) {
     };
   }).sort((a, b) => b.total_points - a.total_points);
 
-  // Xulosa (faqat ma'lumotdan hisoblangan)
   const summary = generateSummary(questions, perQuestion, playerResults);
 
   return { per_question: perQuestion, players: playerResults, summary };
@@ -1234,7 +1425,6 @@ function generateSummary(questions: any[], perQuestion: any[], players: any[]): 
   const totalP = players.length;
   if (totalQ === 0 || totalP === 0) return ['O\'yinda ma\'lumot yo\'q.'];
 
-  // Eng qiyin savol
   const hardest = perQuestion
     .filter(q => q.total_answers > 0)
     .sort((a, b) => a.correct_pct - b.correct_pct)[0];
@@ -1242,17 +1432,14 @@ function generateSummary(questions: any[], perQuestion: any[], players: any[]): 
     summary.push(`Eng qiyin savol: ${hardest.question_index + 1}-savol, ${100 - hardest.correct_pct}% xato.`);
   }
 
-  // 50% dan past natija
   const lowScorers = players.filter(p => p.correct_pct < 50);
   if (lowScorers.length > 0) {
     summary.push(`${lowScorers.length} ta o'quvchi 50% dan past natija ko'rsatdi.`);
   }
 
-  // O'rtacha to'g'ri %
   const avgCorrect = Math.round(players.reduce((s, p) => s + p.correct_pct, 0) / totalP);
   summary.push(`O'rtacha to'g'ri javob: ${avgCorrect}%.`);
 
-  // Tugatganlar
   const finishers = players.filter(p => p.total_answers >= totalQ);
   summary.push(`${finishers.length}/${totalP} o'quvchi barcha savollarga javob berdi.`);
 
@@ -1265,7 +1452,7 @@ async function processAIJob(jobId: string, ustozId: string): Promise<void> {
   try {
     await supabaseAdmin
       .from('hukm_quiz_jobs')
-      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .update({ status: 'processing', updated_at: nowIso() })
       .eq('id', jobId);
 
     const { data: job } = await supabaseAdmin
@@ -1282,7 +1469,6 @@ async function processAIJob(jobId: string, ustozId: string): Promise<void> {
     const sections = settings.sections || [];
     const instruction = settings.instruction || '';
 
-    // Manba matnini tayyorlash
     const sourceTexts = sources
       .filter((s: any) => s.type === 'text' && s.content)
       .map((s: any) => s.content)
@@ -1291,12 +1477,11 @@ async function processAIJob(jobId: string, ustozId: string): Promise<void> {
     if (!sourceTexts || sourceTexts.length < 20) {
       await supabaseAdmin
         .from('hukm_quiz_jobs')
-        .update({ status: 'error', error: 'Manba matni yetarli emas', updated_at: new Date().toISOString() })
+        .update({ status: 'error', error: 'Manba matni yetarli emas', updated_at: nowIso() })
         .eq('id', jobId);
       return;
     }
 
-    // AI prompt
     const sectionsText = sections.length > 0
       ? `\nBo'limlar: ${sections.map((s: any) => `${s.name} (${s.count} ta savol)`).join(', ')}`
       : '';
@@ -1329,16 +1514,14 @@ Muhim:
       functionName: 'hukm-quiz-generate',
     });
 
-    // JSON parsing
     let parsed: any;
     try {
-      // AI javobidan JSON qismini ajratib olish
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(text);
     } catch {
       await supabaseAdmin
         .from('hukm_quiz_jobs')
-        .update({ status: 'error', error: 'AI javobini tahlil qilib bo\'lmadi', updated_at: new Date().toISOString() })
+        .update({ status: 'error', error: 'AI javobini tahlil qilib bo\'lmadi', updated_at: nowIso() })
         .eq('id', jobId);
       return;
     }
@@ -1364,7 +1547,7 @@ Muhim:
       .update({
         status: 'done',
         result: { questions: aiQuestions },
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso(),
       })
       .eq('id', jobId);
 
@@ -1372,7 +1555,6 @@ Muhim:
   } catch (err: any) {
     console.error(`[hukm-api] AI job ${jobId} xato:`, err);
     const errorMsg = err.message || 'AI xatosi';
-    // Neytral xato xabarlari
     const neutralMsg = errorMsg.includes('sozlanmagan') || errorMsg.includes('provayder')
       ? 'AI limiti hozircha tugagan, birozdan keyin urinib ko\'ring'
       : errorMsg.includes('429') || errorMsg.includes('quota')
@@ -1380,7 +1562,7 @@ Muhim:
       : 'AI so\'rovda xato yuz berdi';
     await supabaseAdmin
       .from('hukm_quiz_jobs')
-      .update({ status: 'error', error: neutralMsg, updated_at: new Date().toISOString() })
+      .update({ status: 'error', error: neutralMsg, updated_at: nowIso() })
       .eq('id', jobId);
   }
 }
