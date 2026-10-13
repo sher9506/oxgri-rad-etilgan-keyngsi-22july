@@ -71,38 +71,45 @@ export function useHukmGameChannel({ gameId, tokens, onState, enabled = true, fa
       channelRef.current = null;
     }
 
-    const channelName = `hukm:${gid}`;
-    const channel = supabase.channel(channelName, {
-      config: { broadcast: { self: false } },
-    });
+    try {
+      const channelName = `hukm:${gid}`;
+      const channel = supabase.channel(channelName, {
+        config: { broadcast: { self: false } },
+      });
 
-    channel.on('broadcast', { event: 'state' }, (msg: any) => {
-      const payload: HukmSignal = msg.payload;
-      if (!payload?.status) return;
-      // Signal kelganda serverdan holatni olamiz — 0-400ms tasodifiy kechikish
-      const delay = Math.random() * 400;
-      setTimeout(() => { fetchState(); }, delay);
-    });
+      channel.on('broadcast', { event: 'state' }, (msg: any) => {
+        const payload: HukmSignal = msg.payload;
+        if (!payload?.status) return;
+        const delay = Math.random() * 400;
+        setTimeout(() => { fetchState(); }, delay);
+      });
 
-    channel.subscribe((status: string) => {
-      if (destroyedRef.current) return;
-      if (status === 'SUBSCRIBED') {
-        setChannelError(false);
-        setReconnecting(false);
-        startPolling(false);
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {        setChannelError(true);
-        setReconnecting(true);
-        startPolling(true);
-        // 3 soniyadan keyin qayta ulanish
-        setTimeout(() => {
-          if (!destroyedRef.current && enabledRef.current) {
-            connectChannel();
-          }
-        }, 3000);
-      }
-    });
+      channel.subscribe((status: string) => {
+        if (destroyedRef.current) return;
+        if (status === 'SUBSCRIBED') {
+          setChannelError(false);
+          setReconnecting(false);
+          startPolling(false);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setChannelError(true);
+          setReconnecting(true);
+          startPolling(true);
+          setTimeout(() => {
+            if (!destroyedRef.current && enabledRef.current) {
+              connectChannel();
+            }
+          }, 3000);
+        }
+      });
 
-    channelRef.current = channel;
+      channelRef.current = channel;
+    } catch (err) {
+      // Realtime/WebSocket mavjud bo'lmagan muxitda (mas. Telegram iOS WebView)
+      // channel() yoki subscribe() tashlaydi — polling'ga tushamiz
+      console.warn('[hukm-channel] realtime ulanmadi, polling ishlatiladi:', err);
+      setChannelError(true);
+      startPolling(true);
+    }
   }, [fetchState, startPolling]);
 
   // visibilitychange — sahifa ko'ringanda darhol holat olib kanalga qaytadan ulanamiz

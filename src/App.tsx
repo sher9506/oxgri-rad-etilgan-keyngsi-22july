@@ -276,7 +276,7 @@ function AppContent() {
       case 'natijalar': return <Suspense fallback={<LazyFallback />}><RealVaqtNatijalar /></Suspense>;
       case 'mavjud_testlar': return <Suspense fallback={<LazyFallback />}><MavjudTestlar /></Suspense>;
       case 'reyting': return <Suspense fallback={<LazyFallback />}><ReytingSahifa /></Suspense>;
-      case 'hukm': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <HukmKabineti ustozId={user?.ustoz_id} onNavigate={handleTabChange} /> : <HukmOquvchi onNavigate={handleTabChange} initialPin={hukmInitialPin} />}</Suspense>;
+      case 'hukm': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <HukmKabineti ustozId={user?.ustoz_id} onNavigate={handleTabChange} /> : <ErrorBoundary variant="local" onReset={() => handleTabChange('hukm')}><HukmOquvchi onNavigate={handleTabChange} initialPin={hukmInitialPin} /></ErrorBoundary>}</Suspense>;
       case 'mavjud_kazuslar': return <Suspense fallback={<LazyFallback />}><MavjudKazuslar /></Suspense>;
       case 'oqmatlar': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <OquvMateriallarUstoz /> : <OquvMateriallarOquvchi />}</Suspense>;
       case 'savol_javob': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <SavolJavobUstoz /> : <SavolJavobOquvchi />}</Suspense>;

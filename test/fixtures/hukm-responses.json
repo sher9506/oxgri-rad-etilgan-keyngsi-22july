@@ -1,0 +1,93 @@
+{
+  "join": {
+    "player": { "id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest" },
+    "player_token": "test_player_token_fixture",
+    "game_id": "959cd809-6765-437e-bdf7-189ceded3f40"
+  },
+  "lobby": {
+    "id": "959cd809-6765-437e-bdf7-189ceded3f40",
+    "pin": "972021",
+    "status": "lobby",
+    "current_index": -1,
+    "settings": { "speed_bonus": true, "lobby_locked": false, "show_text_on_phone": true },
+    "players": [{ "id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null }],
+    "total_questions": 1,
+    "is_host": false,
+    "server_now": 1791884117189
+  },
+  "question": {
+    "id": "959cd809-6765-437e-bdf7-189ceded3f40",
+    "pin": "972021",
+    "status": "question",
+    "current_index": 0,
+    "settings": { "speed_bonus": true, "lobby_locked": false, "show_text_on_phone": true },
+    "players": [{ "id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null }],
+    "total_questions": 1,
+    "is_host": false,
+    "server_now": 1791884119808,
+    "question": {
+      "index": 0, "type": "variant4", "text": "test_savol_1", "case_text": "",
+      "options": [{ "text": "A" }, { "text": "B" }, { "text": "C" }, { "text": "D" }],
+      "time_limit_s": 20, "hint": ""
+    },
+    "ends_at": 1791884138425, "answered_count": 0, "my_answer": null
+  },
+  "answer": { "received": true },
+  "reveal": {
+    "id": "959cd809-6765-437e-bdf7-189ceded3f40",
+    "pin": "972021",
+    "status": "reveal",
+    "current_index": 0,
+    "settings": { "speed_bonus": true, "lobby_locked": false, "show_text_on_phone": true },
+    "players": [{ "id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null }],
+    "total_questions": 1,
+    "is_host": false,
+    "server_now": 1791884124190,
+    "reveal": {
+      "index": 0, "type": "variant4", "text": "test_savol_1", "case_text": "",
+      "options": [{ "text": "A", "is_correct": true }, { "text": "B", "is_correct": false }, { "text": "C", "is_correct": false }, { "text": "D", "is_correct": false }],
+      "correct_index": 0, "explanation": "test", "legal_basis": "test"
+    },
+    "distribution": [1, 0, 0, 0],
+    "my_result": { "choice": 0, "correct": true, "points": 976 },
+    "leaderboard": [{ "player_id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null, "total_points": 976 }]
+  },
+  "leaderboard": {
+    "id": "959cd809-6765-437e-bdf7-189ceded3f40",
+    "pin": "972021",
+    "status": "leaderboard",
+    "current_index": 0,
+    "settings": { "speed_bonus": true, "lobby_locked": false, "show_text_on_phone": true },
+    "players": [{ "id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null }],
+    "total_questions": 1,
+    "is_host": false,
+    "server_now": 1791884127200,
+    "leaderboard": [{ "player_id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null, "total_points": 976 }]
+  },
+  "finished": {
+    "id": "959cd809-6765-437e-bdf7-189ceded3f40",
+    "pin": "972021",
+    "status": "finished",
+    "current_index": 0,
+    "settings": { "speed_bonus": true, "lobby_locked": false, "show_text_on_phone": true },
+    "players": [{ "id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null }],
+    "total_questions": 1,
+    "is_host": false,
+    "server_now": 1791884131222,
+    "leaderboard": [{ "player_id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null, "total_points": 976 }]
+  },
+  "rejoin": {
+    "id": "959cd809-6765-437e-bdf7-189ceded3f40",
+    "pin": "972021",
+    "status": "finished",
+    "current_index": 0,
+    "settings": { "speed_bonus": true, "lobby_locked": false, "show_text_on_phone": true },
+    "players": [{ "id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null }],
+    "total_questions": 1,
+    "is_host": false,
+    "server_now": 1791884133562,
+    "leaderboard": [{ "player_id": "0f1d14db-3a45-4a19-8cbc-967ca21458b6", "nickname": "test_guest", "talaba_id": null, "total_points": 976 }],
+    "finished": true
+  },
+  "mistakes": { "mistakes": [] }
+}

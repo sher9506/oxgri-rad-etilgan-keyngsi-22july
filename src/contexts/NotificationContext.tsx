@@ -32,22 +32,22 @@ export function NotificationProvider({ children, storageKey = 'general' }: { chi
   const key = getStorageKey(storageKey);
 
   useEffect(() => {
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved) {
         const parsed = JSON.parse(saved);
         setNotifications(parsed.map((n: any) => ({
           ...n,
           timestamp: new Date(n.timestamp),
         })));
-      } catch (e) {
-        console.error('Bildirishnomalarni yuklashda xato:', e);
       }
+    } catch (e) {
+      console.error('Bildirishnomalarni yuklashda xato:', e);
     }
   }, [key]);
 
   useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(notifications));
+    try { localStorage.setItem(key, JSON.stringify(notifications)); } catch {}
   }, [notifications, key]);
 
   const addNotification = (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
