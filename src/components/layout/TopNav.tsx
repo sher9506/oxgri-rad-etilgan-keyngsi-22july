@@ -58,7 +58,7 @@ function buildNavGroups(
   const main: NavItem[] = isBlogOnly
     ? [{ id: 'blog', label: 'Blog', icon: Newspaper }]
     : [
-        { id: 'nexus_ai', label: 'Nexus AI', icon: Scale },
+        { id: 'nexus_ai', label: 'NaSher AI', icon: Scale },
         { id: 'oqmatlar', label: "O'quv materiallari", icon: Library },
       ];
 
