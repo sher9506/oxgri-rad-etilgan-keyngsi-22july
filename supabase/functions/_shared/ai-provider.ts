@@ -1,15 +1,17 @@
 /**
- * Shared AI provider helper with Gemini → Groq fallback.
- * 
- * Usage:
- *   const { text, provider } = await callAIWithFallback({
- *     systemPrompt, messages, maxTokens, temperature, functionName,
- *   });
- * 
- * Groq is used as fallback when Gemini returns 429 (quota exhausted) or 503 (service unavailable).
- * Also handles empty response retries.
- * If GROQ_API_KEY is not configured, falls through to Gemini error.
- * Also auto-routes to Groq if today's Gemini usage is >= 90% of daily quota.
+ * Shared AI provider helper with retry, backoff, and Gemini <-> Groq fallback.
+ *
+ * Flow:
+ * 1. Try Gemini. On 429/503, wait Retry-After (or exponential backoff), retry up to MAX_RETRIES_PER_PROVIDER.
+ * 2. If Gemini still fails after retries, fall back to Groq with the same retry strategy.
+ * 3. If Groq also fails after retries, try Gemini one final time.
+ * 4. If all attempts fail, throw with a clear diagnostic.
+ *
+ * Concurrency is limited by MAX_CONCURRENT_AI_CALLS to avoid overwhelming rate limits.
+ *
+ * Logging: every AI call (success or failure) is logged to `ai_usage_log` with
+ * full details: HTTP status, response time, token counts, rate-limit headers,
+ * error body, and Retry-After value.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -19,8 +21,34 @@ const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-const GEMINI_DAILY_QUOTA = 1000; // estimated free-tier daily limit
+const GEMINI_DAILY_QUOTA = 1000;
 const GROQ_MODEL_DEFAULT = 'openai/gpt-oss-120b';
+
+// Retry config
+const MAX_RETRIES_PER_PROVIDER = 3;
+const BASE_BACKOFF_MS = 2000; // 2s base, doubles each retry
+const MAX_BACKOFF_MS = 60000; // cap at 60s
+const MAX_TOTAL_ATTEMPTS = 5; // across all providers
+
+// Concurrency limiter
+const MAX_CONCURRENT_AI_CALLS = 3;
+let activeCallCount = 0;
+const callQueue: (() => void)[] = [];
+
+async function acquireSlot(): Promise<void> {
+  if (activeCallCount < MAX_CONCURRENT_AI_CALLS) {
+    activeCallCount++;
+    return;
+  }
+  await new Promise<void>(resolve => callQueue.push(resolve));
+  activeCallCount++;
+}
+
+function releaseSlot(): void {
+  activeCallCount--;
+  const next = callQueue.shift();
+  if (next) next();
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -32,6 +60,88 @@ interface AIConfig {
   apiKey: string;
   model: string;
 }
+
+// ─── DETAILED LOGGING ──────────────────────────────────────────────────────
+
+interface CallLogDetail {
+  provider: string;
+  functionName: string;
+  model: string;
+  success: boolean;
+  httpStatus?: number;
+  responseMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  thinkingTokens?: number;
+  retryAfterSec?: number;
+  rateLimitHeaders?: Record<string, string>;
+  errorBody?: string;
+  isTest?: boolean;
+  attempt?: number;
+}
+
+async function logCallDetail(d: CallLogDetail) {
+  try {
+    await supabaseAdmin.from('ai_usage_log').insert({
+      provider: d.provider,
+      function_name: d.functionName,
+      model: d.model,
+      success: d.success,
+      error_status: d.httpStatus && d.httpStatus >= 400 ? d.httpStatus : null,
+      model_name: d.model,
+      http_status: d.httpStatus ?? null,
+      response_ms: d.responseMs ?? null,
+      input_tokens: d.inputTokens ?? null,
+      output_tokens: d.outputTokens ?? null,
+      thinking_tokens: d.thinkingTokens ?? null,
+      retry_after_sec: d.retryAfterSec ?? null,
+      rate_limit_headers: d.rateLimitHeaders ?? null,
+      error_body: d.errorBody ? d.errorBody.slice(0, 2000) : null,
+      is_test: d.isTest ?? false,
+    });
+  } catch (e) {
+    console.warn(`[ai-provider] logCallDetail xato:`, e);
+  }
+}
+
+function extractRateLimitHeaders(headers: Headers): Record<string, string> {
+  const rl: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    const lk = key.toLowerCase();
+    if (lk.startsWith('x-ratelimit') || lk === 'retry-after') {
+      rl[lk] = value;
+    }
+  });
+  return rl;
+}
+
+function parseRetryAfter(retryAfterRaw: string | null, errorBody: string): number | undefined {
+  if (retryAfterRaw) {
+    const parsed = parseFloat(retryAfterRaw);
+    if (!isNaN(parsed)) return Math.min(Math.max(parsed, 1), 60);
+  }
+  // Gemini doesn't send Retry-After header, but puts "Please retry in Xs" in the body
+  const bodyMatch = errorBody.match(/retry in ([\d.]+)s/i);
+  if (bodyMatch) {
+    const parsed = parseFloat(bodyMatch[1]);
+    if (!isNaN(parsed)) return Math.min(Math.max(parsed, 1), 60);
+  }
+  return undefined;
+}
+
+function computeBackoff(attempt: number, retryAfterSec?: number): number {
+  if (retryAfterSec && retryAfterSec > 0) {
+    return Math.min(retryAfterSec * 1000, MAX_BACKOFF_MS);
+  }
+  const exponential = BASE_BACKOFF_MS * Math.pow(2, attempt);
+  return Math.min(exponential, MAX_BACKOFF_MS);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// ─── CONFIG LOADERS ────────────────────────────────────────────────────────
 
 export async function loadGeminiConfig(): Promise<AIConfig> {
   const { data } = await supabaseAdmin
@@ -62,19 +172,7 @@ export async function loadGroqConfig(): Promise<AIConfig | null> {
   };
 }
 
-async function logUsage(provider: string, functionName: string, model: string, success: boolean, errorStatus?: number) {
-  try {
-    await supabaseAdmin.from('ai_usage_log').insert({
-      provider,
-      function_name: functionName,
-      model,
-      success,
-      error_status: errorStatus || null,
-    });
-  } catch (e) {
-    console.warn(`[ai-provider] logUsage xato:`, e);
-  }
-}
+// ─── USAGE HELPERS ─────────────────────────────────────────────────────────
 
 export async function getTodayUsage(): Promise<{ geminiCount: number; groqCount: number }> {
   const today = new Date().toISOString().slice(0, 10);
@@ -94,7 +192,23 @@ export async function getTodayUsage(): Promise<{ geminiCount: number; groqCount:
   };
 }
 
-async function callGemini(config: AIConfig, systemPrompt: string, messages: ChatMessage[], maxTokens: number, temperature: number, jsonMode: boolean): Promise<string> {
+// ─── GEMINI CALL ───────────────────────────────────────────────────────────
+
+interface GeminiCallResult {
+  text: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  thinkingTokens?: number;
+}
+
+async function callGemini(
+  config: AIConfig,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+  temperature: number,
+  jsonMode: boolean,
+): Promise<GeminiCallResult> {
   const modelPath = config.model.replace(/^google\//, '');
   const url = `${config.apiUrl}/${modelPath}:generateContent?key=${config.apiKey}`;
   const contents = messages.map(m => ({
@@ -120,15 +234,39 @@ async function callGemini(config: AIConfig, systemPrompt: string, messages: Chat
     const err = new Error(`Gemini API [${res.status}]`);
     (err as any).status = res.status;
     (err as any).body = txt;
+    (err as any).rateLimitHeaders = extractRateLimitHeaders(res.headers);
+    (err as any).retryAfter = res.headers.get('retry-after');
     throw err;
   }
   const data = JSON.parse(txt);
   const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!reply) throw new Error('Gemini bo\'sh javob qaytardi');
-  return reply;
+
+  const usage = data?.usageMetadata || {};
+  return {
+    text: reply,
+    inputTokens: usage.promptTokenCount ?? undefined,
+    outputTokens: usage.candidatesTokenCount ?? undefined,
+    thinkingTokens: usage.thoughtsTokenCount ?? undefined,
+  };
 }
 
-async function callGroq(config: AIConfig, systemPrompt: string, messages: ChatMessage[], maxTokens: number, temperature: number, jsonMode: boolean): Promise<string> {
+// ─── GROQ CALL ─────────────────────────────────────────────────────────────
+
+interface GroqCallResult {
+  text: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+async function callGroq(
+  config: AIConfig,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+  temperature: number,
+  jsonMode: boolean,
+): Promise<GroqCallResult> {
   const formattedMessages = [
     { role: 'system', content: systemPrompt },
     ...messages.map(m => ({ role: m.role, content: m.text })),
@@ -139,9 +277,6 @@ async function callGroq(config: AIConfig, systemPrompt: string, messages: ChatMe
     max_tokens: maxTokens,
     temperature,
   };
-  // Note: we don't use response_format={type:'json_object'} because some Groq models
-  // reject it with json_validate_failed. Our extractJsonFromAI handles parsing.
-  // if (jsonMode) body.response_format = { type: 'json_object' };
   const res = await fetch(config.apiUrl, {
     method: 'POST',
     headers: {
@@ -155,13 +290,128 @@ async function callGroq(config: AIConfig, systemPrompt: string, messages: ChatMe
     const err = new Error(`Groq API [${res.status}]`);
     (err as any).status = res.status;
     (err as any).body = txt;
+    (err as any).rateLimitHeaders = extractRateLimitHeaders(res.headers);
+    (err as any).retryAfter = res.headers.get('retry-after');
     throw err;
   }
   const data = JSON.parse(txt);
   const reply = data?.choices?.[0]?.message?.content;
   if (!reply) throw new Error('Groq bo\'sh javob qaytardi');
-  return reply;
+
+  const usage = data?.usage || {};
+  return {
+    text: reply,
+    inputTokens: usage.prompt_tokens ?? undefined,
+    outputTokens: usage.completion_tokens ?? undefined,
+  };
 }
+
+// ─── SINGLE PROVIDER CALL WITH RETRY ───────────────────────────────────────
+
+interface ProviderCallParams {
+  provider: 'gemini' | 'groq';
+  config: AIConfig;
+  systemPrompt: string;
+  messages: ChatMessage[];
+  maxTokens: number;
+  temperature: number;
+  jsonMode: boolean;
+  functionName: string;
+  isTest: boolean;
+}
+
+interface ProviderCallOutcome {
+  text: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  thinkingTokens?: number;
+  retriesUsed: number;
+  lastError?: any;
+}
+
+async function callProviderWithRetry(p: ProviderCallParams): Promise<ProviderCallOutcome> {
+  let lastErr: any;
+  for (let attempt = 0; attempt <= MAX_RETRIES_PER_PROVIDER; attempt++) {
+    const t0 = Date.now();
+    try {
+      let result: GeminiCallResult | GroqCallResult;
+      if (p.provider === 'gemini') {
+        result = await callGemini(p.config, p.systemPrompt, p.messages, p.maxTokens, p.temperature, p.jsonMode);
+      } else {
+        result = await callGroq(p.config, p.systemPrompt, p.messages, p.maxTokens, p.temperature, p.jsonMode);
+      }
+      const elapsed = Date.now() - t0;
+      console.log(`[ai-provider] ${p.provider} OK in ${elapsed}ms (attempt ${attempt + 1}) | in=${result.inputTokens} out=${result.outputTokens}`);
+      await logCallDetail({
+        provider: p.provider,
+        functionName: p.functionName,
+        model: p.config.model,
+        success: true,
+        httpStatus: 200,
+        responseMs: elapsed,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        thinkingTokens: (result as GeminiCallResult).thinkingTokens,
+        isTest: p.isTest,
+        attempt: attempt + 1,
+      });
+      return {
+        text: result.text,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        thinkingTokens: (result as GeminiCallResult).thinkingTokens,
+        retriesUsed: attempt,
+      };
+    } catch (err: any) {
+      const elapsed = Date.now() - t0;
+      const status = err.status || 0;
+      const rlHeaders = err.rateLimitHeaders || {};
+      const errBody = (err.body || err.message || '').slice(0, 2000);
+      const retryAfterSec = parseRetryAfter(err.retryAfter ?? null, errBody);
+
+      console.warn(`[ai-provider] ${p.provider} FAIL [${status}] attempt ${attempt + 1}/${MAX_RETRIES_PER_PROVIDER + 1} in ${elapsed}ms | retry-after=${retryAfterSec}s | body=${errBody.slice(0, 200)}`);
+
+      await logCallDetail({
+        provider: p.provider,
+        functionName: p.functionName,
+        model: p.config.model,
+        success: false,
+        httpStatus: status,
+        responseMs: elapsed,
+        retryAfterSec,
+        rateLimitHeaders: rlHeaders,
+        errorBody: errBody,
+        isTest: p.isTest,
+        attempt: attempt + 1,
+      });
+
+      lastErr = err;
+
+      // Non-retryable errors (400, 401, 403) — don't retry
+      if (status >= 400 && status < 500 && status !== 429) {
+        break;
+      }
+
+      // If this was the last attempt, don't sleep
+      if (attempt >= MAX_RETRIES_PER_PROVIDER) {
+        break;
+      }
+
+      // Sleep before retry
+      const backoff = computeBackoff(attempt, retryAfterSec);
+      console.log(`[ai-provider] ${p.provider} retrying in ${backoff}ms (attempt ${attempt + 2})`);
+      await sleep(backoff);
+    }
+  }
+
+  // All retries exhausted
+  const failErr = new Error(`${p.provider} failed after ${MAX_RETRIES_PER_PROVIDER + 1} attempts`);
+  (failErr as any).lastError = lastErr;
+  (failErr as any).provider = p.provider;
+  throw failErr;
+}
+
+// ─── MAIN ENTRY POINT ──────────────────────────────────────────────────────
 
 interface CallAIParams {
   systemPrompt: string;
@@ -170,12 +420,17 @@ interface CallAIParams {
   temperature?: number;
   jsonMode?: boolean;
   functionName: string;
-  /** If true, skip Gemini entirely and go straight to Groq (for quota preservation) */
+  /** If true, skip Gemini entirely and go straight to Groq */
   forceGroq?: boolean;
+  /** If true, mark the log entry as a load-test call (is_test=true) */
+  isTest?: boolean;
 }
 
 export async function callAIWithFallback(params: CallAIParams): Promise<{ text: string; provider: string }> {
-  const { systemPrompt, messages, maxTokens = 1500, temperature = 0.6, jsonMode = false, functionName, forceGroq = false } = params;
+  const {
+    systemPrompt, messages, maxTokens = 1500, temperature = 0.6,
+    jsonMode = false, functionName, forceGroq = false, isTest = false,
+  } = params;
 
   const geminiConfig = await loadGeminiConfig();
   const groqConfig = await loadGroqConfig();
@@ -190,40 +445,58 @@ export async function callAIWithFallback(params: CallAIParams): Promise<{ text: 
     }
   }
 
-  // Try Gemini first (unless skipped)
+  // Provider order: Gemini first (unless skipped), then Groq, then Gemini final
+  const providers: { name: 'gemini' | 'groq'; config: AIConfig | null }[] = [];
   if (!shouldSkipGemini && geminiConfig.apiUrl && geminiConfig.apiKey) {
-    try {
-      const text = await callGemini(geminiConfig, systemPrompt, messages, maxTokens, temperature, jsonMode);
-      await logUsage('gemini', functionName, geminiConfig.model, true);
-      return { text, provider: 'gemini' };
-    } catch (err: any) {
-      const status = err.status || 0;
-      await logUsage('gemini', functionName, geminiConfig.model, false, status);
-      if (status === 429) {
-        console.log(`[ai-provider] Gemini 429, falling back to Groq`);
-      } else {
-        // Non-rate-limit error — still try Groq as fallback if available
-        console.warn(`[ai-provider] Gemini error [${status}], trying Groq fallback`);
-      }
-    }
+    providers.push({ name: 'gemini', config: geminiConfig });
   }
-
-  // Fallback to Groq
   if (groqConfig && groqConfig.apiKey) {
+    providers.push({ name: 'groq', config: groqConfig });
+  }
+  // Final Gemini attempt (if it was the first and failed)
+  if (!shouldSkipGemini && geminiConfig.apiUrl && geminiConfig.apiKey && providers.length > 1) {
+    providers.push({ name: 'gemini', config: geminiConfig });
+  }
+
+  if (providers.length === 0) {
+    throw new Error('AI sozlanmagan. Admin bilan bog\'laning.');
+  }
+
+  let lastError: any;
+  let totalAttempts = 0;
+
+  for (const p of providers) {
+    if (totalAttempts >= MAX_TOTAL_ATTEMPTS) {
+      console.warn(`[ai-provider] Max total attempts (${MAX_TOTAL_ATTEMPTS}) reached, stopping`);
+      break;
+    }
+
+    await acquireSlot();
     try {
-      const text = await callGroq(groqConfig, systemPrompt, messages, maxTokens, temperature, jsonMode);
-      await logUsage('groq', functionName, groqConfig.model, true);
-      return { text, provider: 'groq' };
+      console.log(`[ai-provider] Trying ${p.name} (total attempt ${totalAttempts + 1})`);
+      const outcome = await callProviderWithRetry({
+        provider: p.name,
+        config: p.config!,
+        systemPrompt,
+        messages,
+        maxTokens,
+        temperature,
+        jsonMode,
+        functionName,
+        isTest,
+      });
+      return { text: outcome.text, provider: p.name };
     } catch (err: any) {
-      const status = err.status || 0;
-      await logUsage('groq', functionName, groqConfig.model, false, status);
-      throw new Error(`Groq API xatosi [${status}]: ${(err.body || err.message || '').slice(0, 200)}`);
+      lastError = err;
+      totalAttempts++;
+      console.warn(`[ai-provider] ${p.name} exhausted, moving to next provider`);
+    } finally {
+      releaseSlot();
     }
   }
 
-  // No providers available
-  if (shouldSkipGemini) {
-    throw new Error('AI provayderlar mavjud emas. GROQ_API_KEY sozlanmagan.');
-  }
-  throw new Error('AI sozlanmagan. Admin bilan bog\'laning.');
+  // All providers failed
+  const lastStatus = lastError?.lastError?.status || 0;
+  const lastBody = (lastError?.lastError?.body || lastError?.message || '').slice(0, 300);
+  throw new Error(`AI baholash amalga oshmadi (barcha provayderlar urinib bo'lingan). Oxirgi xato [${lastStatus}]: ${lastBody}`);
 }

@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAIWithFallback } from '../_shared/ai-provider.ts';
+// v3: retry + backoff + provider fallback + concurrency queue
 
 // ─── INTERFEYLAR ──────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { toplam_kod, oquvchi_ismi, javoblar, save_to_db = true } = await req.json();
+    const { toplam_kod, oquvchi_ismi, javoblar, save_to_db = true, is_test = false } = await req.json();
 
     if (!toplam_kod || !oquvchi_ismi || !javoblar) {
       return new Response(
@@ -200,6 +201,7 @@ Deno.serve(async (req) => {
         maxsusMezonlar,
         standartMaksimal,
         qoshimchaMezonlar,
+        isTest: is_test,
       });
 
       bahoNatijalari.push(natija);
@@ -255,10 +257,12 @@ async function baholashAI(params: {
   maxsusMezonlar: { nom: string; ball: number }[];
   standartMaksimal: number;
   qoshimchaMezonlar: QoshimchaMezon[];
+  isTest?: boolean;
 }): Promise<BahoNatija> {
   const {
     kazus, oquvchiJavob, aflotun, aflotunMaksimal,
-    mazmunFaol, mazmunBall, maxsusMezonlar, standartMaksimal, qoshimchaMezonlar
+    mazmunFaol, mazmunBall, maxsusMezonlar, standartMaksimal, qoshimchaMezonlar,
+    isTest = false,
   } = params;
 
   try {
@@ -390,6 +394,7 @@ ${qoshimchaPrompt}
       maxTokens: 2000,
       temperature: 0.5,
       functionName: 'baholash',
+      isTest,
     });
     console.log(`AI javob (kazus ${oquvchiJavob.kazus_index + 1}):`, aiText.substring(0, 200));
 

@@ -135,3 +135,9 @@ verify_jwt = false
 
 [functions.nexus-chat-history]
 verify_jwt = false
+
+[functions.chat-submit]
+verify_jwt = false
+
+[functions.chat-worker]
+verify_jwt = false

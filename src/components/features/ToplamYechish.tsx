@@ -116,7 +116,13 @@ export default function ToplamYechish({ startKod, oquvchiIsmi, isUstoz, onOrqaga
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (e: any) {
-      toast({ title: 'Xato', description: e.message || 'AI tahlilida xatolik', variant: 'destructive' });
+      const msg = e?.message || '';
+      // Rate limit / overload xatolarda talabaga "kuting" xabari, xato emas
+      if (msg.includes('429') || msg.includes('503') || msg.includes('provayder') || msg.includes('rate') || msg.includes('urinib bo\'lingan')) {
+        toast({ title: 'Baholanmoqda', description: 'AI javoblarni tahlil qilmoqda, bir necha daqiqa kuting va qayta urinib ko\'ring.', duration: 8000 });
+      } else {
+        toast({ title: 'Xato', description: msg || 'AI tahlilida xatolik', variant: 'destructive' });
+      }
     } finally {
       setYuklanyapti(false);
     }
@@ -159,7 +165,7 @@ export default function ToplamYechish({ startKod, oquvchiIsmi, isUstoz, onOrqaga
                 <div className="space-y-3">
                   <h2 className="text-2xl font-black text-white tracking-tight">AI TAHLIL QILMOQDA</h2>
                   <div className="flex flex-col gap-2">
-                    <p className="text-blue-200/70 text-sm font-medium">Javoblardagi huquqiy normalar va mantiqiy bog'liqliklar tekshirilmoqda...</p>
+                    <p className="text-blue-200/70 text-sm font-medium">Javoblardagi huquqiy normalar va mantiqiy bog'liqliklar tekshirilmoqda. Bu bir necha daqiqa olishi mumkin, iltimos kuting...</p>
                     <div className="flex justify-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0s' }} />
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0.2s' }} />
