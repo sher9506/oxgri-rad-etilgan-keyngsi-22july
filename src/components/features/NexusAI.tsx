@@ -2,10 +2,10 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowUp, Sparkles, Trash2, RotateCcw, Copy, Check,
   FileText, ExternalLink, AlertCircle, Clock, ChevronDown, Loader2,
-  Plus, MessageCircle, Info, X, PanelLeft,
+  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search,
 } from 'lucide-react';
 import { useNexusAiChat } from '@/hooks/useNexusAiChat';
-import type { ChatMeta } from '@/hooks/useNexusAiChat';
+import type { ChatMeta, NasherMode } from '@/hooks/useNexusAiChat';
 import { useNow } from '@/hooks/useNow';
 import {
   AI_NAME, SAMPLE_QUESTIONS, NEXUS_NOTES,
@@ -395,6 +395,12 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
           {copiedId === msg.id ? <Check /> : <Copy />}
           {copiedId === msg.id ? COPIED_LABEL : COPY_LABEL}
         </button>
+        {msg.mode && (
+          <span className="nc-answer-meta">
+            {msg.mode === 'tezkor' ? <Zap className="nc-answer-meta-icon" /> : <Search className="nc-answer-meta-icon" />}
+            {msg.mode === 'tezkor' ? 'Tezkor' : 'Chuqur'}
+          </span>
+        )}
         {finalSeconds !== null && (
           <span className="nc-answer-meta">
             <Clock className="nc-answer-meta-icon" />
@@ -408,12 +414,19 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
 
 /* ───────────────────────── NexusComposer ───────────────────────── */
 
+const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof Zap }[] = [
+  { id: 'tezkor', label: 'Tezkor', hint: "Tezkor: asosiy kodekslar bo'yicha, taxminan 1–1,5 daqiqa", Icon: Zap },
+  { id: 'chuqur', label: 'Chuqur', hint: "Chuqur: 3000+ qonun hujjati ichidan izlaydi, taxminan 2–3 daqiqa", Icon: Search },
+];
+const MODE_KEY = 'nasher_mode';
+
 interface NexusComposerProps {
   input: string;
   setInput: (v: string) => void;
   onSend: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
-  onPillClick: () => void;
+  mode: NasherMode;
+  onModeChange: (m: NasherMode) => void;
   isProcessing: boolean;
   canSend: boolean;
   inputBlocked: boolean;
@@ -433,7 +446,7 @@ interface NexusComposerProps {
 }
 
 function NexusComposer({
-  input, setInput, onSend, onKeyDown, onPillClick,
+  input, setInput, onSend, onKeyDown, mode, onModeChange,
   isProcessing, canSend, inputBlocked, inputTooLong, inputTooShort,
   minInput, maxInput, resetText, inputRef, chatLimitError, onOpenChats, memoryNote,
   chatExpired, onNewChat, newChatBlocked, waitingElsewhere,
@@ -522,10 +535,22 @@ function NexusComposer({
           </button>
         </div>
         <div className="nc-composer-footer">
-          <button onClick={onPillClick} className="nc-lexion-pill" aria-label="Lexion AI">
-            <span className="nc-lexion-dot" />
-            <span className="nc-lexion-text">Lexion AI</span>
-          </button>
+          <div className="nc-mode-switch" role="radiogroup" aria-label="Javob rejimi">
+            {NASHER_MODES.map(m => (
+              <button
+                key={m.id}
+                type="button"
+                role="radio"
+                aria-checked={mode === m.id}
+                className={`nc-mode-btn ${mode === m.id ? 'nc-mode-active' : ''}`}
+                onClick={() => onModeChange(m.id)}
+                title={m.hint}
+              >
+                <m.Icon />
+                {m.label}
+              </button>
+            ))}
+          </div>
           {input.length > maxInput * 0.8 && (
             <span className={`nc-counter nc-counter-sm ${counterWarn || inputTooLong ? 'nc-counter-warn' : ''}`}>
               {input.length} / {maxInput}
@@ -534,6 +559,7 @@ function NexusComposer({
         </div>
       </div>
       <div className="nc-composer-notes">
+        <span className="nc-mode-hint">{NASHER_MODES.find(m => m.id === mode)!.hint}</span>
         <span className="nc-composer-disclaimer">{NEXUS_NOTES.AI_DISCLAIMER}</span>
       </div>
     </div>
@@ -983,15 +1009,23 @@ function NexusAIInner({ userId }: { userId: string }) {
     return () => el.removeEventListener('scroll', onScroll);
   }, [isNearBottom, messages.length]);
 
+  const [mode, setMode] = useState<NasherMode>(() => {
+    try { return localStorage.getItem(MODE_KEY) === 'tezkor' ? 'tezkor' : 'chuqur'; } catch { return 'chuqur'; }
+  });
+  const changeMode = useCallback((m: NasherMode) => {
+    setMode(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* xususiy rejim: faqat shu sessiyada eslanadi */ }
+  }, []);
+
   const handleSend = useCallback(() => {
     if (!input.trim() || isProcessing) return;
     if (input.trim().length < minInput) return;
     if (input.length > maxInput) return;
     if (quota && !quota.is_unlimited && quota.remaining <= 0) return;
     if (isChatExpired(activeChatId)) return;
-    sendMessage(input);
+    sendMessage(input, mode);
     setInput('');
-  }, [input, isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId]);
+  }, [input, isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId, mode]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -1210,7 +1244,8 @@ function NexusAIInner({ userId }: { userId: string }) {
             setInput={setInput}
             onSend={handleSend}
             onKeyDown={handleKeyDown}
-            onPillClick={() => {}}
+            mode={mode}
+            onModeChange={changeMode}
             isProcessing={isProcessing}
             canSend={canSend}
             inputBlocked={inputBlocked}

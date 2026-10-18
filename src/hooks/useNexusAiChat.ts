@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { AI_NAME, MIN_CHAT_INPUT, MAX_CHAT_INPUT, MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS } from '@/constants/nexus';
+import { pickTezkorSources } from '@/lib/tezkorSources';
 
 export type ChatJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
+/** tezkor: Lexion'siz, asosiy kodekslar (tezroq). chuqur: Lexion 3000+ hujjat ichidan izlaydi (sekinroq). */
+export type NasherMode = 'tezkor' | 'chuqur';
 
 export interface ChatMessage {
   id: string;
@@ -17,6 +20,7 @@ export interface ChatMessage {
   createdAt: number;
   jobCreatedAt?: string;
   serverNow?: string;
+  mode?: NasherMode;
 }
 
 export interface QuotaInfo {
@@ -633,7 +637,7 @@ export function useNexusAiChat(userId: string | undefined) {
             error: undefined,
             lexionPhase: data.lexion_phase || null,
             lexionFallback: data.lexion_fallback || false,
-            lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : undefined,
+            lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : m.lexionUrls,
             jobCreatedAt: data.created_at || m.jobCreatedAt,
             serverNow: data.server_now,
           }));
@@ -753,7 +757,7 @@ export function useNexusAiChat(userId: string | undefined) {
     setIsProcessing(!!pollingJobId.current);
   }, [userId, chatsStatus]);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, mode: NasherMode = 'chuqur') => {
     if (!userId || !text.trim() || isProcessing) return;
     const trimmed = text.trim();
     if (trimmed.length < MIN_CHAT_INPUT || trimmed.length > MAX_CHAT_INPUT) return;
@@ -771,6 +775,7 @@ export function useNexusAiChat(userId: string | undefined) {
       content: trimmed,
       createdAt: Date.now(),
     };
+    const tezkorSources = mode === 'tezkor' ? pickTezkorSources(trimmed) : null;
     const aiMsgId = `ai-${Date.now()}`;
     const aiMsg: ChatMessage = {
       id: aiMsgId,
@@ -779,6 +784,8 @@ export function useNexusAiChat(userId: string | undefined) {
       status: 'queued',
       createdAt: Date.now() + 1,
       jobCreatedAt: new Date().toISOString(),   // timer yuborilgan zahoti sanaydi
+      mode,
+      lexionUrls: tezkorSources?.map(s => s.url),
     };
 
     setMessages(prev => [...prev, userMsg, aiMsg]);
@@ -792,8 +799,11 @@ export function useNexusAiChat(userId: string | undefined) {
         kazus_text: trimmed,
         title: trimmed.slice(0, 100),
         ustoz_id: userId,
-        answer_mode: 'lexion',
         chat_id: currentChatId,
+        // tezkor: Lexion bosqichisiz, kodekslar to'g'ridan-to'g'ri manba sifatida (mavjud 'sources' rejimi)
+        ...(tezkorSources
+          ? { answer_mode: 'sources', sources: tezkorSources.map(s => ({ type: 'url', ...s })) }
+          : { answer_mode: 'lexion' }),
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
 
@@ -856,7 +866,7 @@ export function useNexusAiChat(userId: string | undefined) {
       if (!userText) return prev;
       const toRemove = new Set([aiMsgId, prev[aiIdx - 1]?.id].filter(Boolean) as string[]);
       const filtered = prev.filter(m => !toRemove.has(m.id));
-      setTimeout(() => sendMessage(userText), 0);
+      setTimeout(() => sendMessage(userText, prev[aiIdx].mode), 0);
       return filtered;
     });
   }, [userId, sendMessage]);
