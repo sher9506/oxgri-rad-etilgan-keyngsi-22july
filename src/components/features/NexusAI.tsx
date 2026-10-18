@@ -370,7 +370,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
         <div className="nc-error-panel">
           <div className="nc-error-text" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-error-text)' }} />
-            <span>{msg.error}</span>
+            <span>{stripSourceWords(msg.error ?? '')}</span>
           </div>
           <button onClick={() => onRetry(msg.id)} className="nc-error-retry">
             <RotateCcw /> Qayta urinish
@@ -386,7 +386,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
         <div className="nc-error-panel">
           <div className="nc-error-text" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, color: 'var(--nc-error-text)' }} />
-            <span>{msg.error}</span>
+            <span>{stripSourceWords(msg.error ?? '')}</span>
           </div>
           <button onClick={() => onRetry(msg.id)} className="nc-error-retry">
             <RotateCcw /> Qayta urinish
