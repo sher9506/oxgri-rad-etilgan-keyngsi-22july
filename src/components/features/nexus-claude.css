@@ -253,9 +253,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 400px;
+  justify-content: safe center;
+  min-height: 100%;
   text-align: center;
   padding: 24px;
   max-width: 44rem;
@@ -421,9 +420,9 @@
 
 .nc-answer-h {
   font-family: var(--nc-serif);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
-  margin: 1.3em 0 0.4em;
+  margin: 1.4em 0 0.5em;
   line-height: 1.3;
 }
 
@@ -541,8 +540,8 @@ ol.nc-answer-list {
 
 .nc-sources-list {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .nc-source-link {
@@ -563,7 +562,6 @@ ol.nc-answer-list {
 }
 
 .nc-source-link:hover {
-  transform: translateY(-2px);
   border-color: rgba(37, 99, 235, .20);
   box-shadow: 0 4px 10px rgba(37, 99, 235, .08);
 }
@@ -586,12 +584,11 @@ ol.nc-answer-list {
   display: flex;
   flex-direction: column;
   gap: 0;
-  min-height: 230px;
   background: #FFFFFF;
   border: 1px solid var(--nc-border);
-  border-radius: var(--nc-radius);
-  box-shadow: var(--nc-shadow-lg);
-  padding: 18px;
+  border-radius: var(--nc-radius-sm);
+  box-shadow: var(--nc-shadow);
+  padding: 16px;
   max-width: 44rem;
   position: relative;
   overflow: hidden;
@@ -616,7 +613,7 @@ ol.nc-answer-list {
   height: 18px;
   flex-shrink: 0;
   color: var(--nc-accent);
-  animation: nc-pulse 2s ease-in-out infinite;
+  animation: nc-spin 1.2s linear infinite;
 }
 
 @keyframes nc-pulse {
@@ -632,14 +629,6 @@ ol.nc-answer-list {
   overflow: hidden;
 }
 
-.nc-thinking-text::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.50), transparent);
-  animation: nc-shimmer 2s infinite;
-  transform: translateX(-100%);
-}
 
 @keyframes nc-shimmer {
   100% { transform: translateX(100%); }
@@ -663,15 +652,15 @@ ol.nc-answer-list {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 130px;
+  min-height: 0;
   position: relative;
-  margin: 4px 0 10px;
+  margin: 8px 0;
 }
 
 /* ── DocStack component ── */
 .nc-docstack-viewport {
-  width: 250px;
-  height: 200px;
+  width: 180px;
+  height: 140px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1035,7 +1024,9 @@ ol.nc-answer-list {
 }
 
 .nc-send-btn:disabled {
-  opacity: 0.4;
+  opacity: 1;
+  background: var(--nc-surface-2);
+  color: var(--nc-text-3);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -1072,6 +1063,7 @@ ol.nc-answer-list {
 }
 
 .nc-mode-btn {
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1096,6 +1088,10 @@ ol.nc-answer-list {
 }
 
 .nc-mode-hint {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
   font-size: 12px;
   color: var(--nc-text-2);
   font-family: var(--nc-sans);
@@ -1115,8 +1111,9 @@ ol.nc-answer-list {
 
 .nc-composer-notes {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 10px;
   align-items: center;
   justify-content: center;
   margin-top: 6px;
@@ -1366,7 +1363,6 @@ ol.nc-answer-list {
 
 .nc-chat-item:hover {
   background: rgba(0, 0, 0, 0.025);
-  transform: translateX(2px);
 }
 
 .nc-chat-item:focus-visible {
@@ -2025,9 +2021,6 @@ ol.nc-answer-list {
 /* ════════════════════════════════════════════════════════════════
    SUGGESTION — mobile hidden (4th+ card)
    ════════════════════════════════════════════════════════════════ */
-.nc-suggestion-mobile-hidden {
-  display: block;
-}
 
 /* ════════════════════════════════════════════════════════════════
    RESPONSIVE
@@ -2038,13 +2031,11 @@ ol.nc-answer-list {
   .nc-composer-wrap { padding: 6px 16px calc(8px + env(safe-area-inset-bottom)); }
   .nc-suggestions { grid-template-columns: 1fr; gap: 8px; }
   .nc-empty-title { font-size: 22px; margin-bottom: 4px; }
-  .nc-answer { font-size: 15.5px; line-height: 1.55; }
-  .nc-answer-h { font-size: 15.5px; }
   .nc-timer-pill-prefix { display: none; }
   .nc-msg-user { max-width: 90%; }
   .nc-composer-notes { flex-wrap: wrap; }
   .nc-note-kbd { display: none; }
-  .nc-thinking { min-height: 120px; padding: 14px; }
+  .nc-thinking { padding: 14px; }
   .nc-docstack-viewport { width: 160px; height: 130px; }
   .nc-doc-layer { width: 110px; height: 88px; margin-top: -44px; margin-left: -55px; }
   .nc-counter-sm { display: none; }
@@ -2094,6 +2085,7 @@ ol.nc-answer-list {
 
 @media (max-width: 1023px) {
   .nc-chat-sidebar { display: none; }
+  .nc-panel-toggle { display: none; }
 }
 
 @media (min-width: 1024px) {
@@ -2130,8 +2122,20 @@ ol.nc-answer-list {
 
 /* Sensorli ekranda tugmalar kamida 44px (barmoq bilan bosish uchun) */
 @media (hover: none) {
-  .nc-icon-btn, .nc-send-btn, .nc-chat-delete, .nc-chats-toggle, .nc-drawer-close {
+  .nc-icon-btn, .nc-send-btn, .nc-chat-delete, .nc-chats-toggle, .nc-drawer-close, .nc-mode-btn, .nc-action-btn {
     min-width: 44px;
     min-height: 44px;
   }
 }
+
+/* Past ekranda (noutbuk) bo'sh holatdagi rasm kesilmasin */
+@media (max-height: 760px) {
+  .nc-empty-docstack { display: none; }
+}
+
+.nc-thinking-sub {
+  font-size: 13px;
+  color: var(--nc-text-3);
+  margin: 2px 0 0 28px;
+}
+.nc-answer strong { font-weight: 600; color: var(--nc-text); }

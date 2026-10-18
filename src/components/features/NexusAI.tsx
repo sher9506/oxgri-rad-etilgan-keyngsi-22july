@@ -152,7 +152,7 @@ function NexusShell({
       <div className="nc-header">
         <div className="nc-header-left">
           <button
-            className="nc-chats-toggle lg:hidden"
+            className="nc-chats-toggle"
             onClick={onToggleChats}
             aria-label="Suhbatlar ro'yxati"
           >
@@ -162,7 +162,7 @@ function NexusShell({
             )}
           </button>
           <button
-            className="nc-icon-btn nc-panel-toggle hidden lg:flex"
+            className="nc-icon-btn nc-panel-toggle"
             onClick={onTogglePanel}
             aria-label={panelCollapsed ? "Suhbatlar ro'yxatini ochish" : "Suhbatlar ro'yxatini yig'ish"}
             title={panelCollapsed ? "Suhbatlar ro'yxatini ochish" : "Suhbatlar ro'yxatini yig'ish"}
@@ -199,7 +199,7 @@ function NexusEmptyState({ onPick, disabled }: { onPick: (q: string) => void; di
       <div className="nc-empty-docstack" aria-hidden="true">
         <DocStack phaseB={false} scanning={false} layers={canHover ? 4 : 2} reducedMotion={reducedMotion} canHover={canHover} active={false} />
       </div>
-      <img src="/favicon.png" alt="FanFaster" className="nc-empty-favicon" />
+      <img src="/favicon.png" alt="" aria-hidden="true" className="nc-empty-favicon" />
       <h2 className="nc-empty-title">Huquqiy savol bering</h2>
       <p className="nc-empty-desc">
         O'zbekiston qonunchiligi bo'yicha savolingizni yozing. Tegishli moddalar va tushuntirish bilan javob beradi.
@@ -212,7 +212,6 @@ function NexusEmptyState({ onPick, disabled }: { onPick: (q: string) => void; di
           </button>
         ))}
       </div>
-      <p className="nc-cold-start">{NEXUS_NOTES.COLD_START}</p>
     </div>
   );
 }
@@ -267,6 +266,7 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
           {jobCreatedAt ? `${Math.floor(elapsedSec / 60)} daq ${String(elapsedSec % 60).padStart(2, '0')} son` : ''}
         </span>
       </div>
+      <p className="nc-thinking-sub">Odatda 1–3 daqiqa davom etadi. Sahifani yopmang.</p>
       <div className="nc-thinking-docstack" aria-hidden="true">
         <DocStack
           phaseB={isPhaseB}
@@ -294,11 +294,6 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
           ))}
         </div>
       )}
-      <div className="nc-thinking-skeleton" aria-hidden="true">
-        <div className="nc-skeleton-line" style={{ width: '92%' }} />
-        <div className="nc-skeleton-line" style={{ width: '78%' }} />
-        <div className="nc-skeleton-line" style={{ width: '56%' }} />
-      </div>
     </div>
   );
 }
@@ -415,8 +410,8 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
 /* ───────────────────────── NexusComposer ───────────────────────── */
 
 const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof Zap }[] = [
-  { id: 'tezkor', label: 'Tezkor', hint: "Tezkor: asosiy kodekslar bo'yicha, taxminan 1–1,5 daqiqa", Icon: Zap },
-  { id: 'chuqur', label: 'Chuqur', hint: "Chuqur: 3000+ qonun hujjati ichidan izlaydi, taxminan 2–3 daqiqa", Icon: Search },
+  { id: 'tezkor', label: 'Tezkor', hint: "Asosiy kodekslar · ~1–1,5 daqiqa", Icon: Zap },
+  { id: 'chuqur', label: 'Chuqur', hint: "3000+ qonun hujjati · ~2–3 daqiqa", Icon: Search },
 ];
 const MODE_KEY = 'nasher_mode';
 
