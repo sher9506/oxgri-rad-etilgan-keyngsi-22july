@@ -97,12 +97,13 @@ interface NexusShellProps {
   timerPill: React.ReactNode;
   panelCollapsed: boolean;
   onTogglePanel: () => void;
+  title: string;
 }
 
 function NexusShell({
   children, onClear, showClear, quotaPill, resetLine,
   onToggleChats, activeChatCount, timerPill,
-  panelCollapsed, onTogglePanel,
+  panelCollapsed, onTogglePanel, title,
 }: NexusShellProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const prevOverflowRef = useRef<string>('');
@@ -168,10 +169,8 @@ function NexusShell({
             aria-expanded={!panelCollapsed}
           >
             <PanelLeft style={{ width: 18, height: 18 }} />
-            {!panelCollapsed && activeChatCount > 0 && (
-              <span className="nc-chats-badge">{activeChatCount}</span>
-            )}
           </button>
+          <span className="nc-header-title" title={title}>{title}</span>
         </div>
         <div className="nc-header-right">
           {timerPill}
@@ -661,9 +660,9 @@ function TimerChip({ remaining, status }: { remaining: number; status: 'active' 
   const srText = formatSrTimer(remaining);
 
   return (
-    <span className={cls} aria-hidden="true">
+    <span className={cls} aria-hidden="true" title="Suhbat xotirasi shu vaqtdan keyin tugaydi">
       {icon}
-      {formatRemainingShort(remaining)}
+      {formatRemainingShort(remaining)} qoldi
       <span className="sr-only" aria-live="off" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
         {srText}
       </span>
@@ -754,46 +753,13 @@ interface ChatListPanelProps {
   isDrawer?: boolean;
 }
 
-const PANEL_HEAD_KEY = 'nexus_panel_head_collapsed_v1';
-
-function getInitialCollapsed(isDrawer: boolean): boolean {
-  if (isDrawer) return false;
-  if (typeof window === 'undefined') return false;
-  const stored = localStorage.getItem(PANEL_HEAD_KEY);
-  if (stored !== null) return stored === '1';
-  return window.innerHeight < 800;
-}
-
 function ChatListPanel({
   chats, activeChatId, getChatTimer, pendingChatId, onSelect, onDelete, onNewChat,
   activeCount, maxActive, memoryEnabled, chatsHydrated, nowOverride = 0,
-  isDrawer = false,
 }: ChatListPanelProps) {
   const now = Math.max(useNow(), nowOverride);
   const pendingSet = useMemo(() => new Set(pendingChatId ? [pendingChatId] : []), [pendingChatId]);
   const atLimit = activeCount >= maxActive;
-  const [headCollapsed, setHeadCollapsed] = useState(() => getInitialCollapsed(isDrawer));
-  const reducedMotion = usePrefersReducedMotion();
-
-  useEffect(() => {
-    if (isDrawer) return;
-    const handler = () => {
-      const stored = localStorage.getItem(PANEL_HEAD_KEY);
-      if (stored === null) setHeadCollapsed(window.innerHeight < 800);
-    };
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, [isDrawer]);
-
-  const toggleHead = useCallback(() => {
-    setHeadCollapsed(prev => {
-      const next = !prev;
-      if (!isDrawer && typeof window !== 'undefined') {
-        localStorage.setItem(PANEL_HEAD_KEY, next ? '1' : '0');
-      }
-      return next;
-    });
-  }, [isDrawer]);
 
   const sortedChats = useMemo(() => [...chats].sort((a, b) => b.updatedAt - a.updatedAt), [chats]);
 
@@ -822,68 +788,32 @@ function ChatListPanel({
   if (displayCount >= maxActive) progressCls += ' nc-progress-red';
   else if (displayCount >= maxActive - 2) progressCls += ' nc-progress-amber';
 
-  const panelHeadId = 'nc-panel-head';
-
   return (
     <div className="nc-chat-list-panel">
-      {headCollapsed ? (
-        <div className="nc-panel-head-collapsed">
-          <button
-            className={`nc-panel-head-new-btn ${atLimit ? 'nc-new-chat-disabled' : ''}`}
-            onClick={onNewChat}
-            disabled={atLimit}
-            title={atLimit ? NEXUS_NOTES.LIMIT_TOOLTIP : NEXUS_NOTES.NEW_CHAT}
-            aria-label={NEXUS_NOTES.NEW_CHAT}
-          >
-            <Plus style={{ width: 16, height: 16 }} />
-          </button>
-          <span className="nc-panel-head-count">{displayCount} / {maxActive}</span>
-          <button
-            className="nc-panel-head-toggle"
-            onClick={toggleHead}
-            aria-expanded={false}
-            aria-controls={panelHeadId}
-            aria-label="Panelni yoyish"
-          >
-            <ChevronDown style={{ width: 16, height: 16, transform: 'rotate(-90deg)' }} />
-          </button>
-        </div>
-      ) : (
-        <div className={`nc-panel-head-expanded ${reducedMotion ? '' : 'nc-panel-anim'}`} id={panelHeadId}>
-          <button
-            className={`nc-new-chat-btn ${atLimit ? 'nc-new-chat-disabled' : ''}`}
-            onClick={onNewChat}
-            disabled={atLimit}
-            title={atLimit ? NEXUS_NOTES.LIMIT_TOOLTIP : undefined}
-          >
-            <Plus style={{ width: 16, height: 16 }} />
-            {NEXUS_NOTES.NEW_CHAT}
-          </button>
-          {memoryEnabled && (
-            <div className="nc-active-counter">
-              <span className="nc-active-counter-text">
-                {NEXUS_NOTES.ACTIVE_CHATS}: {displayCount} / {maxActive}
-              </span>
-              <div className="nc-progress-track">
-                <div className={progressCls} style={{ width: `${progressPct}%` }} />
-              </div>
-              {showOtherDeviceHint && (
-                <span className="nc-other-device-hint">{NEXUS_NOTES.OTHER_DEVICE_HINT}</span>
-              )}
+      <div className="nc-panel-head-expanded">
+        <button
+          className={`nc-new-chat-btn ${atLimit ? 'nc-new-chat-disabled' : ''}`}
+          onClick={onNewChat}
+          disabled={atLimit}
+          title={atLimit ? NEXUS_NOTES.LIMIT_TOOLTIP : undefined}
+        >
+          <Plus style={{ width: 16, height: 16 }} />
+          {NEXUS_NOTES.NEW_CHAT}
+        </button>
+        {memoryEnabled && (
+          <div className="nc-active-counter">
+            <span className="nc-active-counter-text">
+              {NEXUS_NOTES.ACTIVE_CHATS}: {displayCount} / {maxActive}
+            </span>
+            <div className="nc-progress-track">
+              <div className={progressCls} style={{ width: `${progressPct}%` }} />
             </div>
-          )}
-          <button
-            className="nc-panel-head-toggle"
-            onClick={toggleHead}
-            aria-expanded={true}
-            aria-controls={panelHeadId}
-            aria-label="Panelni yig'ish"
-            style={{ alignSelf: 'flex-end' }}
-          >
-            <ChevronDown style={{ width: 16, height: 16 }} />
-          </button>
-        </div>
-      )}
+            {showOtherDeviceHint && (
+              <span className="nc-other-device-hint">{NEXUS_NOTES.OTHER_DEVICE_HINT}</span>
+            )}
+          </div>
+        )}
+      </div>
       <div className="nc-chat-list-scroll">
         {chats.length === 0 && chatsHydrated && (
           <p className="nc-chat-empty">{NEXUS_NOTES.EMPTY_CHATS}</p>
@@ -1185,6 +1115,7 @@ function NexusAIInner({ userId }: { userId: string }) {
       }
       panelCollapsed={panelCollapsed}
       onTogglePanel={togglePanel}
+      title={chats.find(c => c.chatId === activeChatId)?.title || NEXUS_NOTES.NEW_CHAT}
     >
       <div className="nc-layout">
         {/* Desktop chat list panel */}

@@ -778,6 +778,7 @@ export function useNexusAiChat(userId: string | undefined) {
       content: '',
       status: 'queued',
       createdAt: Date.now() + 1,
+      jobCreatedAt: new Date().toISOString(),   // timer yuborilgan zahoti sanaydi
     };
 
     setMessages(prev => [...prev, userMsg, aiMsg]);
@@ -798,8 +799,7 @@ export function useNexusAiChat(userId: string | undefined) {
 
       if (data.id) {
         // Savolga ham jobId: server bilan sinxronlashda savol ikki marta chiqmaydi
-        applyToMessages(currentChatId, m => m.id === userMsg.id || m.id === aiMsgId,
-          m => ({ ...m, jobId: data.id, ...(m.id === aiMsgId ? { jobCreatedAt: new Date().toISOString() } : {}) }));
+        applyToMessages(currentChatId, m => m.id === userMsg.id || m.id === aiMsgId, m => ({ ...m, jobId: data.id }));
 
         setChats(prev => {
           const existing = prev.find(c => c.chatId === currentChatId);
