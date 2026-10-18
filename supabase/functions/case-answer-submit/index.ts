@@ -358,6 +358,7 @@ Deno.serve(async (req: Request) => {
           .eq("job_kind", "chat")
           .eq("teacher_id", ustoz_id)
           .in("status", ["queued", "running"])
+          .is("deleted_at", null)   // o'chirilgan chatdagi job hech kim kuzatmaydi: talabani bloklamasin
           .gte("created_at", activeWindowStart);
         if ((activeCount ?? 0) > 0) {
           return new Response(

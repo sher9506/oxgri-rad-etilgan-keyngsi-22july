@@ -48,9 +48,8 @@ function extractLexDocId(url: string): string {
   return m ? `lex.uz/docs/${m[1]}` : url.replace(/^https?:\/\/(www\.)?/, '');
 }
 
-function formatElapsedMin(seconds: number): string {
-  const min = Math.floor(seconds / 60);
-  return min > 0 ? `${min} daq` : '<1 daq';
+function formatElapsed(seconds: number): string {
+  return `${Math.floor(seconds / 60)} daq ${String(seconds % 60).padStart(2, '0')} son`;
 }
 
 function formatSrTimer(remainingMs: number): string {
@@ -234,24 +233,23 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
   }, [lexionUrls]);
 
   const isPhaseB = lexLinks.length > 0;
-  const now = useNow(15_000);
+  const now = useNow(1000);
   const offsetRef = useRef(0);
 
   useEffect(() => {
     offsetRef.current = serverNow ? new Date(serverNow).getTime() - Date.now() : 0;
   }, [serverNow]);
 
-  const [elapsedMin, setElapsedMin] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const prevElapsedRef = useRef(0);
 
   useEffect(() => {
-    if (!jobCreatedAt) { setElapsedMin(0); prevElapsedRef.current = 0; return; }
+    if (!jobCreatedAt) { setElapsedSec(0); prevElapsedRef.current = 0; return; }
     const start = new Date(jobCreatedAt).getTime();
     const calcSec = Math.max(0, Math.floor((now + offsetRef.current - start) / 1000));
-    const calcMin = Math.floor(calcSec / 60);
-    if (calcMin >= prevElapsedRef.current) {
-      setElapsedMin(calcMin);
-      prevElapsedRef.current = calcMin;
+    if (calcSec >= prevElapsedRef.current) {   // server vaqti kelganda orqaga sakramasin
+      setElapsedSec(calcSec);
+      prevElapsedRef.current = calcSec;
     }
   }, [now, jobCreatedAt]);
 
@@ -266,7 +264,9 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
         <span className="nc-thinking-text" key={isPhaseB ? 'b' : 'a'}>
           {isPhaseB ? "Ushbu qonun hujjatlari o'rganilmoqda" : "Amaldagi qonunchilik o'rganilmoqda"}
         </span>
-        <span className="nc-thinking-timer" aria-hidden="true">{elapsedMin > 0 ? `${elapsedMin} daq` : ''}</span>
+        <span className="nc-thinking-timer" aria-hidden="true">
+          {jobCreatedAt ? `${Math.floor(elapsedSec / 60)} daq ${String(elapsedSec % 60).padStart(2, '0')} son` : ''}
+        </span>
       </div>
       <div className="nc-thinking-docstack" aria-hidden="true">
         <DocStack
@@ -315,10 +315,10 @@ interface NexusMessageProps {
 
 function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
   const finalSeconds = useMemo(() => {
-    if (msg.role !== 'assistant' || msg.status !== 'done' || !msg.jobCreatedAt) return null;
+    // serverNow yo'q (serverdan tiklangan javob): tugash vaqti noma'lum, noto'g'ri raqam ko'rsatilmaydi
+    if (msg.role !== 'assistant' || msg.status !== 'done' || !msg.jobCreatedAt || !msg.serverNow) return null;
     const start = new Date(msg.jobCreatedAt).getTime();
-    const end = msg.serverNow ? new Date(msg.serverNow).getTime() : Date.now();
-    return Math.max(0, Math.floor((end - start) / 1000));
+    return Math.max(0, Math.floor((new Date(msg.serverNow).getTime() - start) / 1000));
   }, [msg.role, msg.status, msg.jobCreatedAt, msg.serverNow]);
 
   if (msg.role === 'user') {
@@ -371,9 +371,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
 
   return (
     <div className="nc-msg-assistant">
-      <div className="nc-answer">
-        <AnswerText text={msg.content} />
-      </div>
+      <AnswerText text={msg.content} />
       {msg.lexionFallback && (
         <p className="nc-fallback-note">(Umumiy rejimda javob berildi)</p>
       )}
@@ -401,7 +399,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
         {finalSeconds !== null && (
           <span className="nc-answer-meta">
             <Clock className="nc-answer-meta-icon" />
-            {formatElapsedMin(finalSeconds)}
+            {formatElapsed(finalSeconds)}
           </span>
         )}
       </div>
@@ -432,13 +430,14 @@ interface NexusComposerProps {
   chatExpired: boolean;
   onNewChat: () => void;
   newChatBlocked: boolean;
+  waitingElsewhere: boolean;
 }
 
 function NexusComposer({
   input, setInput, onSend, onKeyDown, onPillClick,
   isProcessing, canSend, inputBlocked, inputTooLong, inputTooShort,
   minInput, maxInput, resetText, inputRef, chatLimitError, onOpenChats, memoryNote,
-  chatExpired, onNewChat, newChatBlocked,
+  chatExpired, onNewChat, newChatBlocked, waitingElsewhere,
 }: NexusComposerProps) {
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -479,6 +478,11 @@ function NexusComposer({
             <div className="nc-input-warning nc-chat-limit-warning">
               <span>{chatLimitError}</span>
               <button onClick={onOpenChats} className="nc-chat-limit-link">Suhbatlarni ochish</button>
+            </div>
+          )}
+          {waitingElsewhere && !chatLimitError && (
+            <div className="nc-input-warning">
+              Boshqa suhbatdagi savolga javob tayyorlanmoqda. Javob kelgach yozishingiz mumkin.
             </div>
           )}
           {inputBlocked && !chatLimitError && (
@@ -1002,6 +1006,7 @@ function NexusAIInner({ userId }: { userId: string }) {
     fetchChatsStatus, chatsStatus, serverOffset, pendingChatId,
     minInput, maxInput, chatsHydrated,
   } = useNexusAiChat(userId);
+  const nowTick = useNow(60_000);   // limit tiklanish vaqti matni eskirib qolmasin
 
   const [input, setInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1097,7 +1102,7 @@ function NexusAIInner({ userId }: { userId: string }) {
   const isLimited = quota && !quota.is_unlimited;
   const remaining = isLimited ? quota!.remaining : 99;
   const limit = isLimited ? quota!.limit : 99;
-  const resetText = isLimited ? formatResetTime(quota!.next_reset_at!, Date.now() + serverOffset) : null;
+  const resetText = isLimited ? formatResetTime(quota!.next_reset_at!, nowTick + serverOffset) : null;
   const inputBlocked = isLimited && remaining <= 0;
   const inputTooShort = input.trim().length > 0 && input.trim().length < minInput;
   const inputTooLong = input.length > maxInput;
@@ -1290,6 +1295,7 @@ function NexusAIInner({ userId }: { userId: string }) {
             chatExpired={chatExpired}
             onNewChat={handleNewChat}
             newChatBlocked={activeCount >= maxActive}
+            waitingElsewhere={!!pendingChatId && pendingChatId !== activeChatId}
           />
         </div>
       </div>

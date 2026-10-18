@@ -536,6 +536,8 @@ ol.nc-answer-list {
 }
 
 .nc-source-link {
+  max-width: 100%;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2088,7 +2090,7 @@ ol.nc-answer-list {
   .nc-msg-user { max-width: 90%; }
   .nc-composer-notes { flex-wrap: wrap; }
   .nc-note-kbd { display: none; }
-  .nc-thinking { min-height: 200px; padding: 14px; }
+  .nc-thinking { min-height: 120px; padding: 14px; }
   .nc-docstack-viewport { width: 160px; height: 130px; }
   .nc-doc-layer { width: 110px; height: 88px; margin-top: -44px; margin-left: -55px; }
   .nc-lexion-text { display: none; }
@@ -2129,7 +2131,6 @@ ol.nc-answer-list {
   /* Composer — single row, hide disclaimer when focused */
   .nc-composer-focused .nc-composer-notes { display: none; }
   .nc-composer-disclaimer { font-size: 11px; }
-  .nc-composer-wrap { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 
   /* Reset line — compact */
   .nc-reset-line { padding: 4px 12px; font-size: 10px; }
@@ -2171,4 +2172,15 @@ ol.nc-answer-list {
   .nc-expired-group-chevron { transition: none; }
   .nc-chat-sidebar { transition: none !important; }
   .nc-chat-sidebar-inner { transition: none !important; }
+}
+
+/* Mobil drawer: ro'yxat sarlavha ostidagi joyni egallaydi, oxirgi chatlar ham ko'rinadi */
+.nc-chat-drawer .nc-chat-list-panel { height: auto; flex: 1; min-height: 0; }
+
+/* Sensorli ekranda tugmalar kamida 44px (barmoq bilan bosish uchun) */
+@media (hover: none) {
+  .nc-icon-btn, .nc-send-btn, .nc-chat-delete, .nc-chats-toggle, .nc-drawer-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

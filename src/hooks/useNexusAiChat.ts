@@ -117,6 +117,7 @@ function serverJobToMessages(job: ServerChatMessage): { user: ChatMessage; assis
       lexionPhase: job.lexion_phase ?? null,
       lexionUrls: job.lexion_urls,
       createdAt: new Date(job.created_at).getTime() + 1,
+      jobCreatedAt: job.created_at,
     };
     return { user: userMsg, assistant: assistantMsg };
   }
@@ -388,22 +389,10 @@ export function useNexusAiChat(userId: string | undefined) {
       setActiveChatId(first.chatId);
       const { messages: msgs, pendingJobId } = loadChatMessages(userId, first.chatId);
       setMessages(msgs);
+      // Eski job ham so'raladi: tayyor bo'lsa javob keladi, 30 daqiqadan eski bo'lsa server o'zi xato qaytaradi
       if (pendingJobId) {
-        const pendingMsg = msgs.find(m => m.jobId === pendingJobId);
-        const jobAgeMs = pendingMsg?.createdAt ? Date.now() - pendingMsg.createdAt : 0;
-        if (jobAgeMs > 20 * 60 * 1000) {
-          setMessages(prev => prev.map(m =>
-            m.jobId === pendingJobId
-              ? { ...m, status: 'error' as ChatJobStatus, error: "Server qayta ishga tushdi, savolni qayta yuboring." }
-              : m,
-          ));
-        } else {
-          setIsProcessing(true);
-          setPendingChatId(first.chatId);
-          pollingJobId.current = pendingJobId;
-          pollingChatId.current = first.chatId;
-          startPolling(pendingJobId, userId, first.chatId);
-        }
+        setIsProcessing(true);
+        startPolling(pendingJobId, userId, first.chatId);
       }
     } else {
       initialActiveId = crypto.randomUUID();
@@ -459,17 +448,12 @@ export function useNexusAiChat(userId: string | undefined) {
           return Array.from(merged.values()).sort((a, b) => b.updatedAt - a.updatedAt);
         });
 
-        // Restore pending polling for active chat
-        const activePending = serverPendingMap.get(initialActiveId);
-        if (activePending && !isProcessingRef.current) {
-          const { messages: localMsgs } = loadChatMessages(userId, initialActiveId);
-          const existingJob = localMsgs.find(m => m.jobId === activePending);
-          if (!existingJob || existingJob.status === 'queued' || existingJob.status === 'running') {
+        // Restore pending polling for ANY chat (job faqat polling bilan oldinga siljiydi)
+        if (!pollingJobId.current) {
+          const pendingChat = serverPendingMap.has(initialActiveId) ? initialActiveId : serverPendingMap.keys().next().value;
+          if (pendingChat) {
             setIsProcessing(true);
-            setPendingChatId(initialActiveId);
-            pollingJobId.current = activePending;
-            pollingChatId.current = initialActiveId;
-            startPolling(activePending, userId, initialActiveId);
+            startPolling(serverPendingMap.get(pendingChat)!, userId, pendingChat);
           }
         }
       } catch {
@@ -588,31 +572,41 @@ export function useNexusAiChat(userId: string | undefined) {
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
+    pollingJobId.current = null;
+    pollingChatId.current = null;
     setPendingChatId(null);
   }, []);
 
-  // ── Apply job message update to correct chat (active or background) ──
-  const applyToJobMessage = useCallback((
+  // ── Apply message update to correct chat (active or background) ──
+  const applyToMessages = useCallback((
     chatId: string,
-    jobId: string,
+    match: (m: ChatMessage) => boolean,
     updater: (m: ChatMessage) => ChatMessage,
   ) => {
     if (chatId === activeChatIdRef.current) {
-      setMessages(prev => prev.map(m => m.jobId === jobId ? updater(m) : m));
+      setMessages(prev => prev.map(m => match(m) ? updater(m) : m));
     } else {
       const uid = userIdRef.current;
       if (!uid) return;
       const { messages: msgs } = loadChatMessages(uid, chatId);
       if (msgs.length === 0) return;
-      const updated = msgs.map(m => m.jobId === jobId ? updater(m) : m);
+      const updated = msgs.map(m => match(m) ? updater(m) : m);
       const pending = updated.find(m => m.jobId && (m.status === 'queued' || m.status === 'running'));
       saveChatMessages(uid, chatId, updated, pending?.jobId);
     }
   }, []);
 
+  const applyToJobMessage = useCallback((
+    chatId: string,
+    jobId: string,
+    updater: (m: ChatMessage) => ChatMessage,
+  ) => applyToMessages(chatId, m => m.role === 'assistant' && m.jobId === jobId, updater), [applyToMessages]);
+
   const startPolling = useCallback((jobId: string, uid: string, chatId: string) => {
     stopPolling();
     pollStart.current = Date.now();
+    pollingJobId.current = jobId;
+    pollingChatId.current = chatId;
     setPendingChatId(chatId);
 
     pollTimer.current = setInterval(async () => {
@@ -695,25 +689,13 @@ export function useNexusAiChat(userId: string | undefined) {
     setChatLimitError(null);
     const { messages: msgs, pendingJobId } = loadChatMessages(userId, chatId);
     setMessages(msgs);
-    if (pendingJobId) {
-      const pendingMsg = msgs.find(m => m.jobId === pendingJobId);
-      if (pendingMsg && (pendingMsg.status === 'queued' || pendingMsg.status === 'running')) {
-        const jobAgeMs = pendingMsg?.createdAt ? Date.now() - pendingMsg.createdAt : 0;
-        if (jobAgeMs <= 20 * 60 * 1000) {
-          setIsProcessing(true);
-          setPendingChatId(chatId);
-          pollingJobId.current = pendingJobId;
-          pollingChatId.current = chatId;
-          startPolling(pendingJobId, userId, chatId);
-          return;
-        }
-      }
-    }
-    if (pollingJobId.current && pollingChatId.current && pollingChatId.current !== chatId) {
+    // Bir vaqtda faqat bitta job kuzatiladi: boshqa chatdagi kutilayotgan job to'xtatilmaydi
+    if (pendingJobId && !pollingJobId.current) {
       setIsProcessing(true);
-    } else {
-      setIsProcessing(false);
+      startPolling(pendingJobId, userId, chatId);
+      return;
     }
+    setIsProcessing(!!pollingJobId.current);
 
     // ── Server sync: fetch messages for this chat ──
     syncingChatRef.current = chatId;
@@ -746,15 +728,9 @@ export function useNexusAiChat(userId: string | undefined) {
 
         // Check for pending job from server
         const pendingJob = data.messages.find(j => j.status === 'queued' || j.status === 'running');
-        if (pendingJob && !isProcessingRef.current && syncingChatRef.current === chatId) {
-          const existingPoll = pollingJobId.current === pendingJob.job_id;
-          if (!existingPoll) {
-            setIsProcessing(true);
-            setPendingChatId(chatId);
-            pollingJobId.current = pendingJob.job_id;
-            pollingChatId.current = chatId;
-            startPolling(pendingJob.job_id, userId, chatId);
-          }
+        if (pendingJob && !pollingJobId.current && syncingChatRef.current === chatId) {
+          setIsProcessing(true);
+          startPolling(pendingJob.job_id, userId, chatId);
         }
       } catch {
         // Offline — keep local messages
@@ -773,11 +749,9 @@ export function useNexusAiChat(userId: string | undefined) {
     setActiveChatId(newId);
     setMessages([]);
     setChatLimitError(null);
-    stopPolling();
-    setIsProcessing(false);
-    pollingJobId.current = null;
-    pollingChatId.current = null;
-  }, [userId, chatsStatus, stopPolling]);
+    // Oldingi chatdagi savol fonda kuzatilishda davom etadi (to'xtatilsa, server job ham to'xtab qoladi)
+    setIsProcessing(!!pollingJobId.current);
+  }, [userId, chatsStatus]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!userId || !text.trim() || isProcessing) return;
@@ -808,7 +782,9 @@ export function useNexusAiChat(userId: string | undefined) {
 
     setMessages(prev => [...prev, userMsg, aiMsg]);
     setIsProcessing(true);
-    pollingChatId.current = currentChatId;
+    // Foydalanuvchi so'rov paytida boshqa chatga o'tsa ham natija shu chatdagi xabarga yoziladi
+    const setAiMsg = (patch: Partial<ChatMessage>) =>
+      applyToMessages(currentChatId, m => m.id === aiMsgId, m => ({ ...m, ...patch }));
 
     try {
       const payload: Record<string, unknown> = {
@@ -821,10 +797,9 @@ export function useNexusAiChat(userId: string | undefined) {
       const data = await callEdgeFunction('case-answer-submit', payload);
 
       if (data.id) {
-        setMessages(prev => prev.map(m =>
-          m.id === aiMsgId ? { ...m, jobId: data.id, jobCreatedAt: new Date().toISOString() } : m,
-        ));
-        pollingJobId.current = data.id;
+        // Savolga ham jobId: server bilan sinxronlashda savol ikki marta chiqmaydi
+        applyToMessages(currentChatId, m => m.id === userMsg.id || m.id === aiMsgId,
+          m => ({ ...m, jobId: data.id, ...(m.id === aiMsgId ? { jobCreatedAt: new Date().toISOString() } : {}) }));
 
         setChats(prev => {
           const existing = prev.find(c => c.chatId === currentChatId);
@@ -844,9 +819,7 @@ export function useNexusAiChat(userId: string | undefined) {
         startPolling(data.id, userId, currentChatId);
       } else if (data.error) {
         setIsProcessing(false);
-        setMessages(prev => prev.map(m =>
-          m.id === aiMsgId ? { ...m, status: 'error', error: data.error, content: data.error } : m,
-        ));
+        setAiMsg({ status: 'error', error: data.error, content: data.error });
       }
     } catch (err) {
       setIsProcessing(false);
@@ -863,12 +836,10 @@ export function useNexusAiChat(userId: string | undefined) {
       if (e.code === 'quota_exceeded' || e.code === 'active_job') {
         errorMsg = e.message;
       }
-      setMessages(prev => prev.map(m =>
-        m.id === aiMsgId ? { ...m, status: 'error', error: errorMsg, content: errorMsg } : m,
-      ));
+      setAiMsg({ status: 'error', error: errorMsg, content: errorMsg });
       fetchQuota();
     }
-  }, [userId, isProcessing, activeChatId, startPolling, fetchQuota, fetchChatsStatus, isChatExpired]);
+  }, [userId, isProcessing, activeChatId, startPolling, fetchQuota, fetchChatsStatus, isChatExpired, applyToMessages]);
 
   const retry = useCallback(async (aiMsgId: string) => {
     if (!userId) return;
@@ -902,6 +873,7 @@ export function useNexusAiChat(userId: string | undefined) {
       return filtered;
     });
     deleteChatMessages(userId, chatId);
+    if (pollingChatId.current === chatId) stopPolling();   // boshqa chatdagi kutilayotgan javobga tegilmaydi
 
     if (activeChatId === chatId) {
       const remaining = chats.filter(c => c.chatId !== chatId);
@@ -914,8 +886,7 @@ export function useNexusAiChat(userId: string | undefined) {
         setActiveChatId(crypto.randomUUID());
         setMessages([]);
       }
-      stopPolling();
-      setIsProcessing(false);
+      setIsProcessing(!!pollingJobId.current);
     }
     fetchChatsStatus();
   }, [userId, chats, activeChatId, stopPolling, fetchChatsStatus]);
@@ -924,8 +895,8 @@ export function useNexusAiChat(userId: string | undefined) {
     if (!userId || !activeChatId) return;
     deleteChatMessages(userId, activeChatId);
     setMessages([]);
-    stopPolling();
-    setIsProcessing(false);
+    if (pollingChatId.current === activeChatId) stopPolling();
+    setIsProcessing(!!pollingJobId.current);
     setChats(prev => {
       const filtered = prev.filter(c => c.chatId !== activeChatId);
       saveChatsList(userId, filtered);
