@@ -2133,9 +2133,110 @@ ol.nc-answer-list {
   .nc-empty-docstack { display: none; }
 }
 
-.nc-thinking-sub {
+.nc-answer strong { font-weight: 600; color: var(--nc-text); }
+
+/* ── Kutish kartasi: progress, bosqichlar, maslahat ── */
+.nc-progress {
+  height: 3px;
+  margin: 12px 0 10px;
+  border-radius: 999px;
+  background: var(--nc-surface-2);
+  overflow: hidden;
+}
+.nc-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--nc-accent), #60A5FA);
+  transition: width 1s linear;
+}
+.nc-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.nc-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   color: var(--nc-text-3);
-  margin: 2px 0 0 28px;
+  transition: color 300ms var(--nc-ease);
 }
-.nc-answer strong { font-weight: 600; color: var(--nc-text); }
+.nc-steps li svg { width: 14px; height: 14px; color: var(--nc-accent); flex-shrink: 0; }
+.nc-step-dot {
+  width: 6px; height: 6px; margin: 0 4px;
+  border-radius: 50%;
+  background: var(--nc-border-strong);
+  flex-shrink: 0;
+}
+.nc-steps .nc-step-done { color: var(--nc-text-2); }
+.nc-steps .nc-step-now { color: var(--nc-text); font-weight: 500; }
+.nc-step-now .nc-step-dot { background: var(--nc-accent); animation: nc-pulse 1.4s ease-in-out infinite; }
+.nc-thinking-tip {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--nc-border);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--nc-text-3);
+  animation: nc-hint-in 400ms var(--nc-ease);
+}
+.nc-chip-name, .nc-source-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.nc-chip { max-width: 100%; }
+.nc-chip-name { max-width: 220px; }
+
+/* ── Qonun hujjatlari ro'yxati: nomlari bilan, bosilsa lex.uz ochiladi ── */
+.nc-source-link { max-width: min(100%, 320px); font-size: 13px; min-height: 32px; }
+
+/* ── Javob yozilib chiqishi ── */
+.nc-answer-typing > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--nc-accent);
+  vertical-align: middle;
+  animation: nc-pulse 900ms ease-in-out infinite;
+}
+.nc-actions { transition: opacity 300ms var(--nc-ease); }
+.nc-actions-hidden { opacity: 0; pointer-events: none; }
+
+/* ── Rejim tanlash: izoh silliq almashadi, har rejim ikonkasi o'zicha jonlanadi ── */
+.nc-mode-hint { animation: nc-hint-in 320ms var(--nc-ease); }
+@keyframes nc-hint-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.nc-mode-lunda.nc-mode-active svg { animation: nc-ico-target 520ms var(--nc-ease); }
+.nc-mode-tezkor.nc-mode-active svg { animation: nc-ico-zap 420ms var(--nc-ease); }
+.nc-mode-chuqur.nc-mode-active svg { animation: nc-ico-search 640ms var(--nc-ease); }
+@keyframes nc-ico-target {           /* nishonga tegish */
+  0% { transform: scale(.6); opacity: .4; }
+  60% { transform: scale(1.25); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes nc-ico-zap {              /* chaqmoq chaqnashi */
+  0% { transform: translateY(-3px) rotate(-12deg); opacity: .3; }
+  50% { transform: translateY(1px) rotate(6deg); opacity: 1; }
+  100% { transform: none; }
+}
+@keyframes nc-ico-search {           /* lupa bilan qidirish */
+  0% { transform: translate(0, 0); }
+  30% { transform: translate(-2px, -1px); }
+  65% { transform: translate(2px, 1px); }
+  100% { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nc-mode-active svg, .nc-mode-hint, .nc-thinking-tip, .nc-answer-typing > :last-child::after, .nc-step-now .nc-step-dot { animation: none; }
+  .nc-progress span { transition: none; }
+}

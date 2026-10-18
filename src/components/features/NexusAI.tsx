@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowUp, Sparkles, Trash2, RotateCcw, Copy, Check,
   FileText, ExternalLink, AlertCircle, Clock, ChevronDown, Loader2,
-  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search,
+  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search, Target,
 } from 'lucide-react';
 import { useNexusAiChat } from '@/hooks/useNexusAiChat';
 import type { ChatMeta, NasherMode } from '@/hooks/useNexusAiChat';
@@ -16,6 +16,7 @@ import {
 import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
 import AnswerText from './nexus/AnswerText';
+import { stripSourceWords, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
 import './nexus-claude.css';
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -41,11 +42,6 @@ function normalizeUrl(url: string): string {
 function isLexUz(url: string): boolean {
   const u = normalizeUrl(url);
   return u.startsWith('https://lex.uz') || u.startsWith('https://www.lex.uz');
-}
-
-function extractLexDocId(url: string): string {
-  const m = url.match(/\/docs\/(-?\d+)/);
-  return m ? `lex.uz/docs/${m[1]}` : url.replace(/^https?:\/\/(www\.)?/, '');
 }
 
 function formatElapsed(seconds: number): string {
@@ -222,14 +218,25 @@ interface NexusThinkingProps {
   lexionUrls: string[] | undefined;
   jobCreatedAt: string | undefined;
   serverNow: string | undefined;
+  mode: NasherMode | undefined;
 }
 
-function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingProps) {
-  const lexLinks = useMemo(() => {
-    if (!lexionUrls || lexionUrls.length === 0) return [];
-    return lexionUrls.filter(isLexUz);
-  }, [lexionUrls]);
+// Kutish paytida ko'rsatiladigan qisqa foydali gaplar (har 9 soniyada almashadi)
+const WAIT_TIPS = [
+  "Boshqa oynaga o'tishingiz mumkin: javob tayyor bo'lganda sarlavhada ✓ belgisi chiqadi.",
+  "Javobdagi qonun nomiga bossangiz, lex.uz da o'sha hujjat ochiladi.",
+  "Vaziyatni aniqroq yozsangiz (kim, qachon, nima bo'ldi), javob ham aniqroq bo'ladi.",
+  "Tez va qisqa javob kerak bo'lsa, «Lo'nda» rejimini tanlang.",
+  "lex.uz — O'zbekiston qonun hujjatlarining rasmiy milliy bazasi.",
+  "Muhim ishda javobni advokat bilan ham maslahatlashib oling.",
+];
 
+// Taxminiy davomiylik (s): progress chizig'i shunga qarab silliq to'ladi, hech qachon 100% ga yetmaydi
+const MODE_EXPECTED_SEC: Record<NasherMode, number> = { lunda: 60, tezkor: 85, chuqur: 160 };
+
+function NexusThinking({ lexionUrls, jobCreatedAt, serverNow, mode = 'chuqur' }: NexusThinkingProps) {
+  const lexLinks = useMemo(() => (lexionUrls ?? []).filter(isLexUz), [lexionUrls]);
+  const names = useLexNames(lexLinks.length > 0);
   const isPhaseB = lexLinks.length > 0;
   const now = useNow(1000);
   const offsetRef = useRef(0);
@@ -251,33 +258,38 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
     }
   }, [now, jobCreatedAt]);
 
-  const reducedMotion = usePrefersReducedMotion();
-  const canHover = useCanHover();
-  const docLayers = canHover ? 4 : 2;
+  // Chuqur: 2-bosqich (hujjatlar topildi) boshlangan vaqtni eslab qolamiz
+  const phaseBAtRef = useRef<number | null>(null);
+  if (isPhaseB && phaseBAtRef.current === null) phaseBAtRef.current = elapsedSec;
+
+  const steps = mode === 'chuqur'
+    ? ["Kerakli qonun hujjatlari izlanmoqda", "Topilgan hujjatlar o'qilmoqda", "Javob yozilmoqda"]
+    : ["Kodekslar ochilmoqda", "Tegishli moddalar o'qilmoqda", "Javob yozilmoqda"];
+  const step = mode === 'chuqur'
+    ? (!isPhaseB ? 0 : elapsedSec - (phaseBAtRef.current ?? 0) < 20 ? 1 : 2)
+    : (elapsedSec < 4 ? 0 : elapsedSec < 18 ? 1 : 2);
+  const progress = Math.round(95 * (1 - Math.exp(-elapsedSec / (MODE_EXPECTED_SEC[mode] / 2))));
+  const tip = WAIT_TIPS[Math.floor(elapsedSec / 9) % WAIT_TIPS.length];
 
   return (
     <div className="nc-thinking" aria-live="polite">
       <div className="nc-thinking-header">
-        {isPhaseB ? <FileText className="nc-thinking-icon" /> : <Loader2 className="nc-thinking-icon" />}
-        <span className="nc-thinking-text" key={isPhaseB ? 'b' : 'a'}>
-          {isPhaseB ? "Ushbu qonun hujjatlari o'rganilmoqda" : "Amaldagi qonunchilik o'rganilmoqda"}
-        </span>
+        <Loader2 className="nc-thinking-icon" />
+        <span className="nc-thinking-text" key={step}>{steps[step]}</span>
         <span className="nc-thinking-timer" aria-hidden="true">
-          {jobCreatedAt ? `${Math.floor(elapsedSec / 60)} daq ${String(elapsedSec % 60).padStart(2, '0')} son` : ''}
+          {jobCreatedAt ? formatElapsed(elapsedSec) : ''}
         </span>
       </div>
-      <p className="nc-thinking-sub">Odatda 1–3 daqiqa davom etadi. Sahifani yopmang.</p>
-      <div className="nc-thinking-docstack" aria-hidden="true">
-        <DocStack
-          phaseB={isPhaseB}
-          scanning={!reducedMotion}
-          layers={docLayers}
-          reducedMotion={reducedMotion}
-          canHover={canHover}
-          active={true}
-        />
-      </div>
-      {isPhaseB && lexLinks.length > 0 && (
+      <div className="nc-progress" aria-hidden="true"><span style={{ width: `${progress}%` }} /></div>
+      <ol className="nc-steps" aria-hidden="true">
+        {steps.map((t, i) => (
+          <li key={t} className={i < step ? 'nc-step-done' : i === step ? 'nc-step-now' : ''}>
+            {i < step ? <Check /> : <span className="nc-step-dot" />}
+            {t}
+          </li>
+        ))}
+      </ol>
+      {isPhaseB && (
         <div className="nc-thinking-chips">
           {lexLinks.map((url, i) => (
             <a
@@ -286,14 +298,16 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow }: NexusThinkingPro
               target="_blank"
               rel="noopener noreferrer"
               className="nc-chip"
+              title={lexDocName(url, names)}
               style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}
             >
               <FileText style={{ width: 12, height: 12 }} />
-              {extractLexDocId(url)}
+              <span className="nc-chip-name">{lexDocName(url, names)}</span>
             </a>
           ))}
         </div>
       )}
+      <p className="nc-thinking-tip" key={tip}>{tip}</p>
     </div>
   );
 }
@@ -308,12 +322,30 @@ interface NexusMessageProps {
 }
 
 function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
+  const isDone = msg.role === 'assistant' && msg.status === 'done';
+  const answer = useMemo(() => stripSourceWords(msg.content), [msg.content]);
+  const { shown, typing } = useTypewriter(msg.id, answer, isDone && !!msg.fresh);
+  const lexLinks = useMemo(() => (isDone ? (msg.lexionUrls ?? []).filter(isLexUz) : []), [isDone, msg.lexionUrls]);
+  const names = useLexNames(lexLinks.length > 0);
+
+  // Foydalanuvchi boshqa oynada bo'lsa, sarlavhada belgi: qaytib kelganda tiklanadi
+  useEffect(() => {
+    if (!isDone || !msg.fresh || !document.hidden) return;
+    const prev = document.title;
+    document.title = '✓ Javob tayyor · NaSher AI';
+    const back = () => { if (!document.hidden) document.title = prev; };
+    document.addEventListener('visibilitychange', back);
+    return () => { document.removeEventListener('visibilitychange', back); document.title = prev; };
+  }, [isDone, msg.fresh]);
+
   const finalSeconds = useMemo(() => {
     // serverNow yo'q (serverdan tiklangan javob): tugash vaqti noma'lum, noto'g'ri raqam ko'rsatilmaydi
     if (msg.role !== 'assistant' || msg.status !== 'done' || !msg.jobCreatedAt || !msg.serverNow) return null;
     const start = new Date(msg.jobCreatedAt).getTime();
     return Math.max(0, Math.floor((new Date(msg.serverNow).getTime() - start) / 1000));
   }, [msg.role, msg.status, msg.jobCreatedAt, msg.serverNow]);
+
+  const modeMeta = NASHER_MODES.find(m => m.id === msg.mode);
 
   if (msg.role === 'user') {
     return <div className="nc-msg-user">{msg.content}</div>;
@@ -326,6 +358,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
           lexionUrls={msg.lexionUrls}
           jobCreatedAt={msg.jobCreatedAt}
           serverNow={msg.serverNow}
+          mode={msg.mode}
         />
       </div>
     );
@@ -365,35 +398,35 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
 
   return (
     <div className="nc-msg-assistant">
-      <AnswerText text={msg.content} />
-      {msg.lexionFallback && (
+      <AnswerText text={shown} typing={typing} />
+      {msg.lexionFallback && !typing && (
         <p className="nc-fallback-note">(Umumiy rejimda javob berildi)</p>
       )}
-      {msg.lexionUrls && msg.lexionUrls.filter(isLexUz).length > 0 && (
+      {lexLinks.length > 0 && !typing && (
         <div className="nc-sources">
           <p className="nc-sources-label">
             <FileText style={{ width: 12, height: 12 }} />
-            Foydalanilgan manbalar ({msg.lexionUrls.filter(isLexUz).length})
+            Qonun hujjatlari
           </p>
           <div className="nc-sources-list">
-            {msg.lexionUrls.filter(isLexUz).slice(0, 10).map((url) => (
-              <a key={url} href={normalizeUrl(url)} target="_blank" rel="noopener noreferrer" className="nc-source-link">
+            {lexLinks.slice(0, 10).map((url) => (
+              <a key={url} href={normalizeUrl(url)} target="_blank" rel="noopener noreferrer" className="nc-source-link" title={lexDocName(url, names)}>
                 <ExternalLink />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{extractLexDocId(url)}</span>
+                <span className="nc-source-name">{lexDocName(url, names)}</span>
               </a>
             ))}
           </div>
         </div>
       )}
-      <div className="nc-actions" aria-live="polite">
-        <button onClick={() => onCopy(msg.id, msg.content)} className="nc-action-btn" aria-label={copiedId === msg.id ? COPIED_LABEL : COPY_LABEL}>
+      <div className={`nc-actions ${typing ? 'nc-actions-hidden' : ''}`} aria-live="polite">
+        <button onClick={() => onCopy(msg.id, answer)} className="nc-action-btn" aria-label={copiedId === msg.id ? COPIED_LABEL : COPY_LABEL}>
           {copiedId === msg.id ? <Check /> : <Copy />}
           {copiedId === msg.id ? COPIED_LABEL : COPY_LABEL}
         </button>
-        {msg.mode && (
+        {modeMeta && (
           <span className="nc-answer-meta">
-            {msg.mode === 'tezkor' ? <Zap className="nc-answer-meta-icon" /> : <Search className="nc-answer-meta-icon" />}
-            {msg.mode === 'tezkor' ? 'Tezkor' : 'Chuqur'}
+            <modeMeta.Icon className="nc-answer-meta-icon" />
+            {modeMeta.label}
           </span>
         )}
         {finalSeconds !== null && (
@@ -409,9 +442,11 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
 
 /* ───────────────────────── NexusComposer ───────────────────────── */
 
+// Tezlik tartibida: eng qisqasidan eng chuqurigacha
 const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof Zap }[] = [
-  { id: 'tezkor', label: 'Tezkor', hint: "Asosiy kodekslar · ~1–1,5 daqiqa", Icon: Zap },
-  { id: 'chuqur', label: 'Chuqur', hint: "3000+ qonun hujjati · ~2–3 daqiqa", Icon: Search },
+  { id: 'lunda', label: "Lo'nda", hint: "Qisqa javob: nima qilish kerak · ~1 daqiqa", Icon: Target },
+  { id: 'tezkor', label: 'Tezkor', hint: "Moddalar bilan tushuntirish · ~1,5 daqiqa", Icon: Zap },
+  { id: 'chuqur', label: 'Chuqur', hint: "Butun qonunchilik bo'yicha tahlil · ~2–3 daqiqa", Icon: Search },
 ];
 const MODE_KEY = 'nasher_mode';
 
@@ -537,7 +572,7 @@ function NexusComposer({
                 type="button"
                 role="radio"
                 aria-checked={mode === m.id}
-                className={`nc-mode-btn ${mode === m.id ? 'nc-mode-active' : ''}`}
+                className={`nc-mode-btn nc-mode-${m.id} ${mode === m.id ? 'nc-mode-active' : ''}`}
                 onClick={() => onModeChange(m.id)}
                 title={m.hint}
               >
@@ -554,7 +589,7 @@ function NexusComposer({
         </div>
       </div>
       <div className="nc-composer-notes">
-        <span className="nc-mode-hint">{NASHER_MODES.find(m => m.id === mode)!.hint}</span>
+        <span className="nc-mode-hint" key={mode}>{NASHER_MODES.find(m => m.id === mode)!.hint}</span>
         <span className="nc-composer-disclaimer">{NEXUS_NOTES.AI_DISCLAIMER}</span>
       </div>
     </div>
@@ -1005,7 +1040,7 @@ function NexusAIInner({ userId }: { userId: string }) {
   }, [isNearBottom, messages.length]);
 
   const [mode, setMode] = useState<NasherMode>(() => {
-    try { return localStorage.getItem(MODE_KEY) === 'tezkor' ? 'tezkor' : 'chuqur'; } catch { return 'chuqur'; }
+    try { const v = localStorage.getItem(MODE_KEY); return NASHER_MODES.some(m => m.id === v) ? v as NasherMode : 'chuqur'; } catch { return 'chuqur'; }
   });
   const changeMode = useCallback((m: NasherMode) => {
     setMode(m);

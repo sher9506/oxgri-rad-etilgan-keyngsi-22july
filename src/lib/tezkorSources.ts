@@ -32,14 +32,14 @@ export const TEZKOR_MAX_SOURCES = 4;
 
 const normalize = (s: string) => ` ${s.toLowerCase().replace(/[ʻʼ‘’`´]/g, "'")} `;
 
-export function pickTezkorSources(text: string): { title: string; url: string }[] {
+export function pickTezkorSources(text: string, max = TEZKOR_MAX_SOURCES): { title: string; url: string }[] {
   const t = normalize(text);
   const urls = KODEKSLAR
     .map((k, i) => ({ k, i, score: k.keys.filter(key => t.includes(key)).length }))
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score || a.i - b.i)   // teng ballda ro'yxatdagi tartib (asosiy kodekslar oldin)
-    .slice(0, TEZKOR_MAX_SOURCES)
+    .slice(0, max)
     .map(x => x.k.url);
-  const chosen = urls.length > 0 ? urls : DEFAULT_URLS;
+  const chosen = urls.length > 0 ? urls : DEFAULT_URLS.slice(0, max);
   return chosen.map(url => ({ title: KODEKSLAR.find(k => k.url === url)!.name, url }));
 }

@@ -96,7 +96,7 @@ function parseBlocks(text: string): Block[] {
   return blocks;
 }
 
-export default function AnswerText({ text }: { text: string }) {
+export default function AnswerText({ text, typing = false }: { text: string; typing?: boolean }) {
   const blocks = useMemo(() => {
     const cleaned = cleanText(text);
     if (!cleaned) return [];
@@ -104,7 +104,7 @@ export default function AnswerText({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <div className="nc-answer" aria-live="polite">
+    <div className={`nc-answer ${typing ? 'nc-answer-typing' : ''}`} aria-live={typing ? 'off' : 'polite'}>
       {blocks.map((block, i) => {
         const key = `b${i}`;
         if (block.type === 'heading') {

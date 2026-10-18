@@ -2,6 +2,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
+import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,11 +22,6 @@ const MAX_SOURCE_TITLE_LENGTH = 120;
 const SIGNED_URL_EXPIRY = 3600;
 const STORAGE_BUCKET = "case-sources";
 
-const INSTRUCTION =
-  "Siz professional O'zbekiston huquqshunosisiz. Quyidagi kazusni IRAC (Issue, Rule, Application, Conclusion) usulida va berilgan manbalar asosida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
-
-const CHAT_INSTRUCTION =
-  "Siz professional O'zbekiston huquqshunosisiz. Quyidagi huquqiy savolga O'zbekiston qonunchiligi bo'yicha aniq va tushunarli javob bering: avval qisqa xulosa, keyin tegishli moddalar va tushuntirish. Manbada javob bo'lmasa, buni ayting. Javob oxirida hech qanday savol bermang va taklif qilmang.";
 
 const MAX_CHAT_INPUT = 2500;
 const MIN_CHAT_INPUT = 10;
@@ -211,6 +207,7 @@ async function sendToBackend(
   try {
     const serviceRes = await fetch(`${baseUrl}/api/jobs`, {
       method: "POST",
+      signal: AbortSignal.timeout(40_000),   // osilib qolgan Render edge funksiyani qotirmasin
       headers: {
         "X-API-Key": cfg.key,
         "Content-Type": "application/json",
@@ -269,6 +266,7 @@ async function sendToLexion(
   try {
     const serviceRes = await fetch(`${lexionCfg.url}/api/jobs`, {
       method: "POST",
+      signal: AbortSignal.timeout(40_000),   // osilib qolgan Render edge funksiyani qotirmasin
       headers: {
         "X-API-Key": lexionCfg.key,
         "Content-Type": "application/json",
@@ -308,6 +306,7 @@ Deno.serve(async (req: Request) => {
     const library_title: string | undefined = body.library_title;
     const answer_mode: string = body.answer_mode || (Array.isArray(sources) && sources.length > 0 ? 'sources' : 'general');
     const isStandaloneChat = !case_id;
+    const answerStyle = parseAnswerStyle(body.answer_style);   // 'lunda' faqat chat uchun
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
     const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
 
@@ -586,7 +585,7 @@ Deno.serve(async (req: Request) => {
         title,
         kazus_text,
         external_id: `${jobId}-ans`,
-        instruction: isStandaloneChat ? CHAT_INSTRUCTION : INSTRUCTION,
+        instruction: isStandaloneChat ? chatInstruction(answerStyle) : INSTRUCTION,
         sources: [],
       };
 
@@ -837,7 +836,7 @@ Deno.serve(async (req: Request) => {
       title,
       kazus_text,
       external_id: jobId,
-      instruction: isStandaloneChat ? CHAT_INSTRUCTION : INSTRUCTION,
+      instruction: isStandaloneChat ? chatInstruction(answerStyle) : INSTRUCTION,
       sources: serviceSources,
     };
 

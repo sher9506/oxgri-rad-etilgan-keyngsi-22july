@@ -4,8 +4,9 @@ import { AI_NAME, MIN_CHAT_INPUT, MAX_CHAT_INPUT, MAX_ACTIVE_CHATS, MAX_EXPIRED_
 import { pickTezkorSources } from '@/lib/tezkorSources';
 
 export type ChatJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
-/** tezkor: Lexion'siz, asosiy kodekslar (tezroq). chuqur: Lexion 3000+ hujjat ichidan izlaydi (sekinroq). */
-export type NasherMode = 'tezkor' | 'chuqur';
+/** tezkor: Lexion'siz, asosiy kodekslar. chuqur: Lexion butun qonunchilikdan izlaydi.
+ *  lunda: tezkor yo'li + qisqa amaliy javob ko'rsatmasi (answer_style). */
+export type NasherMode = 'tezkor' | 'chuqur' | 'lunda';
 
 export interface ChatMessage {
   id: string;
@@ -21,6 +22,8 @@ export interface ChatMessage {
   jobCreatedAt?: string;
   serverNow?: string;
   mode?: NasherMode;
+  /** shu sessiyada endi kelgan javob: matn yozilib chiqadi (tarixdagi javob darhol ko'rinadi) */
+  fresh?: boolean;
 }
 
 export interface QuotaInfo {
@@ -258,7 +261,7 @@ function saveChatMessages(userId: string, chatId: string, messages: ChatMessage[
       return;
     }
     localStorage.setItem(msgsKey(userId, chatId), JSON.stringify({
-      messages: messages.slice(-MAX_HISTORY),
+      messages: messages.slice(-MAX_HISTORY).map(({ fresh: _fresh, ...m }) => m),   // qayta ochilganda qayta yozilmasin
       pendingJobId: pendingJobId || undefined,
     }));
   } catch { /* ignore */ }
@@ -613,7 +616,9 @@ export function useNexusAiChat(userId: string | undefined) {
     pollingChatId.current = chatId;
     setPendingChatId(chatId);
 
+    let inFlight = false;
     pollTimer.current = setInterval(async () => {
+      if (inFlight) return;
       const elapsed = Date.now() - pollStart.current;
       if (elapsed > MAX_POLL_MS) {
         stopPolling();
@@ -624,6 +629,7 @@ export function useNexusAiChat(userId: string | undefined) {
         return;
       }
 
+      inFlight = true;
       try {
         const data = await callEdgeFunction('case-answer-status', { id: jobId, ustoz_id: uid });
         if (data.status === 'done') {
@@ -639,7 +645,9 @@ export function useNexusAiChat(userId: string | undefined) {
             lexionFallback: data.lexion_fallback || false,
             lexionUrls: Array.isArray(data.lexion_urls) ? data.lexion_urls : Array.isArray(data.urls) ? data.urls : m.lexionUrls,
             jobCreatedAt: data.created_at || m.jobCreatedAt,
-            serverNow: data.server_now,
+            // tugash vaqti kelmasa oxirgi poll vaqti (≤5 s farq) — javob ostidagi vaqt yo'qolmasin
+            serverNow: data.server_now || m.serverNow,
+            fresh: true,
           }));
           fetchChatsStatus();
         } else if (data.status === 'error') {
@@ -665,6 +673,8 @@ export function useNexusAiChat(userId: string | undefined) {
         }
       } catch {
         // Network error — keep polling
+      } finally {
+        inFlight = false;
       }
     }, POLL_INTERVAL_MS);
   }, [stopPolling, fetchQuota, fetchChatsStatus, applyToJobMessage]);
@@ -775,7 +785,8 @@ export function useNexusAiChat(userId: string | undefined) {
       content: trimmed,
       createdAt: Date.now(),
     };
-    const tezkorSources = mode === 'tezkor' ? pickTezkorSources(trimmed) : null;
+    // Lo'nda: kamroq hujjat = tezroq indekslash; 3 ta asosiy kodeks sifat uchun yetarli
+    const tezkorSources = mode === 'chuqur' ? null : pickTezkorSources(trimmed, mode === 'lunda' ? 3 : undefined);
     const aiMsgId = `ai-${Date.now()}`;
     const aiMsg: ChatMessage = {
       id: aiMsgId,
@@ -802,7 +813,7 @@ export function useNexusAiChat(userId: string | undefined) {
         chat_id: currentChatId,
         // tezkor: Lexion bosqichisiz, kodekslar to'g'ridan-to'g'ri manba sifatida (mavjud 'sources' rejimi)
         ...(tezkorSources
-          ? { answer_mode: 'sources', sources: tezkorSources.map(s => ({ type: 'url', ...s })) }
+          ? { answer_mode: 'sources', sources: tezkorSources.map(s => ({ type: 'url', ...s })), ...(mode === 'lunda' ? { answer_style: 'lunda' } : {}) }
           : { answer_mode: 'lexion' }),
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
