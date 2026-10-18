@@ -2129,7 +2129,7 @@ ol.nc-answer-list {
 }
 
 /* Past ekranda (noutbuk) bo'sh holatdagi rasm kesilmasin */
-@media (max-height: 760px) {
+@media (max-height: 820px) {
   .nc-empty-docstack { display: none; }
 }
 
