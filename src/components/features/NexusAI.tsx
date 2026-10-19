@@ -976,15 +976,16 @@ function TimerPopover({ onClose }: { onClose: () => void }) {
 
 /* ───────────────────────── Main Component ───────────────────────── */
 
-export default function NexusAI({ userId }: { userId: string }) {
+/** initialChatId: Telegram botdan "To'liq ko'rish" bosilganda aynan o'sha suhbat ochiladi */
+export default function NexusAI({ userId, initialChatId }: { userId: string; initialChatId?: string }) {
   return (
     <NexusErrorBoundary>
-      <NexusAIInner userId={userId} />
+      <NexusAIInner userId={userId} initialChatId={initialChatId} />
     </NexusErrorBoundary>
   );
 }
 
-function NexusAIInner({ userId }: { userId: string }) {
+function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId?: string }) {
   const {
     chats, activeChatId, messages, isProcessing, quota,
     memoryEnabled, chatLimitError, sendMessage, retry, deleteChat,
@@ -993,6 +994,15 @@ function NexusAIInner({ userId }: { userId: string }) {
     minInput, maxInput, chatsHydrated,
   } = useNexusAiChat(userId);
   const nowTick = useNow(60_000);   // limit tiklanish vaqti matni eskirib qolmasin
+
+  // Botdan kelgan suhbat serverdan ro'yxatga tushishi bilan bir marta ochiladi
+  const openedInitialRef = useRef(false);
+  useEffect(() => {
+    if (!initialChatId || openedInitialRef.current) return;
+    if (!chats.some(c => c.chatId === initialChatId)) return;
+    openedInitialRef.current = true;
+    if (activeChatId !== initialChatId) switchChat(initialChatId);
+  }, [initialChatId, chats, activeChatId, switchChat]);
 
   const [input, setInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);

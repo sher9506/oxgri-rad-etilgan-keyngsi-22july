@@ -130,3 +130,33 @@ export async function tg(token: string, method: string, body: Record<string, unk
   return await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }));
 }
 
+
+// ── Kutish xabari: har 10 s da yangilanadi (o'tgan vaqt, progress, bosqichlar, maslahat) ──
+const WAIT_TIPS = [
+  "💡 Kutib o'tirmang — javob tayyor bo'lganda o'zim yozaman.",
+  "💡 Keyingi savolingizda oldingilarini eslayman (suhbat 5 soat).",
+  "💡 Javobdagi qonun nomini bossangiz, lex.uz da o'sha hujjat ochiladi.",
+  "💡 Qisqa yoki tezkor javob kerak bo'lsa — «NaSher AI» ilovasini oching.",
+  "💡 Vaziyatni aniqroq yozsangiz (kim, qachon, nima bo'ldi), javob ham aniqroq bo'ladi.",
+];
+const EXPECTED_SEC = 180;
+
+export function progressText(elapsedSec: number, phase: "searching" | "reading", found = 0): string {
+  const pct = Math.min(95, Math.round(100 * (1 - Math.exp(-elapsedSec / (EXPECTED_SEC / 2.2)))));
+  const filled = Math.round(pct / 10);
+  const mm = Math.floor(elapsedSec / 60), ss = String(elapsedSec % 60).padStart(2, "0");
+  const writing = phase === "reading" && elapsedSec > 0;
+  const steps = [
+    "✅ Savol qabul qilindi",
+    phase === "reading" ? `✅ Qonun hujjatlari topildi${found ? ` (${found} ta)` : ""}` : "🔎 Kerakli qonun hujjatlari izlanmoqda…",
+    writing ? "✍️ Hujjatlar o'qilmoqda, javob yozilmoqda…" : "▫️ Javob yoziladi",
+  ];
+  return `⏳ <b>Javob tayyorlanmoqda</b> · ${mm}:${ss}\n\n${"▰".repeat(filled)}${"▱".repeat(10 - filled)}  ${pct}%\n\n` +
+    steps.join("\n") + `\n\n<i>${WAIT_TIPS[Math.floor(elapsedSec / 20) % WAIT_TIPS.length]}</i>`;
+}
+
+/** Mini App manzili + aniq suhbat (?nasher_app=1&chat=...) */
+export function chatAppUrl(miniUrl: string, chatId?: string | null): string {
+  if (!miniUrl || !chatId) return miniUrl;
+  return miniUrl + (miniUrl.includes("?") ? "&" : "?") + "chat=" + encodeURIComponent(chatId);
+}

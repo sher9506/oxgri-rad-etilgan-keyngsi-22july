@@ -4,7 +4,7 @@
 // va javob tayyor bo'lganda Telegram'ga yuboradi.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { lawLinks, prepareAnswer, splitMessage, tg, toTelegramHtml } from "../_shared/nasher-telegram.ts";
+import { chatAppUrl, lawLinks, prepareAnswer, progressText, splitMessage, tg, toTelegramHtml } from "../_shared/nasher-telegram.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -14,10 +14,6 @@ const RUN_MS = 50_000;
 const TICK_MS = 10_000;
 const MAX_AGE_MIN = 35;
 
-const PHASE_TEXT: Record<string, string> = {
-  searching: "⏳ Savolingiz qabul qilindi.\n🔎 Kerakli qonun hujjatlari izlanmoqda…",
-  reading: "⏳ Qonun hujjatlari topildi.\n📖 Hujjatlar o'qilmoqda va javob yozilmoqda…",
-};
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -37,6 +33,8 @@ async function names(miniUrl: string): Promise<Record<string, string>> {
 interface BotJob {
   id: string;
   teacher_id: string;
+  chat_id: string | null;
+  created_at: string;
   tg_chat_id: number;
   tg_progress_msg_id: number | null;
   tg_phase: string | null;
@@ -73,9 +71,11 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
     const urls: string[] = Array.isArray(data.lexion_urls) ? data.lexion_urls : [];
     const laws = lawLinks(urls, urls.length ? await names(miniUrl) : {});
     if (laws) parts.push(laws);
-    const markup = miniUrl
-      ? { inline_keyboard: [[{ text: "📱 To'liq ko'rish va boshqa rejimlar", web_app: { url: miniUrl } }]] }
-      : undefined;
+    // Mini App aynan shu suhbatni ochadi; "Yangi suhbat" — keyingi savol yangi suhbatda
+    const markup = { inline_keyboard: [
+      ...(miniUrl ? [[{ text: "📱 To'liq ko'rish", web_app: { url: chatAppUrl(miniUrl, job.chat_id) } }]] : []),
+      [{ text: "🆕 Yangi suhbat", callback_data: "new_chat" }],
+    ] };
     for (let i = 0; i < parts.length; i++) {
       const last = i === parts.length - 1;
       const r = await tg(token, "sendMessage", {
@@ -89,16 +89,19 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
     return;
   }
 
-  const phase = Array.isArray(data.lexion_urls) && data.lexion_urls.length > 0 ? "reading" : "searching";
+  const urls = Array.isArray(data.lexion_urls) ? data.lexion_urls : [];
+  const phase = urls.length > 0 ? "reading" : "searching";
   if (phase !== job.tg_phase) {
     await sb.from("case_answer_jobs").update({ tg_phase: phase }).eq("id", job.id);
     job.tg_phase = phase;
-    if (job.tg_progress_msg_id) {
-      const n = phase === "reading" ? ` (${data.lexion_urls.length} ta)` : "";
-      await tg(token, "editMessageText", {
-        chat_id: chat, message_id: job.tg_progress_msg_id, text: PHASE_TEXT[phase].replace("topildi.", `topildi${n}.`),
-      });
-    }
+  }
+  // har tick'da yangilanadi: vaqt o'zgargani uchun matn har safar boshqacha (Telegram "not modified" demaydi)
+  if (job.tg_progress_msg_id) {
+    const elapsed = Math.max(0, Math.floor((Date.now() - new Date(job.created_at).getTime()) / 1000));
+    await tg(token, "editMessageText", {
+      chat_id: chat, message_id: job.tg_progress_msg_id, parse_mode: "HTML",
+      text: progressText(elapsed, phase, urls.length),
+    });
   }
   await tg(token, "sendChatAction", { chat_id: chat, action: "typing" });
 }
@@ -117,7 +120,7 @@ Deno.serve(async (req) => {
   while (Date.now() < until) {
     const since = new Date(Date.now() - MAX_AGE_MIN * 60_000).toISOString();
     const { data: jobs } = await sb.from("case_answer_jobs")
-      .select("id, teacher_id, tg_chat_id, tg_progress_msg_id, tg_phase")
+      .select("id, teacher_id, chat_id, created_at, tg_chat_id, tg_progress_msg_id, tg_phase")
       .not("tg_chat_id", "is", null).is("tg_delivered_at", null).gte("created_at", since)
       .order("created_at", { ascending: true }).limit(20);
     if (!jobs || jobs.length === 0) break;   // ish yo'q — keyingi daqiqagacha kutamiz

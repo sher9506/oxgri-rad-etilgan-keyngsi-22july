@@ -13,6 +13,7 @@ interface TgWebApp {
   setHeaderColor?: (c: string) => void;
   setBackgroundColor?: (c: string) => void;
   isVersionAtLeast?: (v: string) => boolean;
+  close?: () => void;
 }
 
 function webApp(): TgWebApp | undefined {
@@ -22,6 +23,8 @@ function webApp(): TgWebApp | undefined {
 export default function NasherMiniApp() {
   const [userId, setUserId] = useState<string | null>(null);
   const [xato, setXato] = useState<string | null>(null);
+  const [needRegister, setNeedRegister] = useState(false);
+  const initialChatId = new URLSearchParams(window.location.search).get('chat') || undefined;
 
   useEffect(() => {
     document.title = 'NaSher AI';
@@ -42,6 +45,7 @@ export default function NasherMiniApp() {
     }
     supabase.functions.invoke('nasher-bot', { body: { action: 'miniapp_auth', init_data: wa.initData } })
       .then(({ data, error }) => {
+        if (data?.need_register) { setNeedRegister(true); return; }
         if (error || !data?.user_id) throw new Error(error?.message || data?.error || 'Kirish tasdiqlanmadi');
         setUserId(data.user_id);
       })
@@ -51,6 +55,23 @@ export default function NasherMiniApp() {
       });
   }, []);
 
+  if (needRegister) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <div style={{ maxWidth: 320 }}>
+          <div style={{ fontSize: 44 }}>📱</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: '12px 0 8px', color: '#1f1e1d' }}>Avval botda ro'yxatdan o'ting</h2>
+          <p style={{ color: '#555', lineHeight: 1.5, marginBottom: 20 }}>
+            Botga qaytib, <b>«Telefon raqamni ulashish»</b> tugmasini bosing — FanFaster akkauntingiz bir bosishda ochiladi.
+          </p>
+          <button
+            onClick={() => webApp()?.close?.()}
+            style={{ background: '#2563EB', color: '#fff', border: 0, borderRadius: 12, padding: '12px 20px', fontSize: 15, fontWeight: 600, width: '100%' }}
+          >Botga qaytish</button>
+        </div>
+      </div>
+    );
+  }
   if (xato) {
     return (
       <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -72,7 +93,7 @@ export default function NasherMiniApp() {
         background: '#fff',
       }}
     >
-      <NexusAI userId={userId} />
+      <NexusAI userId={userId} initialChatId={initialChatId} />
     </main>
   );
 }
