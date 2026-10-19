@@ -258,7 +258,10 @@ Deno.serve(async (req: Request) => {
     if (job.status === "queued" || job.status === "running") {
       const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
       const STALE_JOB_MS = 30 * 60 * 1000;
-      if (jobAgeMs > STALE_JOB_MS) {
+      // Render'ga yuborilgan ish u yerda 1 soat saqlanadi: sahifa yopilib keyin ochilsa, tayyor javob yo'qolmasin —
+      // 55 daqiqagacha avval Render'dan so'raymiz (pastdagi oddiy yo'l; topilmasa 404 bo'yicha xato qaytadi).
+      const RENDER_KEEP_MS = 55 * 60 * 1000;
+      if (jobAgeMs > STALE_JOB_MS && !(job.service_job_id && jobAgeMs < RENDER_KEEP_MS)) {
         const errMsg = "Javob tayyorlanmadi (vaqt tugadi). Qayta urinib ko'ring.";
         await supabaseAdmin
           .from("case_answer_jobs")
