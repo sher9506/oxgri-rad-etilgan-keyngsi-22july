@@ -42,8 +42,12 @@ export function latinizeMixed(text: string): string {
 }
 
 /** Ekranda ham, nusxada ham bir xil toza javob: lotin, "manba"siz, tinish belgisi oldida bo'sh joysiz. */
+// NotebookLM ba'zan turkcha harf yozadi (parvariş): o'zbek lotin yozuviga o'tkaziladi
+const TURKISH: Record<string, string> = { ş: 'sh', Ş: 'Sh', ç: 'ch', Ç: 'Ch', ğ: "g'", Ğ: "G'", ı: 'i', İ: 'I' };
+export const fixTurkishLetters = (t: string) => t.replace(/[şŞçÇğĞıİ]/g, (c) => TURKISH[c]);
+
 export function prepareAnswer(raw: string): string {
-  return stripSourceWords(latinizeMixed(raw)).replace(/[ \t]+([.,;:!?])/g, '$1');
+  return stripSourceWords(latinizeMixed(fixTurkishLetters(raw))).replace(/[ \t]+([.,;:!?])/g, '$1');
 }
 
 // Lexion katalogidagi lex.uz hujjat nomlari (public/lex-names.json, ~3000 ta). Bir marta yuklanadi, keyin keshda.
