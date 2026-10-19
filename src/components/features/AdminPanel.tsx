@@ -20,6 +20,7 @@ import OquvchilarRoyhat from './OquvchilarRoyhat';
 import MentorAiSozlamalari from './MentorAiSozlamalari';
 import TelegramLoginSozlamalari from './TelegramLoginSozlamalari';
 import MiniAppSozlamalari from './MiniAppSozlamalari';
+import NasherBotSozlamalari from './NasherBotSozlamalari';
 import Analitika from './Analitika';
 import AdminChunking from './AdminChunking';
 import AiKvotaWidget from './AiKvotaWidget';
@@ -1605,6 +1606,9 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
 
       {/* ─────────── TELEGRAM MINI APP BOT ─────────── */}
       {view === 'miniapp_bot' && <MiniAppSozlamalari />}
+
+      {/* ─────────── NASHER AI TELEGRAM BOTI ─────────── */}
+      {view === 'nasher_bot' && <NasherBotSozlamalari />}
 
       {/* ─────────── ADMIN RO'YHAT ─────────── */}
       {view === 'royhat' && (() => {

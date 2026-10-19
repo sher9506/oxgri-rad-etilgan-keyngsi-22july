@@ -335,7 +335,8 @@ Deno.serve(async (req: Request) => {
         .eq("id", ustoz_id)
         .maybeSingle();
 
-      if (talabaRow) {
+      // Telegram (bot / Mini App) foydalanuvchilari ham talabalar kabi limitli
+      if (talabaRow || String(ustoz_id).startsWith("tg_")) {
         // Faol so'rov tekshiruvi: oxirgi 20 daqiqada queued/running chat job bormi?
         const activeWindowStart = new Date(Date.now() - 20 * 60 * 1000).toISOString();
         const { count: activeCount } = await supabaseAdmin
