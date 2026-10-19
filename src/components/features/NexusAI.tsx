@@ -16,7 +16,7 @@ import {
 import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
 import AnswerText from './nexus/AnswerText';
-import { stripSourceWords, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
+import { stripSourceWords, prepareAnswer, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
 import './nexus-claude.css';
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -323,7 +323,7 @@ interface NexusMessageProps {
 
 function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
   const isDone = msg.role === 'assistant' && msg.status === 'done';
-  const answer = useMemo(() => stripSourceWords(msg.content), [msg.content]);
+  const answer = useMemo(() => prepareAnswer(msg.content), [msg.content]);
   const { shown, typing } = useTypewriter(msg.id, answer, isDone && !!msg.fresh);
   const lexLinks = useMemo(() => (isDone ? (msg.lexionUrls ?? []).filter(isLexUz) : []), [isDone, msg.lexionUrls]);
   const names = useLexNames(lexLinks.length > 0);

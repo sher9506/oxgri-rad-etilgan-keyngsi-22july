@@ -9,6 +9,43 @@ export function stripSourceWords(text: string): string {
     `${match[0] === match[0].toUpperCase() ? 'Q' : 'q'}onun hujjat${plural ? 'lari' : 'i'}${suffix ?? ''}`);
 }
 
+// Javobdagi kirill bo'laklarini lotinga o'giradi (AI lex.uz dagi kirill iboralarni ko'chirib qo'yadi, prompt bilan to'liq to'xtamaydi).
+// Matn asosan kirillda bo'lsa (masalan, ataylab ruscha), tegilmaydi.
+const CYR: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', ё: 'yo', ж: 'j', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n',
+  о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'x', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sh', ъ: "'", ы: 'i',
+  ь: '', э: 'e', ю: 'yu', я: 'ya', ў: "o'", қ: 'q', ғ: "g'", ҳ: 'h',
+};
+const CYR_RE = /[а-яёўқғҳ]/i;
+const VOWELS = 'аеёиоуўэюяaeiou';
+
+function latinWord(word: string): string {
+  const allCaps = word.length > 1 && word === word.toUpperCase();
+  let out = '';
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i];
+    const low = ch.toLowerCase();
+    let lat: string;
+    if (low === 'е') lat = i === 0 || VOWELS.includes(word[i - 1].toLowerCase()) || word[i - 1] === 'ъ' || word[i - 1] === 'ь' ? 'ye' : 'e';
+    else lat = CYR[low] ?? ch;
+    if (ch !== low) lat = allCaps ? lat.toUpperCase() : lat.charAt(0).toUpperCase() + lat.slice(1);
+    out += lat;
+  }
+  return out;
+}
+
+export function latinizeMixed(text: string): string {
+  const cyr = (text.match(/[а-яёўқғҳ]/gi) ?? []).length;
+  const lat = (text.match(/[a-z]/gi) ?? []).length;
+  if (cyr === 0 || cyr > lat) return text;
+  return text.replace(/[а-яёўқғҳА-ЯЁЎҚҒҲ'ʼ]+/g, w => (CYR_RE.test(w) ? latinWord(w) : w));
+}
+
+/** Ekranda ham, nusxada ham bir xil toza javob: lotin, "manba"siz, tinish belgisi oldida bo'sh joysiz. */
+export function prepareAnswer(raw: string): string {
+  return stripSourceWords(latinizeMixed(raw)).replace(/[ \t]+([.,;:!?])/g, '$1');
+}
+
 // Lexion katalogidagi lex.uz hujjat nomlari (public/lex-names.json, ~3000 ta). Bir marta yuklanadi, keyin keshda.
 let namesPromise: Promise<Record<string, string>> | null = null;
 
