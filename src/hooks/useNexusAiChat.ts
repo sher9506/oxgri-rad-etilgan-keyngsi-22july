@@ -249,7 +249,13 @@ function loadChatMessages(userId: string, chatId: string): { messages: ChatMessa
       .filter((m: unknown): m is ChatMessage =>
         m !== null && typeof m === 'object' && typeof (m as ChatMessage).id === 'string' && typeof (m as ChatMessage).role === 'string',
       )
-      .slice(-MAX_HISTORY);
+      .slice(-MAX_HISTORY)
+      // Yuborish tugamay sahifa yopilgan/xato bo'lgan xabar: jobId yo'q, server uni bilmaydi — abadiy "kutilmoqda" bo'lmasin.
+      // 3 daqiqa: hali yuborilayotgan (shu tabda) xabarga tegmaslik uchun.
+      .map((m: ChatMessage) => (m.role === 'assistant' && !m.jobId && (m.status === 'queued' || m.status === 'running')
+        && Date.now() - m.createdAt > 3 * 60_000)
+        ? { ...m, status: 'error' as ChatJobStatus, error: "So'rov serverga yetib bormadi. Qayta urinib ko'ring.", content: '' }
+        : m);
     const pendingJobId = typeof parsed.pendingJobId === 'string' ? parsed.pendingJobId : undefined;
     return { messages, pendingJobId };
   } catch {
@@ -849,7 +855,9 @@ export function useNexusAiChat(userId: string | undefined) {
     } catch (err) {
       setIsProcessing(false);
       const e = err as Error & { code?: string; next_reset_at?: string; max?: number };
-      let errorMsg = e.message || 'Xatolik yuz berdi';
+      // Tarmoq uzilishi / timeout: brauzerning inglizcha xabari ("Failed to fetch") o'rniga tushunarli matn
+      const network = e.name === 'TypeError' || e.name === 'TimeoutError' || e.name === 'AbortError';
+      let errorMsg = network ? "Server bilan aloqa uzildi. Qayta urinib ko'ring." : (e.message || 'Xatolik yuz berdi');
 
       if (e.code === 'chat_limit' || e.code === 'chat_expired') {
         setChatLimitError(errorMsg);
