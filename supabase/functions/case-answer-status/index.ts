@@ -1,4 +1,4 @@
-// deploy 2026-10-18
+// deploy 2026-10-19
 // Lexion phase polling support — backend 3 failover qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
