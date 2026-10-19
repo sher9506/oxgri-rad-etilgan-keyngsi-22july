@@ -498,25 +498,19 @@ Deno.serve(async (req: Request) => {
 
       const jobId = jobRow.id;
 
-      // ── Prewarm: faqat javob Render'laridan bittasini oldindan uyg'otish ──
+      // ── Prewarm: Lexion qidirayotgan ~1,5 daqiqada BARCHA javob Render'larini uyg'otamiz ──
+      // (2-bosqichda qaysi biri tanlanishi oldindan noma'lum; bittasini uyg'otsak, savol uxlab yotganiga tushardi)
       try {
         const preCfg = await getAnswerServiceConfig();
-        const preBackend = await pickBackend(preCfg);
-        const preUrl = getBackendUrl(preCfg, preBackend);
-        if (preUrl) {
-          const preStart = Date.now();
-          const prewarmPromise = fetch(`${preUrl}/ping`, {
-            signal: AbortSignal.timeout(75000),
-          }).then((res) => {
-            console.log(`[prewarm] job=${jobId} backend=${preBackend} status=${res.status} ms=${Date.now() - preStart}`);
-          }).catch(() => {
-            console.log(`[prewarm] job=${jobId} backend=${preBackend} status=error ms=${Date.now() - preStart}`);
-          });
-          const runtime = (globalThis as Record<string, unknown>).EdgeRuntime as
-            { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
-          if (runtime?.waitUntil) runtime.waitUntil(prewarmPromise);
-          else void prewarmPromise;
-        }
+        const preStart = Date.now();
+        const prewarmPromise = Promise.all(getAvailableBackends(preCfg).map((b) =>
+          fetch(`${getBackendUrl(preCfg, b)}/ping`, { signal: AbortSignal.timeout(75000) })
+            .then((res) => console.log(`[prewarm] job=${jobId} backend=${b} status=${res.status} ms=${Date.now() - preStart}`))
+            .catch(() => console.log(`[prewarm] job=${jobId} backend=${b} status=error ms=${Date.now() - preStart}`))));
+        const runtime = (globalThis as Record<string, unknown>).EdgeRuntime as
+          { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
+        if (runtime?.waitUntil) runtime.waitUntil(prewarmPromise);
+        else void prewarmPromise;
       } catch {
         console.log(`[prewarm] job=${jobId} backend=0 status=error ms=0`);
       }
