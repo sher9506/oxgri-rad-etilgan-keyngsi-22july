@@ -1,48 +1,28 @@
-// Lexion target config va job ID encoding/decoding uchun shared helper.
-
-interface LexionConfig {
-  url: string;
-  key: string;
-}
-
-// Preview flag'ga qarab Lexion RENDER URL va API KEY ni settings'dan oladi.
-// preview=true bo'lsa, alohida preview kalitlarini sinab ko'radi; bo'lmasa oddiy kalitlarga qaytadi.
-export async function getLexionConfig(
-  supabaseAdmin: { from: (table: string) => unknown },
-  preview: boolean
-): Promise<LexionConfig> {
-  const keys = preview
-    ? ["LEXION_RENDER_URL_PREVIEW", "LEXION_RENDER_API_KEY_PREVIEW", "LEXION_RENDER_URL", "LEXION_RENDER_API_KEY"]
-    : ["LEXION_RENDER_URL", "LEXION_RENDER_API_KEY"];
-
-  const sb = (supabaseAdmin as { from: (t: string) => { select: (c: string) => { in: (col: string, vals: string[]) => { maybeSingle?: () => Promise<{ data: { key: string; text_value: string | null } | null; error: unknown }>; data?: { key: string; text_value: string | null }[]; error?: unknown } } } }).from("settings");
-  const result = await sb.select("key, text_value").in("key", keys);
-  const rows: { key: string; text_value: string | null }[] = (result.data as { key: string; text_value: string | null }[]) ?? [];
+// Lexion (URL topuvchi) Render manzili. Preview sayt yangi Lexion'ni sinaydi, fanfaster.uz eskisida qoladi.
+// shortcut: preview manzili kodda qattiq yozilgan (foydalanuvchi URL bera olmaydi — SSRF yo'q); sinov tugagach olib tashlanadi.
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+const PREVIEW_LEXION_URL = "https://lexion-model.onrender.com";
+const PREVIEW_TAG = "p:";   // preview ishining lexion_job_id'si shu bilan boshlanadi: status ham o'sha Lexion'ni so'raydi
+export async function getLexionConfig(db: SupabaseClient, preview = false): Promise<{ url: string; key: string }> {
+  const { data, error } = await db
+    .from("settings")
+    .select("key, text_value")
+    .in("key", ["LEXION_RENDER_URL", "LEXION_RENDER_API_KEY"]);
+  if (error || !data) return { url: "", key: "" };
   const map: Record<string, string> = {};
-  for (const row of rows) {
+  for (const row of data) {
     if (row.text_value) map[row.key] = row.text_value;
   }
-
-  const url = preview
-    ? (map["LEXION_RENDER_URL_PREVIEW"] || map["LEXION_RENDER_URL"] || "").trim()
-    : (map["LEXION_RENDER_URL"] || "").trim();
-  const key = preview
-    ? (map["LEXION_RENDER_API_KEY_PREVIEW"] || map["LEXION_RENDER_API_KEY"] || "").trim()
-    : (map["LEXION_RENDER_API_KEY"] || "").trim();
-
-  return { url, key };
+  return {
+    url: preview ? PREVIEW_LEXION_URL : (map["LEXION_RENDER_URL"] || "").trim(),
+    key: (map["LEXION_RENDER_API_KEY"] || "").trim(),
+  };
 }
-
-// Job ID va preview flag'ni bitta string'ga encode qiladi.
-// Format: preview bo'lsa "p:<id>", aks holda "<id>".
-export function tagLexionJobId(id: string | null, preview: boolean): string | null {
-  if (!id) return null;
-  return preview ? `p:${id}` : id;
+export function tagLexionJobId(id: string, preview: boolean): string {
+  return preview ? PREVIEW_TAG + id : id;
 }
-
-// Encoded lexion_job_id ni parse qiladi: { id, preview }.
-export function parseLexionJobId(stored: string | null): { id: string; preview: boolean } {
-  if (!stored) return { id: "", preview: false };
-  if (stored.startsWith("p:")) return { id: stored.slice(2), preview: true };
-  return { id: stored, preview: false };
+export function parseLexionJobId(stored: string): { id: string; preview: boolean } {
+  return stored.startsWith(PREVIEW_TAG)
+    ? { id: stored.slice(PREVIEW_TAG.length), preview: true }
+    : { id: stored, preview: false };
 }
