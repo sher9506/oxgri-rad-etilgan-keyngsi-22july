@@ -75,6 +75,7 @@ const ADMIN_GROUPS = [
       { id: 'bot_ustoz_ruxsat', label: 'Ustoz Bot Ruxsati', icon: Shield },
       { id: 'tg_login_bot', label: 'Telegram Login Bot', icon: Bot },
       { id: 'miniapp_bot', label: 'Mini App Bot', icon: Smartphone },
+      { id: 'nasher_bot', label: 'NaSher AI Bot', icon: Smartphone },
       { id: 'ai_mentor', label: 'AI Mentor', icon: Brain },
       { id: 'ai_kvota', label: 'AI Kvota (Tizim holati)', icon: Activity },
       { id: 'chunking', label: 'Chunking (AI Index)', icon: Database },
@@ -109,7 +110,7 @@ function buildSections(
   ] : [
     { id: 'kurslar', label: t('nav.kurslar'), icon: BookMarked },
     { id: 'oqmatlar', label: t('nav.oqmatlar'), icon: Library },
-    { id: 'nexus_ai', label: 'Nexus AI', icon: MessageSquareText },
+    { id: 'nexus_ai', label: 'NaSher AI', icon: MessageSquareText },
     { id: 'savol_javob', label: t('nav.savol_javob'), icon: Layers },
     { id: 'blog', label: 'Blog', icon: Newspaper },
   ];

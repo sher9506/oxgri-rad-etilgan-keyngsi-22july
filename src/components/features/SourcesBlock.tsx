@@ -103,7 +103,7 @@ export function SourcesBlock({ sources, onAdd, onRemove, linkedModdalar, onAddMo
       </button>
 
       <div
-        className="overflow-hidden transition-all duration-300 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]"
+        className="overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
         style={{ maxHeight: open ? '3000px' : '0px', opacity: open ? 1 : 0 }}
       >
         <div className="px-3 pb-3 space-y-2">

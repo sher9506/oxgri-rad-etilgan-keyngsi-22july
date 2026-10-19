@@ -1,6 +1,10 @@
+// deploy 2026-10-19 lunda-lexion
+// deploy 2026-10-19 b
 // Lexion phase polling support — backend 3 failover qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getLexionConfig, parseLexionJobId, tagLexionJobId } from "../_shared/lexion-target.ts";
+import { KAZUS_INSTRUCTION as INSTRUCTION, LUNDA_MAX_DOCS, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
 import { canKeepOn, expireChatNotebook, getChatNotebook, getKeepCfg, lexDocId, registerKeptNotebook } from "../_shared/nexus-notebooks.ts";
 
 const corsHeaders = {
@@ -14,18 +18,11 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 );
 
-const INSTRUCTION =
-  "Siz professional O'zbekiston huquqshunosisiz. Quyida berilgan manbalar (qonun hujjatlari) asosida kazusni IRAC (Issue, Rule, Application, Conclusion) usulida tahlil qilib yeching. Javob oxirida hech qanday savol bermang va taklif qilmang, faqat tahlilni yozing.";
-
-const CHAT_INSTRUCTION =
-  "Siz professional O'zbekiston huquqshunosisiz. Quyidagi huquqiy savolga O'zbekiston qonunchiligi bo'yicha aniq va tushunarli javob bering: avval qisqa xulosa, keyin tegishli moddalar va tushuntirish. Manbada javob bo'lmasa, buni ayting. Javob oxirida hech qanday savol bermang va taklif qilmang.";
 
 function sanitizeAnswer(text: string): string {
   if (!text) return text;
   return text
-    .replace(/\bNotebookLM\b/gi, "manba")
-    .replace(/\bGemini Notebook\b/gi, "manba")
-    .replace(/\bNotebook\b/gi, "manba")
+    .replace(/\b(?:NotebookLM|Gemini Notebook|Notebook)\b/gi, "qonunchilik bazasi")
     .replace(/\s*\[\d+(?:\s*[-,]\s*\d+)*\]\s*/g, " ")
     .replace(/  +/g, " ")
     .replace(/ +\n/g, "\n")
@@ -70,56 +67,17 @@ function getAvailableBackends(cfg: BackendConfig): number[] {
   }, []);
 }
 
-async function getLexionConfig(): Promise<{ url: string; key: string }> {
-  const { data, error } = await supabaseAdmin
-    .from("settings")
-    .select("key, text_value")
-    .in("key", ["LEXION_RENDER_URL", "LEXION_RENDER_API_KEY"]);
-  if (error || !data) return { url: "", key: "" };
-  const map: Record<string, string> = {};
-  for (const row of data) {
-    if (row.text_value) map[row.key] = row.text_value;
-  }
-  return {
-    url: (map["LEXION_RENDER_URL"] || "").trim(),
-    key: (map["LEXION_RENDER_API_KEY"] || "").trim(),
-  };
-}
 
 // ── Lexion URL parser — answer maydonidan lex.uz/docs/<id> havolalarini ajratib oladi ──
 export function parseLexionUrls(answer: string): string[] {
-  let urls: string[] = [];
-
-  // 1. JSON.parse urinishi
-  try {
-    const parsed = JSON.parse(answer);
-    if (Array.isArray(parsed)) {
-      for (const item of parsed) {
-        if (typeof item === 'string') urls.push(item);
-      }
-    }
-  } catch {
-    // JSON emas — regex'ga o'tamiz
+  // JSON massiv ham, oddiy matn ham bo'lishi mumkin: hamma joydan docs ID'sini olamiz.
+  // https/www/til prefiksi (uz, ru) va #anchor yoki ?ONDATE= bo'lsa ham bitta ko'rinishga keltiriladi.
+  const ids: string[] = [];
+  for (const m of answer.matchAll(/lex\.uz\/(?:[a-z]{2}\/)?docs\/(-?\d+)/g)) {
+    if (!ids.includes(m[1])) ids.push(m[1]);
+    if (ids.length >= 15) break;
   }
-
-  // 2. Regex fallback
-  if (urls.length === 0) {
-    const regex = /https?:\/\/(?:www\.)?lex\.uz\/docs\/-?\d+/g;
-    const matches = answer.match(regex);
-    if (matches) urls = matches;
-  }
-
-  // 3. Faqat lex.uz/docs/<raqam> yoki docs/-<raqam> ko'rinishini qoldir
-  const filtered = urls.filter(u => /^https?:\/\/(?:www\.)?lex\.uz\/docs\/-?\d+$/.test(u));
-
-  // 4. Dublikatlarni olib tashla, tartibni saqla, ko'pi bilan 15 ta
-  const unique: string[] = [];
-  for (const u of filtered) {
-    if (!unique.includes(u)) unique.push(u);
-    if (unique.length >= 15) break;
-  }
-
-  return unique;
+  return ids.map(id => `https://lex.uz/docs/${id}`);
 }
 
 interface ServiceResult {
@@ -137,6 +95,7 @@ async function sendToBackend(
   try {
     const serviceRes = await fetch(`${baseUrl}/api/jobs`, {
       method: "POST",
+      signal: AbortSignal.timeout(70_000),   // sovuq Render ~50 s uyg'onadi; undan uzoq osilsa uziladi
       headers: {
         "X-API-Key": cfg.key,
         "Content-Type": "application/json",
@@ -272,7 +231,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership — lexion maydonlarini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, finished_at, updated_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered, answer_style")
       .eq("id", id)
       .maybeSingle();
 
@@ -300,7 +259,10 @@ Deno.serve(async (req: Request) => {
     if (job.status === "queued" || job.status === "running") {
       const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
       const STALE_JOB_MS = 30 * 60 * 1000;
-      if (jobAgeMs > STALE_JOB_MS) {
+      // Render'ga yuborilgan ish u yerda 1 soat saqlanadi: sahifa yopilib keyin ochilsa, tayyor javob yo'qolmasin —
+      // 55 daqiqagacha avval Render'dan so'raymiz (pastdagi oddiy yo'l; topilmasa 404 bo'yicha xato qaytadi).
+      const RENDER_KEEP_MS = 55 * 60 * 1000;
+      if (jobAgeMs > STALE_JOB_MS && !(job.service_job_id && jobAgeMs < RENDER_KEEP_MS)) {
         const errMsg = "Javob tayyorlanmadi (vaqt tugadi). Qayta urinib ko'ring.";
         await supabaseAdmin
           .from("case_answer_jobs")
@@ -326,6 +288,8 @@ Deno.serve(async (req: Request) => {
           lexion_phase: job.lexion_phase || null,
           lexion_fallback: job.lexion_fallback || false,
           lexion_urls: lexionUrls.length > 0 ? lexionUrls : undefined,
+          created_at: job.created_at,
+          server_now: job.finished_at || undefined,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -348,7 +312,8 @@ Deno.serve(async (req: Request) => {
     // LEXION 1-BOSQICH: lexion_searching — Lexion xizmatidan URL'larni kutish
     // ════════════════════════════════════════════════════════════════
     if (job.answer_mode === 'lexion' && job.lexion_phase === 'lexion_searching' && job.lexion_job_id) {
-      const lexionCfg = await getLexionConfig();
+      const lexionJob = parseLexionJobId(job.lexion_job_id);
+      const lexionCfg = await getLexionConfig(supabaseAdmin, lexionJob.preview);
 
       if (!lexionCfg.url || !lexionCfg.key) {
         const errMsg = "Lexion model hozir mavjud emas.";
@@ -364,9 +329,10 @@ Deno.serve(async (req: Request) => {
 
       try {
         const lexionRes = await fetch(
-          `${lexionCfg.url}/api/jobs/${job.lexion_job_id}`,
+          `${lexionCfg.url}/api/jobs/${lexionJob.id}`,
           {
             method: "GET",
+            signal: AbortSignal.timeout(20_000),
             headers: {
               "X-API-Key": lexionCfg.key,
               "Content-Type": "application/json",
@@ -425,7 +391,7 @@ Deno.serve(async (req: Request) => {
 
         if (lexionStatus === "done" || lexionStatus === "completed" || lexionStatus === "success") {
           const lexionAnswer = typeof lexionData.answer === "string" ? lexionData.answer : "";
-          const urls = parseLexionUrls(lexionAnswer);
+          const urls = parseLexionUrls(lexionAnswer).slice(0, job.answer_style === "lunda" ? LUNDA_MAX_DOCS : undefined);
 
           // URL ro'yxati bo'sh
           if (urls.length === 0) {
@@ -468,13 +434,22 @@ Deno.serve(async (req: Request) => {
           }
 
           // URL'larni saqlash va 2-bosqichni boshlash
-          await supabaseAdmin
+          const { data: claimed } = await supabaseAdmin
             .from("case_answer_jobs")
             .update({
               lexion_urls: JSON.stringify(urls),
               lexion_phase: "answering",
             })
-            .eq("id", id);
+            .eq("id", id)
+            .eq("lexion_phase", "lexion_searching")
+            .select("id");
+          if (!claimed || claimed.length === 0) {
+            // boshqa poll allaqachon 2-bosqichni boshlagan
+            return new Response(
+              JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: urls, created_at: job.created_at, server_now: serverNowIso }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
 
           console.log(`[case-answer-status] Lexion 1-bosqich done: ${urls.length} ta URL topildi, 2-bosqich boshlanmoqda: job=${id}`);
 
@@ -515,7 +490,7 @@ Deno.serve(async (req: Request) => {
             title,
             kazus_text: kazusText,
             external_id: `${id}-ans`,
-            instruction: isChat ? CHAT_INSTRUCTION : INSTRUCTION,
+            instruction: isChat ? chatInstruction(parseAnswerStyle(job.answer_style)) : INSTRUCTION,
             sources: serviceSources,
           };
 
@@ -569,7 +544,7 @@ Deno.serve(async (req: Request) => {
               .eq("id", id);
 
             return new Response(
-              JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: parsedLexionUrls.length > 0 ? parsedLexionUrls : undefined, created_at: job.created_at, server_now: serverNowIso }),
+              JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: urls, created_at: job.created_at, server_now: serverNowIso }),
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
@@ -663,6 +638,21 @@ Deno.serve(async (req: Request) => {
     // ════════════════════════════════════════════════════════════════
 
     if (!job.service_job_id) {
+      // Lexion URL topgan, lekin 2-bosqich yuborilmay qolgan (edge funksiya yuborish paytida uzilgan):
+      // 90 s dan keyin fazani qaytaramiz — keyingi poll Lexion natijasini qayta o'qib, 2-bosqichni yana boshlaydi.
+      if (job.answer_mode === 'lexion' && job.lexion_phase === 'answering' && job.lexion_job_id && job.updated_at &&
+          Date.now() - new Date(job.updated_at).getTime() > 90_000) {
+        const { data: reset } = await supabaseAdmin
+          .from("case_answer_jobs")
+          .update({ lexion_phase: "lexion_searching" })
+          .eq("id", id)
+          .eq("updated_at", job.updated_at)
+          .is("service_job_id", null)
+          .select("id");
+        if (reset && reset.length > 0) {
+          console.log(`[case-answer-status] 2-bosqich yuborilmay qolgan, qayta urinish: job=${id}`);
+        }
+      }
       // service_job_id yo'q va leksion bosqichida ham emas — qotib qolgan job
       if (job.status === 'queued' || job.status === 'running') {
         const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
@@ -710,6 +700,7 @@ Deno.serve(async (req: Request) => {
         `${backendUrl}/api/jobs/${job.service_job_id}`,
         {
           method: "GET",
+          signal: AbortSignal.timeout(20_000),
           headers: {
             "X-API-Key": cfg.key,
             "Content-Type": "application/json",
@@ -974,15 +965,16 @@ Deno.serve(async (req: Request) => {
 // ── Chat: Lexion 1-bosqichda qayta qidirish (max 1 marta) ──
 async function retryLexionSearch(
   jobId: string,
-  job: { case_id: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null }
+  job: { case_id: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; lexion_job_id?: string | null }
 ): Promise<{ retrySent: boolean }> {
+  const preview = parseLexionJobId(job.lexion_job_id ?? "").preview;   // qayta urinish ham o'sha Lexion'ga
   const retryCount = job.fallback_count ?? 0;
   if (retryCount >= 1) {
     console.log(`[case-answer-status] retryLexionSearch: urinish chegarasi (${retryCount}), job=${jobId}`);
     return { retrySent: false };
   }
 
-  const lexionCfg = await getLexionConfig();
+  const lexionCfg = await getLexionConfig(supabaseAdmin, preview);
   if (!lexionCfg.url || !lexionCfg.key) {
     return { retrySent: false };
   }
@@ -1003,7 +995,7 @@ async function retryLexionSearch(
     await supabaseAdmin
       .from("case_answer_jobs")
       .update({
-        lexion_job_id: lexionResult.serviceJobId,
+        lexion_job_id: tagLexionJobId(lexionResult.serviceJobId, preview),
         lexion_phase: "lexion_searching",
         fallback_count: retryCount + 1,
         status: "queued",
@@ -1018,7 +1010,7 @@ async function retryLexionSearch(
 // ── Chat: 2-bosqichda boshqa Render'ga qayta yuborish (max 1 marta) ──
 async function redispatchChatWithSources(
   jobId: string,
-  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null; chat_id: string | null; teacher_id: string; chat_followup: boolean | null }
+  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null; chat_id: string | null; teacher_id: string; chat_followup: boolean | null; answer_style?: string | null }
 ): Promise<{ ok: boolean }> {
   const retryCount = job.fallback_count ?? 0;
   if (retryCount >= 1) {
@@ -1040,7 +1032,7 @@ async function redispatchChatWithSources(
     title,
     kazus_text: kazusText,
     external_id: `${jobId}-ans2`,
-    instruction: CHAT_INSTRUCTION,
+    instruction: chatInstruction(parseAnswerStyle(job.answer_style)),
     sources: serviceSources,
   };
 
@@ -1100,6 +1092,7 @@ async function sendToLexionSearch(
   try {
     const serviceRes = await fetch(`${lexionCfg.url}/api/jobs`, {
       method: "POST",
+      signal: AbortSignal.timeout(70_000),   // sovuq Render ~50 s uyg'onadi; undan uzoq osilsa uziladi
       headers: {
         "X-API-Key": lexionCfg.key,
         "Content-Type": "application/json",
@@ -1129,7 +1122,7 @@ async function sendToLexionSearch(
 // ── Fallback: Lexion ishlamasa, "Umumiy" rejim bilan yuborish ──
 async function startFallbackGeneral(
   jobId: string,
-  job: { case_id: string | null; answer_mode: string | null; lexion_phase: string | null; chat_kazus_text?: string | null; chat_title?: string | null },
+  job: { case_id: string | null; answer_mode: string | null; lexion_phase: string | null; chat_kazus_text?: string | null; chat_title?: string | null; answer_style?: string | null },
   _ustoz_id: string,
   reason: string
 ): Promise<{ ok: boolean; error?: string }> {
@@ -1156,7 +1149,7 @@ async function startFallbackGeneral(
     title,
     kazus_text: kazusText,
     external_id: `${jobId}-ans`,
-    instruction: isChat ? CHAT_INSTRUCTION : INSTRUCTION,
+    instruction: isChat ? chatInstruction(parseAnswerStyle(job.answer_style)) : INSTRUCTION,
     sources: [],
   };
 
@@ -1184,3 +1177,5 @@ async function startFallbackGeneral(
   return { ok: false, error: "Javob tayyorlanmadi. Qayta urinib ko'ring." };
 }
 // deploy-trigger Sat Oct 12 2026 03:50 UTC
+
+

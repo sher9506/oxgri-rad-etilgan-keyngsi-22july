@@ -39,7 +39,8 @@ Deno.serve(async (req: Request) => {
       .eq("id", user_id)
       .maybeSingle();
 
-    const isStudent = !!talabaRow;
+    // Telegram (bot / Mini App) foydalanuvchilari ham talabalar kabi limitli
+    const isStudent = !!talabaRow || String(user_id).startsWith("tg_");
 
     if (!isStudent) {
       return new Response(
@@ -108,3 +109,4 @@ Deno.serve(async (req: Request) => {
   }
 });
 // nexus-deploy-trigger Sat Oct 10 21:11:36 UTC 2026
+
