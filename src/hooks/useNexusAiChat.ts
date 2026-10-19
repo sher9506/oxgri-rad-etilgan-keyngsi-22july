@@ -3,6 +3,9 @@ import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { AI_NAME, MIN_CHAT_INPUT, MAX_CHAT_INPUT, MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS } from '@/constants/nexus';
 import { pickTezkorSources } from '@/lib/tezkorSources';
 
+// Cloudflare branch preview (masalan fix-nasher-chat.<loyiha>.pages.dev): yangi Lexion shu yerda sinaladi, fanfaster.uz'da emas
+const IS_BRANCH_PREVIEW = typeof window !== 'undefined' && /\.oxgri-rad-etilgan-keyngsi-22july\.pages\.dev$/.test(window.location.hostname);
+
 export type ChatJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
 /** tezkor: Lexion'siz, asosiy kodekslar. chuqur: Lexion butun qonunchilikdan izlaydi.
  *  lunda: tezkor yo'li + qisqa amaliy javob ko'rsatmasi (answer_style). */
@@ -815,7 +818,7 @@ export function useNexusAiChat(userId: string | undefined) {
         // tezkor: Lexion bosqichisiz, kodekslar to'g'ridan-to'g'ri manba sifatida (mavjud 'sources' rejimi)
         ...(tezkorSources
           ? { answer_mode: 'sources', sources: tezkorSources.map(s => ({ type: 'url', ...s })), ...(mode === 'lunda' ? { answer_style: 'lunda' } : {}) }
-          : { answer_mode: 'lexion' }),
+          : { answer_mode: 'lexion', ...(IS_BRANCH_PREVIEW ? { lexion_preview: true } : {}) }),
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
 

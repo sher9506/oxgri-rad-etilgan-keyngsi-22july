@@ -2,6 +2,7 @@
 // Lexion phase polling support — backend 3 failover qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getLexionConfig, parseLexionJobId, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, CHAT_INSTRUCTION } from "../_shared/nasher-prompts.ts";
 import { canKeepOn, expireChatNotebook, getChatNotebook, getKeepCfg, lexDocId, registerKeptNotebook } from "../_shared/nexus-notebooks.ts";
 
@@ -65,21 +66,6 @@ function getAvailableBackends(cfg: BackendConfig): number[] {
   }, []);
 }
 
-async function getLexionConfig(): Promise<{ url: string; key: string }> {
-  const { data, error } = await supabaseAdmin
-    .from("settings")
-    .select("key, text_value")
-    .in("key", ["LEXION_RENDER_URL", "LEXION_RENDER_API_KEY"]);
-  if (error || !data) return { url: "", key: "" };
-  const map: Record<string, string> = {};
-  for (const row of data) {
-    if (row.text_value) map[row.key] = row.text_value;
-  }
-  return {
-    url: (map["LEXION_RENDER_URL"] || "").trim(),
-    key: (map["LEXION_RENDER_API_KEY"] || "").trim(),
-  };
-}
 
 // ── Lexion URL parser — answer maydonidan lex.uz/docs/<id> havolalarini ajratib oladi ──
 export function parseLexionUrls(answer: string): string[] {
@@ -322,7 +308,8 @@ Deno.serve(async (req: Request) => {
     // LEXION 1-BOSQICH: lexion_searching — Lexion xizmatidan URL'larni kutish
     // ════════════════════════════════════════════════════════════════
     if (job.answer_mode === 'lexion' && job.lexion_phase === 'lexion_searching' && job.lexion_job_id) {
-      const lexionCfg = await getLexionConfig();
+      const lexionJob = parseLexionJobId(job.lexion_job_id);
+      const lexionCfg = await getLexionConfig(supabaseAdmin, lexionJob.preview);
 
       if (!lexionCfg.url || !lexionCfg.key) {
         const errMsg = "Lexion model hozir mavjud emas.";
@@ -338,7 +325,7 @@ Deno.serve(async (req: Request) => {
 
       try {
         const lexionRes = await fetch(
-          `${lexionCfg.url}/api/jobs/${job.lexion_job_id}`,
+          `${lexionCfg.url}/api/jobs/${lexionJob.id}`,
           {
             method: "GET",
             signal: AbortSignal.timeout(20_000),
@@ -974,15 +961,16 @@ Deno.serve(async (req: Request) => {
 // ── Chat: Lexion 1-bosqichda qayta qidirish (max 1 marta) ──
 async function retryLexionSearch(
   jobId: string,
-  job: { case_id: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null }
+  job: { case_id: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; lexion_job_id?: string | null }
 ): Promise<{ retrySent: boolean }> {
+  const preview = parseLexionJobId(job.lexion_job_id ?? "").preview;   // qayta urinish ham o'sha Lexion'ga
   const retryCount = job.fallback_count ?? 0;
   if (retryCount >= 1) {
     console.log(`[case-answer-status] retryLexionSearch: urinish chegarasi (${retryCount}), job=${jobId}`);
     return { retrySent: false };
   }
 
-  const lexionCfg = await getLexionConfig();
+  const lexionCfg = await getLexionConfig(supabaseAdmin, preview);
   if (!lexionCfg.url || !lexionCfg.key) {
     return { retrySent: false };
   }
@@ -1003,7 +991,7 @@ async function retryLexionSearch(
     await supabaseAdmin
       .from("case_answer_jobs")
       .update({
-        lexion_job_id: lexionResult.serviceJobId,
+        lexion_job_id: tagLexionJobId(lexionResult.serviceJobId, preview),
         lexion_phase: "lexion_searching",
         fallback_count: retryCount + 1,
         status: "queued",

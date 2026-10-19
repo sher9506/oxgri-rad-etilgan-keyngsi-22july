@@ -3,6 +3,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
+import { getLexionConfig, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
 
 const corsHeaders = {
@@ -243,22 +244,6 @@ function isServerError(status: number): boolean {
   return status === 0 || (status >= 500);
 }
 
-// ── Lexion config (from settings table) ──
-async function getLexionConfig(): Promise<{ url: string; key: string }> {
-  const { data, error } = await supabaseAdmin
-    .from("settings")
-    .select("key, text_value")
-    .in("key", ["LEXION_RENDER_URL", "LEXION_RENDER_API_KEY"]);
-  if (error || !data) return { url: "", key: "" };
-  const map: Record<string, string> = {};
-  for (const row of data) {
-    if (row.text_value) map[row.key] = row.text_value;
-  }
-  return {
-    url: (map["LEXION_RENDER_URL"] || "").trim(),
-    key: (map["LEXION_RENDER_API_KEY"] || "").trim(),
-  };
-}
 
 async function sendToLexion(
   lexionCfg: { url: string; key: string },
@@ -308,6 +293,7 @@ Deno.serve(async (req: Request) => {
     const answer_mode: string = body.answer_mode || (Array.isArray(sources) && sources.length > 0 ? 'sources' : 'general');
     const isStandaloneChat = !case_id;
     const answerStyle = parseAnswerStyle(body.answer_style);   // 'lunda' faqat chat uchun
+    const lexionPreview = body.lexion_preview === true;   // preview sayt yangi Lexion'ni sinaydi
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
     const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
 
@@ -473,7 +459,7 @@ Deno.serve(async (req: Request) => {
     // LEXION REJIMI — 1-bosqich: qonun hujjatlarini topish
     // ════════════════════════════════════════════════════════════════
     if (answer_mode === 'lexion') {
-      const lexionCfg = await getLexionConfig();
+      const lexionCfg = await getLexionConfig(supabaseAdmin, lexionPreview);
       if (!lexionCfg.url || !lexionCfg.key) {
         console.error("[case-answer-submit] Lexion secret'lari sozlanmagan");
         return new Response(
@@ -555,7 +541,7 @@ Deno.serve(async (req: Request) => {
         await supabaseAdmin
           .from("case_answer_jobs")
           .update({
-            lexion_job_id: lexionResult.serviceJobId,
+            lexion_job_id: tagLexionJobId(lexionResult.serviceJobId, lexionPreview),
             status: "queued",
           })
           .eq("id", jobId);
