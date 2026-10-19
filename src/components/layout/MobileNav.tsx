@@ -45,7 +45,7 @@ export function buildNavGroups(
   const main: NavItem[] = isBlogOnly
     ? [{ id: 'blog', label: 'Blog', icon: Newspaper }]
     : [
-        { id: 'nexus_ai', label: 'NaSher AI', icon: Scale },
+        { id: 'nexus_ai', label: 'Nexus AI', icon: Scale },
         { id: 'oqmatlar', label: "O'quv materiallari", icon: Library },
       ];
 
@@ -276,7 +276,7 @@ function MobileBottomNav({
 }) {
   const tabs = [
     { id: 'haqida', label: 'Bosh', icon: Home },
-    { id: 'nexus_ai', label: 'NaSher', icon: Scale },
+    { id: 'nexus_ai', label: 'Nexus', icon: Scale },
     { id: 'oqmatlar', label: 'Materiallar', icon: Library, shortLabel: 'Materiallar' },
   ];
 

@@ -141,9 +141,3 @@ verify_jwt = false
 
 [functions.chat-worker]
 verify_jwt = false
-
-[functions.nasher-bot]
-verify_jwt = false
-
-[functions.nasher-bot-dispatch]
-verify_jwt = false
