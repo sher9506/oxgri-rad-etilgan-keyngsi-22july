@@ -62,8 +62,11 @@ function latinWord(word: string): string {
   return out;
 }
 
+// NotebookLM ba'zan turkcha harf yozadi (parvariş): o'zbek lotin yozuviga o'tkaziladi (saytdagi nasherText.ts bilan bir xil)
+const TURKISH: Record<string, string> = { ş: "sh", Ş: "Sh", ç: "ch", Ç: "Ch", ğ: "g'", Ğ: "G'", ı: "i", İ: "I" };
+
 export function prepareAnswer(raw: string): string {
-  let t = raw.replace(/\r\n/g, "\n");
+  let t = raw.replace(/\r\n/g, "\n").replace(/[şŞçÇğĞıİ]/g, (c) => TURKISH[c]);
   const cyr = (t.match(/[а-яёўқғҳ]/gi) ?? []).length;
   const lat = (t.match(/[a-z]/gi) ?? []).length;
   if (cyr > 0 && cyr <= lat) t = t.replace(/[а-яёўқғҳА-ЯЁЎҚҒҲ'ʼ]+/g, (w) => (/[а-яёўқғҳ]/i.test(w) ? latinWord(w) : w));
