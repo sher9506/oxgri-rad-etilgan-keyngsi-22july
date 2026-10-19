@@ -1001,8 +1001,8 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
     if (!initialChatId || openedInitialRef.current) return;
     if (!chats.some(c => c.chatId === initialChatId)) return;
     openedInitialRef.current = true;
-    if (activeChatId !== initialChatId) switchChat(initialChatId);
-  }, [initialChatId, chats, activeChatId, switchChat]);
+    switchChat(initialChatId, true);   // faol bo'lsa ham xabarlari server'dan yuklansin
+  }, [initialChatId, chats, switchChat]);
 
   const [input, setInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);

@@ -707,8 +707,9 @@ export function useNexusAiChat(userId: string | undefined) {
     return getChatTimer(chatId).status === 'expired';
   }, [chatsStatus, getChatTimer]);
 
-  const switchChat = useCallback((chatId: string) => {
-    if (!userId || chatId === activeChatId) return;
+  /** force: allaqachon faol bo'lsa ham server'dan qayta yuklash (masalan, Telegram botdan kelgan suhbat) */
+  const switchChat = useCallback((chatId: string, force = false) => {
+    if (!userId || (!force && chatId === activeChatId)) return;
     setActiveChatId(chatId);
     setChatLimitError(null);
     const { messages: msgs, pendingJobId } = loadChatMessages(userId, chatId);
