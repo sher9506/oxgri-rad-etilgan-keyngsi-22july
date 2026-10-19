@@ -14,6 +14,9 @@ interface TgWebApp {
   setBackgroundColor?: (c: string) => void;
   isVersionAtLeast?: (v: string) => boolean;
   close?: () => void;
+  isFullscreen?: boolean;
+  onEvent?: (e: string, cb: () => void) => void;
+  offEvent?: (e: string, cb: () => void) => void;
 }
 
 function webApp(): TgWebApp | undefined {
@@ -24,6 +27,7 @@ export default function NasherMiniApp() {
   const [userId, setUserId] = useState<string | null>(null);
   const [xato, setXato] = useState<string | null>(null);
   const [needRegister, setNeedRegister] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const initialChatId = new URLSearchParams(window.location.search).get('chat') || undefined;
 
   useEffect(() => {
@@ -35,11 +39,14 @@ export default function NasherMiniApp() {
     }
     wa.ready();
     wa.expand();
+    const syncFull = () => setFullscreen(!!webApp()?.isFullscreen);
+    wa.onEvent?.('fullscreenChanged', syncFull);
     try {
       if (wa.isVersionAtLeast?.('8.0')) wa.requestFullscreen?.();
       wa.disableVerticalSwipes?.();   // chat oynasini pastga tortganda Mini App yopilib ketmasin
       wa.setHeaderColor?.('#ffffff');
       wa.setBackgroundColor?.('#ffffff');
+      syncFull();
     } catch (e) {
       console.warn('[NasherMiniApp] Telegram sozlamasi:', e);
     }
@@ -53,6 +60,7 @@ export default function NasherMiniApp() {
         console.error('[NasherMiniApp] kirish xatosi:', e);
         setXato("Kirishda xatolik. Mini App'ni yopib, qayta oching.");
       });
+    return () => wa.offEvent?.('fullscreenChanged', syncFull);
   }, []);
 
   if (needRegister) {
@@ -83,12 +91,15 @@ export default function NasherMiniApp() {
     return <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: '#888', fontFamily: 'Inter, system-ui, sans-serif' }}>NaSher AI yuklanmoqda…</div>;
   }
   return (
-    // To'liq ekranda Telegram tugmalari ustiga chiqmasligi uchun xavfsiz hudud (Telegram CSS o'zgaruvchilari)
+    // To'liq ekranda sarlavha Telegram tugmalari ("Yopish" / "⌄ …") qatoriga joylashadi — ikki qavat bo'sh joy bo'lmaydi
     <main
+      className={fullscreen ? 'nasher-tg-full' : undefined}
       style={{
         height: '100dvh',
         overflow: 'hidden',
-        paddingTop: 'calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))',
+        paddingTop: fullscreen
+          ? 'var(--tg-safe-area-inset-top, 0px)'
+          : 'calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))',
         paddingBottom: 'var(--tg-safe-area-inset-bottom, 0px)',
         background: '#fff',
       }}

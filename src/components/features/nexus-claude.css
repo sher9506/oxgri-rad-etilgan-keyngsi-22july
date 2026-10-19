@@ -2240,3 +2240,18 @@ ol.nc-answer-list {
   .nc-mode-active svg, .nc-mode-hint, .nc-thinking-tip, .nc-answer-typing > :last-child::after, .nc-step-now .nc-step-dot { animation: none; }
   .nc-progress span { transition: none; }
 }
+
+/* ── Telegram Mini App, to'liq ekran: sarlavha Telegram tugmalari orasidagi qatorda ── */
+.nasher-tg-full .nc-header {
+  min-height: var(--tg-content-safe-area-inset-top, 46px);
+  padding: 0 92px;                 /* chapda "Yopish", o'ngda "⌄ …" tugmalari */
+  border-bottom: none;
+  justify-content: center;
+  gap: 4px;
+}
+.nasher-tg-full .nc-header-left { flex: 1; min-width: 0; justify-content: center; gap: 4px; }
+.nasher-tg-full .nc-header-title { font-size: 14px; font-weight: 600; text-align: center; }
+.nasher-tg-full .nc-quota-pill,
+.nasher-tg-full .nc-timer-pill { display: none; }
+.nasher-tg-full .nc-icon-btn,
+.nasher-tg-full .nc-chats-toggle { width: 32px; height: 32px; min-width: 32px; }
