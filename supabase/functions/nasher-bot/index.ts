@@ -115,15 +115,16 @@ async function activate(): Promise<Response> {
   if (s["NASHER_MINIAPP_URL"]) {
     await tg(token, "setChatMenuButton", { menu_button: { type: "web_app", text: "NaSher AI", web_app: { url: s["NASHER_MINIAPP_URL"] } } });
   }
+  await tg(token, "setMyName", { name: "NaSher AI · FanFaster" });
   await tg(token, "setMyDescription", { description:
-    "⚖️ NaSher AI — O'zbekiston qonunchiligi bo'yicha sun'iy intellekt yordamchisi.\n\n" +
+    "⚖️ NaSher AI — FanFaster platformasining huquqiy AI yordamchisi.\n\n" +
     "• Vaziyatingizni oddiy so'zlar bilan yozing\n" +
     "• 3000+ qonun hujjati ichidan keraklisini topadi\n" +
     "• Moddalar bilan tushunarli javob beradi\n" +
     "• Javob tayyor bo'lganda o'zi yuboradi\n\n" +
     "«Start» ni bosing 👇" });
   await tg(token, "setMyShortDescription", { short_description:
-    "O'zbekiston qonunchiligi bo'yicha AI yordamchi: savolingizga qonun moddalari bilan javob beradi. FanFaster.uz" });
+    "FanFaster.uz ning AI yordamchisi: O'zbekiston qonunchiligi bo'yicha savolingizga qonun moddalari bilan javob beradi." });
   return json({ ok: true, username: me.result?.username, webhook: WEBHOOK_URL });
 }
 
