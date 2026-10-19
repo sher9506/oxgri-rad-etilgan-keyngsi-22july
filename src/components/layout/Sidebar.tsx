@@ -109,7 +109,7 @@ function buildSections(
   ] : [
     { id: 'kurslar', label: t('nav.kurslar'), icon: BookMarked },
     { id: 'oqmatlar', label: t('nav.oqmatlar'), icon: Library },
-    { id: 'nexus_ai', label: 'Nexus AI', icon: MessageSquareText },
+    { id: 'nexus_ai', label: 'NaSher AI', icon: MessageSquareText },
     { id: 'savol_javob', label: t('nav.savol_javob'), icon: Layers },
     { id: 'blog', label: 'Blog', icon: Newspaper },
   ];

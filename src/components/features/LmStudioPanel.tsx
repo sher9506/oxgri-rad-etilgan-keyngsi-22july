@@ -380,7 +380,7 @@ export default function LmStudioPanel() {
             <div className="p-2 rounded-lg bg-cyan-100 text-cyan-700">
               <MessageSquare className="h-5 w-5" />
             </div>
-            Chat / Nexus AI faoliyati
+            Chat / NaSher AI faoliyati
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

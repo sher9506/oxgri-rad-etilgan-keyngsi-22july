@@ -108,7 +108,7 @@ async function sendToBackend(
   try {
     const serviceRes = await fetch(`${baseUrl}/api/jobs`, {
       method: "POST",
-      signal: AbortSignal.timeout(40_000),   // osilib qolgan Render edge funksiyani qotirmasin
+      signal: AbortSignal.timeout(70_000),   // sovuq Render ~50 s uyg'onadi; undan uzoq osilsa uziladi
       headers: {
         "X-API-Key": cfg.key,
         "Content-Type": "application/json",
@@ -244,7 +244,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership — lexion maydonlarini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, finished_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, finished_at, updated_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered")
       .eq("id", id)
       .maybeSingle();
 
@@ -647,6 +647,21 @@ Deno.serve(async (req: Request) => {
     // ════════════════════════════════════════════════════════════════
 
     if (!job.service_job_id) {
+      // Lexion URL topgan, lekin 2-bosqich yuborilmay qolgan (edge funksiya yuborish paytida uzilgan):
+      // 90 s dan keyin fazani qaytaramiz — keyingi poll Lexion natijasini qayta o'qib, 2-bosqichni yana boshlaydi.
+      if (job.answer_mode === 'lexion' && job.lexion_phase === 'answering' && job.lexion_job_id && job.updated_at &&
+          Date.now() - new Date(job.updated_at).getTime() > 90_000) {
+        const { data: reset } = await supabaseAdmin
+          .from("case_answer_jobs")
+          .update({ lexion_phase: "lexion_searching" })
+          .eq("id", id)
+          .eq("updated_at", job.updated_at)
+          .is("service_job_id", null)
+          .select("id");
+        if (reset && reset.length > 0) {
+          console.log(`[case-answer-status] 2-bosqich yuborilmay qolgan, qayta urinish: job=${id}`);
+        }
+      }
       // service_job_id yo'q va leksion bosqichida ham emas — qotib qolgan job
       if (job.status === 'queued' || job.status === 'running') {
         const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
@@ -1085,7 +1100,7 @@ async function sendToLexionSearch(
   try {
     const serviceRes = await fetch(`${lexionCfg.url}/api/jobs`, {
       method: "POST",
-      signal: AbortSignal.timeout(40_000),   // osilib qolgan Render edge funksiyani qotirmasin
+      signal: AbortSignal.timeout(70_000),   // sovuq Render ~50 s uyg'onadi; undan uzoq osilsa uziladi
       headers: {
         "X-API-Key": lexionCfg.key,
         "Content-Type": "application/json",

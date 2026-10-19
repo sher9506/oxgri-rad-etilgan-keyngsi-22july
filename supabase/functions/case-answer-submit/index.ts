@@ -208,7 +208,7 @@ async function sendToBackend(
   try {
     const serviceRes = await fetch(`${baseUrl}/api/jobs`, {
       method: "POST",
-      signal: AbortSignal.timeout(40_000),   // osilib qolgan Render edge funksiyani qotirmasin
+      signal: AbortSignal.timeout(70_000),   // sovuq Render ~50 s uyg'onadi; undan uzoq osilsa uziladi
       headers: {
         "X-API-Key": cfg.key,
         "Content-Type": "application/json",
@@ -267,7 +267,7 @@ async function sendToLexion(
   try {
     const serviceRes = await fetch(`${lexionCfg.url}/api/jobs`, {
       method: "POST",
-      signal: AbortSignal.timeout(40_000),   // osilib qolgan Render edge funksiyani qotirmasin
+      signal: AbortSignal.timeout(70_000),   // sovuq Render ~50 s uyg'onadi; undan uzoq osilsa uziladi
       headers: {
         "X-API-Key": lexionCfg.key,
         "Content-Type": "application/json",

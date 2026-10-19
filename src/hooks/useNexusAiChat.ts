@@ -303,6 +303,7 @@ async function callEdgeFunction(fn: string, body: Record<string, unknown>) {
       'Authorization': `Bearer ${supabaseAnonKey}`,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(90_000),   // edge funksiya 150 s gacha ishlashi mumkin; osilsa polling davom etsin
   });
   const data = await res.json();
   if (!res.ok) {
