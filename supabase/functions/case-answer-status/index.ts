@@ -1,3 +1,4 @@
+// deploy 2026-10-19 lunda-lexion
 // deploy 2026-10-19 b
 // Lexion phase polling support — backend 3 failover qo'shilgan
 

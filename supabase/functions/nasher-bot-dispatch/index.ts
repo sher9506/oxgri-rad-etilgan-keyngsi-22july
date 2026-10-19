@@ -1,3 +1,4 @@
+// deploy 2026-10-19 lunda-lexion
 // nasher-bot-dispatch — pg_cron har daqiqada chaqiradi (x-cron-secret, verify_jwt = false).
 // Botdan kelgan savollarda brauzer yo'q, Lexion bosqichlarini case-answer-status polling'i harakatga keltiradi:
 // shu funksiya ~50 s davomida har 8 s da kutilayotgan bot ishlarini so'raydi, progress xabarini yangilaydi
