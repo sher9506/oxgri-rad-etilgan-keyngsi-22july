@@ -1,15 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { AI_NAME, MIN_CHAT_INPUT, MAX_CHAT_INPUT, MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS } from '@/constants/nexus';
-import { pickTezkorSources } from '@/lib/tezkorSources';
 
 // Cloudflare branch preview (masalan fix-nasher-chat.<loyiha>.pages.dev): yangi Lexion shu yerda sinaladi, fanfaster.uz'da emas
 const IS_BRANCH_PREVIEW = typeof window !== 'undefined' && /\.oxgri-rad-etilgan-keyngsi-22july\.pages\.dev$/.test(window.location.hostname);
 
 export type ChatJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
-/** tezkor: Lexion'siz, asosiy kodekslar. chuqur: Lexion butun qonunchilikdan izlaydi.
- *  lunda: tezkor yo'li + qisqa amaliy javob ko'rsatmasi (answer_style). */
-export type NasherMode = 'tezkor' | 'chuqur' | 'lunda';
+/** Ikkalasi ham Lexion orqali. chuqur: 15 tagacha hujjat, to'liq tahlil.
+ *  lunda: eng mos 3 ta hujjat + qisqa amaliy javob (answer_style). */
+export type NasherMode = 'chuqur' | 'lunda';
 
 export interface ChatMessage {
   id: string;
@@ -796,8 +795,6 @@ export function useNexusAiChat(userId: string | undefined) {
       content: trimmed,
       createdAt: Date.now(),
     };
-    // Lo'nda: kamroq hujjat = tezroq indekslash; 3 ta asosiy kodeks sifat uchun yetarli
-    const tezkorSources = mode === 'chuqur' ? null : pickTezkorSources(trimmed, mode === 'lunda' ? 3 : undefined);
     const aiMsgId = `ai-${Date.now()}`;
     const aiMsg: ChatMessage = {
       id: aiMsgId,
@@ -807,7 +804,6 @@ export function useNexusAiChat(userId: string | undefined) {
       createdAt: Date.now() + 1,
       jobCreatedAt: new Date().toISOString(),   // timer yuborilgan zahoti sanaydi
       mode,
-      lexionUrls: tezkorSources?.map(s => s.url),
     };
 
     setMessages(prev => [...prev, userMsg, aiMsg]);
@@ -822,10 +818,9 @@ export function useNexusAiChat(userId: string | undefined) {
         title: trimmed.slice(0, 100),
         ustoz_id: userId,
         chat_id: currentChatId,
-        // tezkor: Lexion bosqichisiz, kodekslar to'g'ridan-to'g'ri manba sifatida (mavjud 'sources' rejimi)
-        ...(tezkorSources
-          ? { answer_mode: 'sources', sources: tezkorSources.map(s => ({ type: 'url', ...s })), ...(mode === 'lunda' ? { answer_style: 'lunda' } : {}) }
-          : { answer_mode: 'lexion', ...(IS_BRANCH_PREVIEW ? { lexion_preview: true } : {}) }),
+        answer_mode: 'lexion',
+        ...(mode === 'lunda' ? { answer_style: 'lunda' } : {}),
+        ...(IS_BRANCH_PREVIEW ? { lexion_preview: true } : {}),
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
 

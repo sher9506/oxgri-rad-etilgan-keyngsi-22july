@@ -481,6 +481,7 @@ Deno.serve(async (req: Request) => {
       if (case_id) insertPayload.case_id = case_id;
       if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
       if (chatId) insertPayload.chat_id = chatId;
+      if (answerStyle === 'lunda') insertPayload.answer_style = 'lunda';   // 2-bosqich (case-answer-status) shundan biladi
 
       const { data: jobRow, error: jobError } = await supabaseAdmin
         .from("case_answer_jobs")

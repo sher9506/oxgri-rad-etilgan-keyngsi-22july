@@ -3,7 +3,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getLexionConfig, parseLexionJobId, tagLexionJobId } from "../_shared/lexion-target.ts";
-import { KAZUS_INSTRUCTION as INSTRUCTION, CHAT_INSTRUCTION } from "../_shared/nasher-prompts.ts";
+import { KAZUS_INSTRUCTION as INSTRUCTION, LUNDA_MAX_DOCS, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
 import { canKeepOn, expireChatNotebook, getChatNotebook, getKeepCfg, lexDocId, registerKeptNotebook } from "../_shared/nexus-notebooks.ts";
 
 const corsHeaders = {
@@ -230,7 +230,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership — lexion maydonlarini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, finished_at, updated_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, finished_at, updated_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered, answer_style")
       .eq("id", id)
       .maybeSingle();
 
@@ -390,7 +390,7 @@ Deno.serve(async (req: Request) => {
 
         if (lexionStatus === "done" || lexionStatus === "completed" || lexionStatus === "success") {
           const lexionAnswer = typeof lexionData.answer === "string" ? lexionData.answer : "";
-          const urls = parseLexionUrls(lexionAnswer);
+          const urls = parseLexionUrls(lexionAnswer).slice(0, job.answer_style === "lunda" ? LUNDA_MAX_DOCS : undefined);
 
           // URL ro'yxati bo'sh
           if (urls.length === 0) {
@@ -489,7 +489,7 @@ Deno.serve(async (req: Request) => {
             title,
             kazus_text: kazusText,
             external_id: `${id}-ans`,
-            instruction: isChat ? CHAT_INSTRUCTION : INSTRUCTION,
+            instruction: isChat ? chatInstruction(parseAnswerStyle(job.answer_style)) : INSTRUCTION,
             sources: serviceSources,
           };
 
@@ -1009,7 +1009,7 @@ async function retryLexionSearch(
 // ── Chat: 2-bosqichda boshqa Render'ga qayta yuborish (max 1 marta) ──
 async function redispatchChatWithSources(
   jobId: string,
-  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null; chat_id: string | null; teacher_id: string; chat_followup: boolean | null }
+  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null; chat_id: string | null; teacher_id: string; chat_followup: boolean | null; answer_style?: string | null }
 ): Promise<{ ok: boolean }> {
   const retryCount = job.fallback_count ?? 0;
   if (retryCount >= 1) {
@@ -1031,7 +1031,7 @@ async function redispatchChatWithSources(
     title,
     kazus_text: kazusText,
     external_id: `${jobId}-ans2`,
-    instruction: CHAT_INSTRUCTION,
+    instruction: chatInstruction(parseAnswerStyle(job.answer_style)),
     sources: serviceSources,
   };
 
@@ -1121,7 +1121,7 @@ async function sendToLexionSearch(
 // ── Fallback: Lexion ishlamasa, "Umumiy" rejim bilan yuborish ──
 async function startFallbackGeneral(
   jobId: string,
-  job: { case_id: string | null; answer_mode: string | null; lexion_phase: string | null; chat_kazus_text?: string | null; chat_title?: string | null },
+  job: { case_id: string | null; answer_mode: string | null; lexion_phase: string | null; chat_kazus_text?: string | null; chat_title?: string | null; answer_style?: string | null },
   _ustoz_id: string,
   reason: string
 ): Promise<{ ok: boolean; error?: string }> {
@@ -1148,7 +1148,7 @@ async function startFallbackGeneral(
     title,
     kazus_text: kazusText,
     external_id: `${jobId}-ans`,
-    instruction: isChat ? CHAT_INSTRUCTION : INSTRUCTION,
+    instruction: isChat ? chatInstruction(parseAnswerStyle(job.answer_style)) : INSTRUCTION,
     sources: [],
   };
 

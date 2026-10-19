@@ -1,6 +1,6 @@
 // nasher-bot-dispatch — pg_cron har daqiqada chaqiradi (x-cron-secret, verify_jwt = false).
 // Botdan kelgan savollarda brauzer yo'q, Lexion bosqichlarini case-answer-status polling'i harakatga keltiradi:
-// shu funksiya ~50 s davomida har 10 s da kutilayotgan bot ishlarini so'raydi, progress xabarini yangilaydi
+// shu funksiya ~50 s davomida har 8 s da kutilayotgan bot ishlarini so'raydi, progress xabarini yangilaydi
 // va javob tayyor bo'lganda Telegram'ga yuboradi.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -11,7 +11,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
 const RUN_MS = 50_000;
-const TICK_MS = 10_000;
+const TICK_MS = 8_000;   // har soniyada emas: Telegram ~30 so'rov/s chegarasi, ko'p foydalanuvchida bot bloklanadi
 const MAX_AGE_MIN = 35;
 
 

@@ -232,7 +232,7 @@ const WAIT_TIPS = [
 ];
 
 // Taxminiy davomiylik (s): progress chizig'i shunga qarab silliq to'ladi, hech qachon 100% ga yetmaydi
-const MODE_EXPECTED_SEC: Record<NasherMode, number> = { lunda: 60, tezkor: 85, chuqur: 160 };
+const MODE_EXPECTED_SEC: Record<NasherMode, number> = { lunda: 90, chuqur: 160 };
 
 function NexusThinking({ lexionUrls, jobCreatedAt, serverNow, mode = 'chuqur' }: NexusThinkingProps) {
   const lexLinks = useMemo(() => (lexionUrls ?? []).filter(isLexUz), [lexionUrls]);
@@ -262,13 +262,10 @@ function NexusThinking({ lexionUrls, jobCreatedAt, serverNow, mode = 'chuqur' }:
   const phaseBAtRef = useRef<number | null>(null);
   if (isPhaseB && phaseBAtRef.current === null) phaseBAtRef.current = elapsedSec;
 
-  const steps = mode === 'chuqur'
-    ? ["Kerakli qonun hujjatlari izlanmoqda", "Topilgan hujjatlar o'qilmoqda", "Javob yozilmoqda"]
-    : ["Kodekslar ochilmoqda", "Tegishli moddalar o'qilmoqda", "Javob yozilmoqda"];
-  const step = mode === 'chuqur'
-    ? (!isPhaseB ? 0 : elapsedSec - (phaseBAtRef.current ?? 0) < 20 ? 1 : 2)
-    : (elapsedSec < 4 ? 0 : elapsedSec < 18 ? 1 : 2);
-  const progress = Math.round(95 * (1 - Math.exp(-elapsedSec / (MODE_EXPECTED_SEC[mode] / 2))));
+  // ikkala rejim ham Lexion orqali: avval hujjat izlanadi, keyin o'qiladi
+  const steps = ["Kerakli qonun hujjatlari izlanmoqda", "Topilgan hujjatlar o'qilmoqda", "Javob yozilmoqda"];
+  const step = !isPhaseB ? 0 : elapsedSec - (phaseBAtRef.current ?? 0) < 20 ? 1 : 2;
+  const progress = Math.round(95 * (1 - Math.exp(-elapsedSec / ((MODE_EXPECTED_SEC[mode] ?? 160) / 2))));
   const tip = WAIT_TIPS[Math.floor(elapsedSec / 9) % WAIT_TIPS.length];
 
   return (
@@ -444,8 +441,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
 
 // Tezlik tartibida: eng qisqasidan eng chuqurigacha
 const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof Zap }[] = [
-  { id: 'lunda', label: "Lo'nda", hint: "Qisqa javob: nima qilish kerak · ~1 daqiqa", Icon: Target },
-  { id: 'tezkor', label: 'Tezkor', hint: "Moddalar bilan tushuntirish · ~1,5 daqiqa", Icon: Zap },
+  { id: 'lunda', label: "Lo'nda", hint: "Qisqa javob: qaysi modda, nima qilish kerak · ~1,5 daqiqa", Icon: Target },
   { id: 'chuqur', label: 'Chuqur', hint: "Butun qonunchilik bo'yicha tahlil · ~2–3 daqiqa", Icon: Search },
 ];
 const MODE_KEY = 'nasher_mode';

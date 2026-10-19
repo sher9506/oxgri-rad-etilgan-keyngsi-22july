@@ -1053,7 +1053,7 @@ ol.nc-answer-list {
   min-height: 24px;
 }
 
-/* ── Javob rejimi: Tezkor / Chuqur (segmentli tanlov) ── */
+/* ── Javob rejimi: Lo'nda / Chuqur (segmentli tanlov) ── */
 .nc-mode-switch {
   display: inline-flex;
   padding: 2px;
@@ -2218,7 +2218,6 @@ ol.nc-answer-list {
   to { opacity: 1; transform: none; }
 }
 .nc-mode-lunda.nc-mode-active svg { animation: nc-ico-target 520ms var(--nc-ease); }
-.nc-mode-tezkor.nc-mode-active svg { animation: nc-ico-zap 420ms var(--nc-ease); }
 .nc-mode-chuqur.nc-mode-active svg { animation: nc-ico-search 640ms var(--nc-ease); }
 @keyframes nc-ico-target {           /* nishonga tegish */
   0% { transform: scale(.6); opacity: .4; }

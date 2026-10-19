@@ -131,7 +131,7 @@ export async function tg(token: string, method: string, body: Record<string, unk
 }
 
 
-// ── Kutish xabari: har 10 s da yangilanadi (o'tgan vaqt, progress, bosqichlar, maslahat) ──
+// ── Kutish xabari: har 8 s da yangilanadi (o'tgan vaqt, progress, bosqichlar, maslahat) ──
 const WAIT_TIPS = [
   "💡 Kutib o'tirmang — javob tayyor bo'lganda o'zim yozaman.",
   "💡 Keyingi savolingizda oldingilarini eslayman (suhbat 5 soat).",
