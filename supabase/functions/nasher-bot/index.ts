@@ -293,3 +293,4 @@ Deno.serve(async (req) => {
     return json({ ok: true });   // Telegram xatoda qayta-qayta yubormasin
   }
 });
+
