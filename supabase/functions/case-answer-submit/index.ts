@@ -1,4 +1,4 @@
-// deploy 2026-10-19
+// deploy 2026-10-19 b
 // Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
