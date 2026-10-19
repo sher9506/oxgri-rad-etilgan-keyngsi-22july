@@ -1173,3 +1173,4 @@ async function startFallbackGeneral(
   return { ok: false, error: "Javob tayyorlanmadi. Qayta urinib ko'ring." };
 }
 // deploy-trigger Sat Oct 12 2026 03:50 UTC
+
