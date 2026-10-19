@@ -1,4 +1,4 @@
-// Lexion (URL topuvchi) Render manzili. Preview sayt yangi Lexion'ni sinaydi, fanfaster.uz eskisida qoladi.
+// Lexion (URL topuvchi) Render manzili. Sayt (fanfaster.uz va preview) yangi Lexion'ni ishlatadi; bot hozircha settings'dagi eskisida.
 // shortcut: preview manzili kodda qattiq yozilgan (foydalanuvchi URL bera olmaydi — SSRF yo'q); sinov tugagach olib tashlanadi.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 const PREVIEW_LEXION_URL = "https://lexion-model.onrender.com";

@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { AI_NAME, MIN_CHAT_INPUT, MAX_CHAT_INPUT, MAX_ACTIVE_CHATS, MAX_EXPIRED_CHATS } from '@/constants/nexus';
 
-// Cloudflare branch preview (masalan fix-nasher-chat.<loyiha>.pages.dev): yangi Lexion shu yerda sinaladi, fanfaster.uz'da emas
-const IS_BRANCH_PREVIEW = typeof window !== 'undefined' && /\.oxgri-rad-etilgan-keyngsi-22july\.pages\.dev$/.test(window.location.hostname);
 
 export type ChatJobStatus = 'idle' | 'queued' | 'running' | 'done' | 'error' | 'timeout';
 /** Ikkalasi ham Lexion orqali. chuqur: 15 tagacha hujjat, to'liq tahlil.
@@ -820,7 +818,7 @@ export function useNexusAiChat(userId: string | undefined) {
         chat_id: currentChatId,
         answer_mode: 'lexion',
         ...(mode === 'lunda' ? { answer_style: 'lunda' } : {}),
-        ...(IS_BRANCH_PREVIEW ? { lexion_preview: true } : {}),
+        lexion_preview: true,   // yangi (python-api) Lexion — preview'da sinalgan; eski Lexion faqat zaxira
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
 
