@@ -1,3 +1,4 @@
+// deploy 2026-10-20 lexion-double
 // deploy 2026-10-19 lunda-lexion
 // deploy 2026-10-19 b
 // Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
