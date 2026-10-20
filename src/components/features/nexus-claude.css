@@ -418,29 +418,6 @@
   margin-bottom: 0;
 }
 
-/* Iqtibos: [217-modda] — lex.uz'da aynan o'sha gapni ochadi */
-.nc-cite {
-  display: inline-block;
-  margin: 0 1px;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-family: var(--nc-sans);
-  font-size: 0.78em;
-  font-weight: 600;
-  line-height: 1.6;
-  white-space: nowrap;
-  color: var(--nc-accent);
-  background: color-mix(in srgb, var(--nc-accent) 10%, transparent);
-  text-decoration: none;
-  vertical-align: 0.08em;
-  transition: background 150ms var(--nc-ease);
-}
-.nc-cite:hover,
-.nc-cite:focus-visible {
-  background: color-mix(in srgb, var(--nc-accent) 20%, transparent);
-  outline: none;
-}
-
 .nc-answer-h {
   font-family: var(--nc-serif);
   font-size: 18px;
