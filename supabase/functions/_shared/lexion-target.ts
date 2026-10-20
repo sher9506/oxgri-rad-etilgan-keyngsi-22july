@@ -18,23 +18,12 @@ export async function getLexionConfig(db: SupabaseClient, preview = false): Prom
     key: (map["LEXION_RENDER_API_KEY"] || "").trim(),
   };
 }
-const EXTRA_SEP = "~";   // ikkinchi (parallel) Lexion qidiruvining ID'si: "p:<id1>~<id2>"
-export function tagLexionJobId(id: string, preview: boolean, extraId?: string | null): string {
-  return (preview ? PREVIEW_TAG + id : id) + (extraId ? EXTRA_SEP + extraId : "");
+export function tagLexionJobId(id: string, preview: boolean): string {
+  return preview ? PREVIEW_TAG + id : id;
 }
-export function parseLexionJobId(stored: string): { id: string; preview: boolean; extra: string | null } {
-  const [main, extra = null] = stored.split(EXTRA_SEP);
-  return main.startsWith(PREVIEW_TAG)
-    ? { id: main.slice(PREVIEW_TAG.length), preview: true, extra }
-    : { id: main, preview: false, extra };
-}
-
-/** Ikki qidiruv natijasini navbatma-navbat birlashtiradi (a1, b1, a2, b2...): har ikkisining eng moslari oldinda qoladi */
-export function interleaveUrls(a: string[], b: string[], max = 15): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    for (const u of [a[i], b[i]]) if (u && !out.includes(u)) out.push(u);
-  }
-  return out.slice(0, max);
+export function parseLexionJobId(stored: string): { id: string; preview: boolean } {
+  return stored.startsWith(PREVIEW_TAG)
+    ? { id: stored.slice(PREVIEW_TAG.length), preview: true }
+    : { id: stored, preview: false };
 }
 

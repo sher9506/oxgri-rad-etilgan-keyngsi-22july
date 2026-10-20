@@ -296,7 +296,6 @@ Deno.serve(async (req: Request) => {
     const isStandaloneChat = !case_id;
     const answerStyle = parseAnswerStyle(body.answer_style);   // 'lunda' faqat chat uchun
     const lexionPreview = body.lexion_preview === true;   // preview sayt yangi Lexion'ni sinaydi
-    const lexionDouble = body.lexion_double === true;     // faqat preview: Lexion ikki marta so'raladi (tanlov barqarorligi sinovi)
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
     const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
 
@@ -534,17 +533,13 @@ Deno.serve(async (req: Request) => {
       };
 
       console.log(`[case-answer-submit] Lexion 1-bosqich: external_id=${jobId}-lex`);
-      // Lexion bir savolga har safar boshqa hujjat tanlaydi: double bo'lsa ikkinchi qidiruv parallel ketadi, natijalar birlashtiriladi
-      const [lexionResult, lexionExtra] = await Promise.all([
-        sendToLexion(lexionCfg, lexionBody),
-        lexionDouble ? sendToLexion(lexionCfg, { ...lexionBody, external_id: `${jobId}-lex2` }) : Promise.resolve(null),
-      ]);
+      const lexionResult = await sendToLexion(lexionCfg, lexionBody);
 
       if (lexionResult.serviceJobId) {
         await supabaseAdmin
           .from("case_answer_jobs")
           .update({
-            lexion_job_id: tagLexionJobId(lexionResult.serviceJobId, lexionPreview, lexionExtra?.serviceJobId),
+            lexion_job_id: tagLexionJobId(lexionResult.serviceJobId, lexionPreview),
             status: "queued",
           })
           .eq("id", jobId);
