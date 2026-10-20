@@ -435,6 +435,18 @@
   vertical-align: 0.08em;
   transition: background 150ms var(--nc-ease);
 }
+/* Matn ichidagi modda eslatmasi: "Fuqarolik kodeksining 1153-moddasiga" — lex.uz'da shu moddani ochadi */
+.nc-lawlink {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--nc-accent) 55%, transparent);
+  text-underline-offset: 2px;
+}
+.nc-lawlink:hover,
+.nc-lawlink:focus-visible {
+  color: var(--nc-accent);
+  outline: none;
+}
 .nc-cite:hover,
 .nc-cite:focus-visible {
   background: color-mix(in srgb, var(--nc-accent) 20%, transparent);

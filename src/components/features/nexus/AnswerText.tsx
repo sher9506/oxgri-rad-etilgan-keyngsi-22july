@@ -40,6 +40,8 @@ function stripListMarker(line: string): string {
 
 // [217-modda](https://lex.uz/docs/...#:~:text=...) — javobdagi iqtibos: lex.uz'da aynan o'sha gapni ochadi.
 // Faqat https://lex.uz havolalari qabul qilinadi (boshqa manzil oddiy matn bo'lib qoladi).
+// Iqtibos tugmasi ([1] o'rnida): "217-modda", "47⁴-modda", "Plenum №4", "lex.uz". Qolganlari — matn ichidagi modda eslatmasi.
+const CITE_CHIP = /^(\d+[⁰¹²³⁴⁵⁶⁷⁸⁹]*-modda|Plenum №\d+|lex\.uz)$/;
 const CITE_LINK = /\[([^\]\n]{1,40})\]\((https:\/\/lex\.uz\/[^)\s]+)\)/g;
 
 function renderBold(text: string, keyBase: string): ReactNode[] {
@@ -62,7 +64,7 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
   for (const m of text.matchAll(CITE_LINK)) {
     nodes.push(...renderBold(text.slice(last, m.index), `${keyBase}-s${k}`));
     nodes.push(
-      <a key={`${keyBase}-c${k}`} className="nc-cite" href={m[2]} target="_blank" rel="noopener noreferrer">{m[1]}</a>
+      <a key={`${keyBase}-c${k}`} className={CITE_CHIP.test(m[1]) ? 'nc-cite' : 'nc-lawlink'} href={m[2]} target="_blank" rel="noopener noreferrer">{m[1]}</a>
     );
     last = (m.index ?? 0) + m[0].length;
     k++;
