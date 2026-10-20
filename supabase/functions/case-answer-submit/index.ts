@@ -296,6 +296,7 @@ Deno.serve(async (req: Request) => {
     const isStandaloneChat = !case_id;
     const answerStyle = parseAnswerStyle(body.answer_style);   // 'lunda' faqat chat uchun
     const lexionPreview = body.lexion_preview === true;   // preview sayt yangi Lexion'ni sinaydi
+    const citeLinks = body.cite_links === true;           // faqat preview: [N] -> lex.uz moddasiga havola
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
     const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
 
@@ -484,6 +485,7 @@ Deno.serve(async (req: Request) => {
       if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
       if (chatId) insertPayload.chat_id = chatId;
       if (answerStyle === 'lunda') insertPayload.answer_style = 'lunda';   // 2-bosqich (case-answer-status) shundan biladi
+      if (citeLinks) insertPayload.cite_links = true;
 
       const { data: jobRow, error: jobError } = await supabaseAdmin
         .from("case_answer_jobs")
