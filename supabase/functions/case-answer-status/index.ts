@@ -3,7 +3,7 @@
 // Lexion phase polling support — backend 3 failover qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { getLexionConfig, parseLexionJobId, tagLexionJobId } from "../_shared/lexion-target.ts";
+import { getLexionConfig, interleaveUrls, parseLexionJobId, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, LUNDA_MAX_DOCS, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
 import { canKeepOn, expireChatNotebook, getChatNotebook, getKeepCfg, lexDocId, registerKeptNotebook } from "../_shared/nexus-notebooks.ts";
 
@@ -67,6 +67,26 @@ function getAvailableBackends(cfg: BackendConfig): number[] {
   }, []);
 }
 
+
+const EXTRA_LEXION_WAIT_MS = 120_000;
+
+/** Ikkinchi (parallel) Lexion qidiruvi: tayyor bo'lsa URL'lar, hali ishlayotgan bo'lsa "pending", xato/yo'q bo'lsa null */
+async function fetchExtraLexionUrls(cfg: { url: string; key: string }, extraId: string): Promise<string[] | "pending" | null> {
+  try {
+    const res = await fetch(`${cfg.url}/api/jobs/${extraId}`, {
+      signal: AbortSignal.timeout(15_000),
+      headers: { "X-API-Key": cfg.key, "Content-Type": "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const st = String(data.status || "").toLowerCase();
+    if (st === "done" || st === "completed" || st === "success") return parseLexionUrls(typeof data.answer === "string" ? data.answer : "");
+    return st === "queued" || st === "running" ? "pending" : null;
+  } catch (e) {
+    console.log(`[case-answer-status] ikkinchi Lexion qidiruvini o'qib bo'lmadi: ${String(e).slice(0, 120)}`);
+    return null;
+  }
+}
 
 // ── Lexion URL parser — answer maydonidan lex.uz/docs/<id> havolalarini ajratib oladi ──
 export function parseLexionUrls(answer: string): string[] {
@@ -391,7 +411,22 @@ Deno.serve(async (req: Request) => {
 
         if (lexionStatus === "done" || lexionStatus === "completed" || lexionStatus === "success") {
           const lexionAnswer = typeof lexionData.answer === "string" ? lexionData.answer : "";
-          const urls = parseLexionUrls(lexionAnswer).slice(0, job.answer_style === "lunda" ? LUNDA_MAX_DOCS : undefined);
+          let foundUrls = parseLexionUrls(lexionAnswer);
+          if (lexionJob.extra) {
+            const extra = await fetchExtraLexionUrls(lexionCfg, lexionJob.extra);
+            // ikkinchisi hali ishlayapti: savol berilganidan 2 daqiqagacha kutamiz, keyin birinchisi bilan davom etiladi
+            if (extra === "pending" && Date.now() - new Date(job.created_at).getTime() < EXTRA_LEXION_WAIT_MS) {
+              return new Response(
+                JSON.stringify({ status: job.status, answer: null, error: null, lexion_phase: "lexion_searching" }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+            if (Array.isArray(extra)) {
+              console.log(`[case-answer-status] Lexion ikkinchi qidiruv: +${extra.filter(u => !foundUrls.includes(u)).length} yangi URL, job=${id}`);
+              foundUrls = interleaveUrls(foundUrls, extra);
+            }
+          }
+          const urls = foundUrls.slice(0, job.answer_style === "lunda" ? LUNDA_MAX_DOCS : undefined);
 
           // URL ro'yxati bo'sh
           if (urls.length === 0) {
