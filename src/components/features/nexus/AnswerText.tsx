@@ -41,7 +41,7 @@ function stripListMarker(line: string): string {
 // [217-modda](https://lex.uz/docs/...#:~:text=...) — javobdagi iqtibos: lex.uz'da aynan o'sha gapni ochadi.
 // Faqat https://lex.uz havolalari qabul qilinadi (boshqa manzil oddiy matn bo'lib qoladi).
 // Iqtibos tugmasi ([1] o'rnida): "217-modda", "47⁴-modda", "Plenum №4", "lex.uz". Qolganlari — matn ichidagi modda eslatmasi.
-const CITE_CHIP = /^(\d+[⁰¹²³⁴⁵⁶⁷⁸⁹]*-modda|Plenum №\d+|lex\.uz)$/;
+const CITE_CHIP = /^(\d+[⁰¹²³⁴⁵⁶⁷⁸⁹]*-modda|Plenum №\d+|[A-Z][A-Z']{0,4}-\d[\w/-]*|№[\w/-]+|lex\.uz)$/;
 const CITE_LINK = /\[([^\]\n]{1,40})\]\((https:\/\/lex\.uz\/[^)\s]+)\)/g;
 
 function renderBold(text: string, keyBase: string): ReactNode[] {
