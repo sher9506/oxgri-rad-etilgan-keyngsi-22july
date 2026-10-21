@@ -80,7 +80,7 @@ function PoolCard({ adminCode, pool, title, limit, fallback }: { adminCode: stri
 
   const add = async () => {
     const k = apiKey.trim();
-    if (!/^AIza[0-9A-Za-z_-]{30,}$/.test(k)) { setResult({ ok: false, status: 'xato', message: "Kalit AIza… bilan boshlanishi kerak" }); return; }
+    if (!/^(AIza[0-9A-Za-z_-]{30,}|AQ\.[0-9A-Za-z_.-]{20,})$/.test(k)) { setResult({ ok: false, status: 'xato', message: "Kalit AIza… yoki AQ. bilan boshlanishi kerak" }); return; }
     setResult(null);
     if (await run('add', { action: 'add', pool, api_key: k, label: label.trim() })) { setApiKey(''); setLabel(''); }
   };
@@ -93,7 +93,7 @@ function PoolCard({ adminCode, pool, title, limit, fallback }: { adminCode: stri
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-2">
-          <Input type="password" placeholder="AIza…" value={apiKey} onChange={e => setApiKey(e.target.value)} className="font-mono" autoComplete="off" />
+          <Input type="password" placeholder="AIza… yoki AQ.…" value={apiKey} onChange={e => setApiKey(e.target.value)} className="font-mono" autoComplete="off" />
           <Input placeholder="Nomi (ixtiyoriy)" value={label} onChange={e => setLabel(e.target.value)} className="sm:w-48" />
           <Button onClick={add} disabled={!!busy || keys.length >= limit} className="bg-blue-600 text-white hover:bg-blue-700">
             {busy === 'add' ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}Qo'shish va sinash

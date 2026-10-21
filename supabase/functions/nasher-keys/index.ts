@@ -1,5 +1,5 @@
 // NaSher Gemini kalitlari havzasini boshqarish (admin panel). Auth: x-admin-code — PIN (secret NASHER_ADMIN_CODE yoki nasher_private_settings dagi SHA-256 xesh).
-// To'liq kalit hech qachon javobga yoki logga chiqmaydi — faqat "AIza…abcd".
+// To'liq kalit hech qachon javobga yoki logga chiqmaydi — faqat boshi va oxirgi 4 belgisi.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { GEMINI_BASE, tail, type Pool } from "../_shared/key-pool.ts";
@@ -12,7 +12,8 @@ const json = (data: unknown, status = 200) =>
 const LIMIT: Record<Pool, number> = { voice: 10, fast: 15 };
 const MODEL_KEY = { fast: "NASHER_FAST_MODEL", voice: "NASHER_VOICE_MODEL", router: "NASHER_ROUTER_MODEL" } as const;
 const DEFAULT_MODEL = "gemini-3-flash-preview";
-const KEY_RE = /^AIza[0-9A-Za-z_\-]{30,}$/;
+// Google AI Studio kalitlari: eski "AIza…" va yangi "AQ.…" formatlari
+const KEY_RE = /^(AIza[0-9A-Za-z_\-]{30,}|AQ\.[0-9A-Za-z_\-.]{20,})$/;
 const MODEL_RE = /^gemini-[\w.\-]+$/;
 
 const mask = (k: string) => k.slice(0, 4) + tail(k);
@@ -127,7 +128,7 @@ Deno.serve(async (req) => {
         if (!isPool(b.pool)) return json({ error: "pool: voice yoki fast" }, 400);
         const apiKey = String(b.api_key ?? "").trim();
         const label = String(b.label ?? "").trim().slice(0, 60);
-        if (!KEY_RE.test(apiKey)) return json({ error: "Kalit ko'rinishi noto'g'ri (AIza… bilan boshlanishi kerak)" }, 400);
+        if (!KEY_RE.test(apiKey)) return json({ error: "Kalit ko'rinishi noto'g'ri (AIza… yoki AQ. bilan boshlanishi kerak)" }, 400);
         const { data: existing } = await sb.from("nasher_api_keys").select("api_key").eq("pool", b.pool);
         if ((existing ?? []).some((r) => r.api_key === apiKey)) return json({ error: "Bu kalit allaqachon qo'shilgan" }, 409);
         if ((existing ?? []).length >= LIMIT[b.pool]) return json({ error: `Ko'pi bilan ${LIMIT[b.pool]} ta kalit` }, 400);
