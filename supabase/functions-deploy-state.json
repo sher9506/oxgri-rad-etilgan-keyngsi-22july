@@ -3,207 +3,207 @@
   "functions": {
     "baholash": {
       "hasChanged": false,
-      "hash": "445f46bb76babed00ff27c2857bff209dfe95c0f7e7c53ced44fe4bf4b103355a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "445f46bb76babed00ff27c2857bff209dfe95c0f7e7c53ced44fe4bf4b1033552abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "case-answer-status": {
       "hasChanged": false,
-      "hash": "d566206af6795d68d4fb85601808284b673ed3022cb7de21e857df352a923c0ea9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "d566206af6795d68d4fb85601808284b673ed3022cb7de21e857df352a923c0e2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "case-answer-submit": {
       "hasChanged": false,
-      "hash": "217b5f2aa3a946839664c1ae5ec93884d172900a0d86e29305224e9305aa01f9a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "c8ce30bd8b2149829f78d83bc66221e4179887e1f773f567285beafd31f98f332abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "case-library-delete": {
       "hasChanged": false,
-      "hash": "e11e15b7b37e89c79e044df8f462f420c928abba2ef39fdf35a69c92ea7008f9a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "e11e15b7b37e89c79e044df8f462f420c928abba2ef39fdf35a69c92ea7008f92abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "case-library-list": {
       "hasChanged": false,
-      "hash": "c6d4911730b705689638108c88de75be9b5972def683cc7cc5cf674d616466d4a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "c6d4911730b705689638108c88de75be9b5972def683cc7cc5cf674d616466d42abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "case-research": {
       "hasChanged": false,
-      "hash": "8055b65c22f5dccf1dc75d5060d860ef93bde51d67584e277f3567d5a0a57db3a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "8055b65c22f5dccf1dc75d5060d860ef93bde51d67584e277f3567d5a0a57db32abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "chat-submit": {
       "hasChanged": false,
-      "hash": "8bf170e90ea9c9631588c1d30df6709361d92b52820bbb7a348ec51c3ce61602a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "8bf170e90ea9c9631588c1d30df6709361d92b52820bbb7a348ec51c3ce616022abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "chat-worker": {
       "hasChanged": false,
-      "hash": "a34c7ff34dd2a4488b31a5f117cb65429b9e219c4524eb8063575c6638367d37a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "a34c7ff34dd2a4488b31a5f117cb65429b9e219c4524eb8063575c6638367d372abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "chunk-material": {
       "hasChanged": false,
-      "hash": "3df5641fbf41c5fd5277d5b43f4bcbe2f67fdcbcad8125d9d8aa963d5a82b1d7a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "3df5641fbf41c5fd5277d5b43f4bcbe2f67fdcbcad8125d9d8aa963d5a82b1d72abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "constitution-file-search": {
       "hasChanged": false,
-      "hash": "b898029687c5c3d4ac24e3a2ad73a206472146867a956ccbe920909f172fbf66a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "b898029687c5c3d4ac24e3a2ad73a206472146867a956ccbe920909f172fbf662abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "fetch-legal-article": {
       "hasChanged": false,
-      "hash": "412b5bd1304ef26149e344789d4acaf35d6572b90962eefece6a6975518493cca9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "412b5bd1304ef26149e344789d4acaf35d6572b90962eefece6a6975518493cc2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "find-relevant-articles": {
       "hasChanged": false,
-      "hash": "8c77ff3b8ab8c3e89c193da571f613c25f8fcd0455c0e89a632cd137e561e6b2a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "8c77ff3b8ab8c3e89c193da571f613c25f8fcd0455c0e89a632cd137e561e6b22abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "google-auth": {
       "hasChanged": false,
-      "hash": "d1fd3cc57b674be0ab936a479b01340cccc87e48794701de41f6559625cfbd4da9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "d1fd3cc57b674be0ab936a479b01340cccc87e48794701de41f6559625cfbd4d2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "handoff-consume": {
       "hasChanged": false,
-      "hash": "a031702f6320edd3789a46d29d3cf29fdd882d0feaeba2fb3d927da74bad3400a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "a031702f6320edd3789a46d29d3cf29fdd882d0feaeba2fb3d927da74bad34002abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "hukm-api": {
       "hasChanged": false,
-      "hash": "fa3d76ec7f358597695cf35927b1574df773fa0b43a2d1493c59777fa7d5eca5a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "fa3d76ec7f358597695cf35927b1574df773fa0b43a2d1493c59777fa7d5eca52abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "import-legal-code": {
       "hasChanged": false,
-      "hash": "0bd207cbd4725ba791f45926c146f42e74ccfb6704f68ac6ef51fb3d92a73c9da9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "0bd207cbd4725ba791f45926c146f42e74ccfb6704f68ac6ef51fb3d92a73c9d2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "import-qonun": {
       "hasChanged": false,
-      "hash": "5facead2b516f8d5d743945c9ef1bdfd0ac4c04ce109c4784233acce1af15eaba9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "5facead2b516f8d5d743945c9ef1bdfd0ac4c04ce109c4784233acce1af15eab2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "lexion-chat": {
       "hasChanged": false,
-      "hash": "60dbd531c31e8cc0512fe6035b54e446d53c37309745cfffc8207b26f4645c61a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "60dbd531c31e8cc0512fe6035b54e446d53c37309745cfffc8207b26f4645c612abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "link-confirm": {
       "hasChanged": false,
-      "hash": "976f82d245f42cd61fadd56472ce0aa17d97a634cb5884d367eec3acc7c045d6a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "976f82d245f42cd61fadd56472ce0aa17d97a634cb5884d367eec3acc7c045d62abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "link-telegram-start": {
       "hasChanged": false,
-      "hash": "c309a95ebcee797827e6d21e76ea01843b89f3b96a5c1c750bb1e1f6038701fda9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "c309a95ebcee797827e6d21e76ea01843b89f3b96a5c1c750bb1e1f6038701fd2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "link-telegram-status": {
       "hasChanged": false,
-      "hash": "9514bdb662c1367b515161b79a8045ca3f531ebf024ce0d1879c44714b67285ca9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "9514bdb662c1367b515161b79a8045ca3f531ebf024ce0d1879c44714b67285c2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "mentor-chat": {
       "hasChanged": false,
-      "hash": "50fbb34d8d720d081d7823f95fbac3d7cdf9d1d14bb4509710f0cd4d9eb5813da9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "50fbb34d8d720d081d7823f95fbac3d7cdf9d1d14bb4509710f0cd4d9eb5813d2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "miniapp-bot": {
       "hasChanged": false,
-      "hash": "6fc2e13a9084625e5dfe8f4c89c64cd03c7ca5c5d0ef31b074458fe7c0908da4a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "6fc2e13a9084625e5dfe8f4c89c64cd03c7ca5c5d0ef31b074458fe7c0908da42abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "miniapp-handoff": {
       "hasChanged": false,
-      "hash": "ed2bfc7e3d06e16b4e97c3d2067da31994c96cb37a70ca030b883e15fdee3521a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "ed2bfc7e3d06e16b4e97c3d2067da31994c96cb37a70ca030b883e15fdee35212abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "moot-court-chat": {
       "hasChanged": false,
-      "hash": "0a3e4f68b5f39d5fba9037805833dbef2c35b562017886634c95b5727b0099eda9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "0a3e4f68b5f39d5fba9037805833dbef2c35b562017886634c95b5727b0099ed2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "moot-court-evaluate": {
       "hasChanged": false,
-      "hash": "8c9a5b998cfa1a8d99d9a1214ba5ba7684f1d2d0e13223fb946491f8bd0aaee0a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "8c9a5b998cfa1a8d99d9a1214ba5ba7684f1d2d0e13223fb946491f8bd0aaee02abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nasher-bot": {
       "hasChanged": false,
-      "hash": "f4594d0665a31bf382dbe867c5733f34543593905945b0ec5b20668b5b8d5314a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "c109e0c16d29905645c8d7dea74e0cef38e5498cda22cda5c5ca22e06c626d812abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nasher-bot-dispatch": {
       "hasChanged": false,
-      "hash": "8d866f06ca85ff22e1b467b08b79919949079883f705efd95ab7eec004e1f747a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "8d866f06ca85ff22e1b467b08b79919949079883f705efd95ab7eec004e1f7472abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nasher-keys": {
       "hasChanged": false,
-      "hash": "3e00af75bca92f85778e52e97fbb3efbeb13b664782883f7feb460990f8b4a1ca9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "da4554d6a9b5d6137805b262d98226874e3295691d325c4423de97d22edbeb3d2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nexus-chat-delete": {
       "hasChanged": false,
-      "hash": "bee0d1c554ba7d3abf7152d759595c226dbddd4b5710160ea7fe5d70b357ac6fa9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "bee0d1c554ba7d3abf7152d759595c226dbddd4b5710160ea7fe5d70b357ac6f2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nexus-chat-history": {
       "hasChanged": false,
-      "hash": "a032ead49d037041c282d546c2bbf7ef79756c58030ac658c725890e587efe99a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "a032ead49d037041c282d546c2bbf7ef79756c58030ac658c725890e587efe992abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nexus-chats-status": {
       "hasChanged": false,
-      "hash": "730f0b97c982a4fbb39b629528dc08b065fa0c6202d6c80c4e998802418ad61da9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "730f0b97c982a4fbb39b629528dc08b065fa0c6202d6c80c4e998802418ad61d2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nexus-notebook-cleanup": {
       "hasChanged": false,
-      "hash": "bd8f8f49eca0868120b1e513d90ca62537e7ef621273a79c40d82f7341e62ebba9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "bd8f8f49eca0868120b1e513d90ca62537e7ef621273a79c40d82f7341e62ebb2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "nexus-quota": {
       "hasChanged": false,
-      "hash": "b785725ecf4dcd0f12db9d7fcb9dac353ea081efd44f66868145d98a52fda3a5a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "b785725ecf4dcd0f12db9d7fcb9dac353ea081efd44f66868145d98a52fda3a52abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "onspace-ai-text": {
       "hasChanged": false,
-      "hash": "5c02a67d5772a38da0e409e555bb10bccebac10312867e9f02a52ab7f7f4df2da9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "5c02a67d5772a38da0e409e555bb10bccebac10312867e9f02a52ab7f7f4df2d2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "parse-blog-file": {
       "hasChanged": false,
-      "hash": "d80a6194bf141b698b6b2c265c70b2d30f966d44d43495661f2cf995a208ea31a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "d80a6194bf141b698b6b2c265c70b2d30f966d44d43495661f2cf995a208ea312abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "proxy-file": {
       "hasChanged": false,
-      "hash": "11e0bc8ad66c6a2942f1d2b955e6b0b40524c71d599fa3cba805040e8a802dc5a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "11e0bc8ad66c6a2942f1d2b955e6b0b40524c71d599fa3cba805040e8a802dc52abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "rag-pipeline": {
       "hasChanged": false,
-      "hash": "212bd173e2c3f1e249dfb1a03b3206f078672888275eeae518b88df533ff471ca9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "212bd173e2c3f1e249dfb1a03b3206f078672888275eeae518b88df533ff471c2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "render-stats": {
       "hasChanged": false,
-      "hash": "9a5208bdf94e13566b555dfaf3a23a4c327a7413846c5061a6a9a6c89bddc959a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "9a5208bdf94e13566b555dfaf3a23a4c327a7413846c5061a6a9a6c89bddc9592abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "restore-backup": {
       "hasChanged": false,
-      "hash": "e126031552e2d4331aaa8a0f29212c3ed0796aa0021ca91b374b7f452ed55ab3a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "e126031552e2d4331aaa8a0f29212c3ed0796aa0021ca91b374b7f452ed55ab32abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "sitemap": {
       "hasChanged": false,
-      "hash": "0626ae8ecae05a524faceef2b57190322ae954a8d64f170732273daa572acf81a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "0626ae8ecae05a524faceef2b57190322ae954a8d64f170732273daa572acf812abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "talaba-birlashtirish": {
       "hasChanged": false,
-      "hash": "ba2626bef9a6a7db4304d32d2a3b812da9622a9a736c793eaeb5d33f045c5e6fa9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "ba2626bef9a6a7db4304d32d2a3b812da9622a9a736c793eaeb5d33f045c5e6f2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "telegram-api": {
       "hasChanged": false,
-      "hash": "abbb01eb2b28af5fae0875bccd3feffaa9039830cdf09eaec430a59405e0cfefa9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "abbb01eb2b28af5fae0875bccd3feffaa9039830cdf09eaec430a59405e0cfef2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "telegram-bot": {
       "hasChanged": false,
-      "hash": "095bc64a66c92a1030005c6cccf1ad903ee907b7f266784b130bd492775a89c9a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "095bc64a66c92a1030005c6cccf1ad903ee907b7f266784b130bd492775a89c92abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "telegram-callback": {
       "hasChanged": false,
-      "hash": "a2f1afc5996297591c990b0c35130cf768e54acac442b0726f90a91fe43c9bdea9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "a2f1afc5996297591c990b0c35130cf768e54acac442b0726f90a91fe43c9bde2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "telegram-login": {
       "hasChanged": false,
-      "hash": "bdc8d08471ea020cae88e26324ddd7e86fb533c2209915aa972345a5c01e8c66a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "bdc8d08471ea020cae88e26324ddd7e86fb533c2209915aa972345a5c01e8c662abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "telegram-login-callback": {
       "hasChanged": false,
-      "hash": "4b0b418bf03a0f88cb6b51a42d2afdd3e59b553c74e00ef7ab5191e2b2bf08f9a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "4b0b418bf03a0f88cb6b51a42d2afdd3e59b553c74e00ef7ab5191e2b2bf08f92abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "telegram-miniapp-auth": {
       "hasChanged": false,
-      "hash": "980106604b0a1b24af34bcdd8d4ed59342fbe2a924880958ef6ef8ed1dfd2206a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "980106604b0a1b24af34bcdd8d4ed59342fbe2a924880958ef6ef8ed1dfd22062abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "upload-avatar": {
       "hasChanged": false,
-      "hash": "f69fffdd9fe724d5091bb447a38848b804f756bb2a5056dc838362d288deead0a9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "f69fffdd9fe724d5091bb447a38848b804f756bb2a5056dc838362d288deead02abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "ustoz-bot": {
       "hasChanged": false,
-      "hash": "59ee4d3545d7a608284ea52a700fe337ecb9485bc385a7da91c4106fb05f00ffa9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "59ee4d3545d7a608284ea52a700fe337ecb9485bc385a7da91c4106fb05f00ff2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     },
     "vectorize-articles": {
       "hasChanged": false,
-      "hash": "5f76c11c9fdb1a3c8ea45b7f54ea33bd4b36843688cbf5bf71d1ac0a2bbc8c3ba9609ab4d3b0cd8dc545d1e32bc506d6d3e04b4397abd05c2ddfb69357f328dc"
+      "hash": "5f76c11c9fdb1a3c8ea45b7f54ea33bd4b36843688cbf5bf71d1ac0a2bbc8c3b2abd354bef28c9dd226bacb3f9d5fca82baf9dc37740434fed9433e148ca86f8"
     }
   }
 }

@@ -1,3 +1,4 @@
+// deploy 2026-10-22 ai-studio-avval
 // NaSher Gemini kalitlari havzasini boshqarish (admin panel). Auth: x-admin-code — PIN (secret NASHER_ADMIN_CODE yoki nasher_private_settings dagi SHA-256 xesh).
 // To'liq kalit hech qachon javobga yoki logga chiqmaydi — faqat boshi va oxirgi 4 belgisi.
 import { createClient } from "npm:@supabase/supabase-js@2";
