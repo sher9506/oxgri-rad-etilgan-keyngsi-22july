@@ -9,6 +9,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { tg, verifyInitData } from "../_shared/nasher-telegram.ts";
+import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -33,6 +34,17 @@ const WELCOME_NEW =
   "<i>Shu bilan FanFaster akkauntingiz ochiladi (akkauntingiz bo'lsa, o'shanga ulanadi).</i>";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// /start va ro'yxatdan o'tishda kanal taklifi — faqat hali a'zo bo'lmaganlarga (a'zo bo'lgach chiqmaydi)
+async function channelPromo(userId: string, tgId: number): Promise<{ text: string; button: { text: string; url: string } } | null> {
+  const ch = await channelInfo(sb, userId, tgId);
+  if (!ch.channel || ch.member !== false) return null;
+  return {
+    text: `\n\n📢 Yangiliklardan birinchi bo'lib xabardor bo'ling — ${esc(ch.channel)} kanaliga qo'shiling.\n` +
+      `🎁 A'zolarga 5 soatda 8 emas, ${8 + CHANNEL_BONUS} ta savol.`,
+    button: { text: `📢 Kanalga qo'shilish (+${CHANNEL_BONUS} savol)`, url: `https://t.me/${ch.channel.replace(/^@/, "")}` },
+  };
+}
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -202,7 +214,9 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
       await reply("⚠️ Akkauntni ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring.");
       return;
     }
-    await reply("✅ <b>Tayyor!</b> FanFaster akkauntingiz ulandi.\n\nEndi savolingizni yozing 👇", { reply_markup: { remove_keyboard: true } });
+    const promo = await channelPromo(user.id, from.id);
+    await reply("✅ <b>Tayyor!</b> FanFaster akkauntingiz ulandi.\n\nEndi savolingizni yozing 👇" + (promo?.text ?? ""), { reply_markup: { remove_keyboard: true } });
+    if (promo) await reply("👇", { reply_markup: { inline_keyboard: [[promo.button]] } });
     return;
   }
 
@@ -210,8 +224,11 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
   const user = await findUser(from.id);
 
   if (text.startsWith("/start") || text === "/help") {
-    if (user) await reply(WELCOME_KNOWN(user.ism || from.first_name || ""), appButton ? { reply_markup: appButton } : {});
-    else await reply(WELCOME_NEW, { reply_markup: CONTACT_KEYBOARD });
+    if (user) {
+      const promo = await channelPromo(user.id, from.id);
+      const rows = [...(appButton?.inline_keyboard ?? []), ...(promo ? [[promo.button]] : [])];
+      await reply(WELCOME_KNOWN(user.ism || from.first_name || "") + (promo?.text ?? ""), rows.length ? { reply_markup: { inline_keyboard: rows } } : {});
+    } else await reply(WELCOME_NEW, { reply_markup: CONTACT_KEYBOARD });
     return;
   }
   if (!user) {
