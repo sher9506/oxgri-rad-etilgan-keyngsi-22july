@@ -211,7 +211,7 @@ export default function NasherApiKalitlari() {
     return (
       <div className="max-w-sm space-y-3 rounded-xl border bg-white p-5">
         <h2 className="text-lg font-semibold">🔐 API kalitlari</h2>
-        <p className="text-sm text-slate-500">Bu bo'lim alohida PIN bilan himoyalangan (Supabase sozlamasidagi NASHER_ADMIN_CODE).</p>
+        <p className="text-sm text-slate-500">Bu bo'lim alohida PIN bilan himoyalangan (admin panel kodidan boshqa).</p>
         <input type="password" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && enter()}
           className="w-full rounded-md border px-3 py-2" placeholder="PIN kod" />
         <button onClick={enter} disabled={!draft.trim() || checking} className="w-full rounded-md bg-blue-600 px-3 py-2 font-medium text-white disabled:opacity-50">

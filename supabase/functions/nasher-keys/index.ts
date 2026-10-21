@@ -1,4 +1,4 @@
-// NaSher Gemini kalitlari havzasini boshqarish (admin panel). Auth: x-admin-code == NASHER_ADMIN_CODE.
+// NaSher Gemini kalitlari havzasini boshqarish (admin panel). Auth: x-admin-code — PIN (secret NASHER_ADMIN_CODE yoki nasher_private_settings dagi SHA-256 xesh).
 // To'liq kalit hech qachon javobga yoki logga chiqmaydi — faqat "AIza…abcd".
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
@@ -89,11 +89,25 @@ async function list(pool: Pool) {
   });
 }
 
+const sha256 = async (s: string) =>
+  Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))))
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+
+/** PIN tekshiruvi: secret NASHER_ADMIN_CODE bo'lsa — u bilan; bo'lmasa yopiq jadvaldagi SHA-256 xesh bilan
+ *  (nasher_private_settings: RLS, faqat service_role; PIN'ning o'zi hech qayerda saqlanmaydi). */
+async function pinOk(given: string): Promise<boolean | null> {
+  const env = Deno.env.get("NASHER_ADMIN_CODE");
+  if (env) return safeEqual(given, env);
+  const { data } = await sb.from("nasher_private_settings").select("value").eq("key", "NASHER_ADMIN_PIN_SHA256").maybeSingle();
+  if (!data?.value) return null;
+  return safeEqual(await sha256(given), String(data.value).toLowerCase());
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  const adminCode = Deno.env.get("NASHER_ADMIN_CODE");
-  if (!adminCode) return json({ error: "NASHER_ADMIN_CODE sozlanmagan" }, 503);
-  if (!safeEqual(req.headers.get("x-admin-code") ?? "", adminCode)) {
+  const ok = await pinOk(req.headers.get("x-admin-code") ?? "");
+  if (ok === null) return json({ error: "PIN sozlanmagan" }, 503);
+  if (!ok) {
     await new Promise((r) => setTimeout(r, 1500));   // PIN'ni tanlab topishni sekinlashtirish
     return json({ error: "PIN noto'g'ri" }, 401);
   }
