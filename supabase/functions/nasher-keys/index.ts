@@ -1,4 +1,4 @@
-// deploy 2026-10-22 router-havza2
+// deploy 2026-10-22 router-model
 // deploy 2026-10-22 router-havza
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
@@ -6,7 +6,7 @@
 // To'liq kalit hech qachon javobga yoki logga chiqmaydi — faqat boshi va oxirgi 4 belgisi.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { fetchGemini, tail, type Pool } from "../_shared/key-pool.ts";
+import { fetchGemini, GEMINI_BASE, tail, type Pool } from "../_shared/key-pool.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const cors = { ...corsHeaders, "Access-Control-Allow-Headers": corsHeaders["Access-Control-Allow-Headers"] + ", x-admin-code" };
@@ -16,7 +16,7 @@ const json = (data: unknown, status = 200) =>
 const LIMIT: Record<Pool, number> = { voice: 10, fast: 15, router: 3 };
 const MODEL_KEY = { fast: "NASHER_FAST_MODEL", voice: "NASHER_VOICE_MODEL", router: "NASHER_ROUTER_MODEL" } as const;
 const DEFAULT_MODEL = "gemini-3-flash-preview";
-const ROUTER_DEFAULT_MODEL = "gemini-2.5-flash-lite";   // bot/index.ts bilan bir xil
+const ROUTER_DEFAULT_MODEL = "gemini-3-flash-preview";   // bot/index.ts bilan bir xil
 // Google AI Studio kalitlari: eski "AIza…" va yangi "AQ.…" formatlari
 const KEY_RE = /^(AIza[0-9A-Za-z_\-]{30,}|AQ\.[0-9A-Za-z_\-.]{20,})$/;
 const MODEL_RE = /^gemini-[\w.\-]+$/;
@@ -166,6 +166,19 @@ Deno.serve(async (req) => {
       }
       case "models":
         return json({ models: await readModels() });
+      case "available_models": {
+        // birinchi yoqilgan kalit ko'ra oladigan generateContent modellari — model nomini taxmin qilmaslik uchun
+        const { data: k } = await sb.from("nasher_api_keys").select("api_key").eq("enabled", true).limit(1).maybeSingle();
+        if (!k) return json({ error: "Avval kalit qo'shing" }, 400);
+        const res = await fetch(`${GEMINI_BASE}?pageSize=1000`, { headers: { "x-goog-api-key": k.api_key }, signal: AbortSignal.timeout(15_000) });
+        const body = await res.text();
+        if (!res.ok) return json({ error: `Google ${res.status}: ${googleError(body)}` }, 502);
+        const names = (JSON.parse(body).models ?? [])
+          .filter((m: any) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
+          .map((m: any) => String(m.name).replace(/^models\//, ""))
+          .filter((n: string) => n.startsWith("gemini-"));
+        return json({ available: names });
+      }
       case "fast_log": {
         // Oxirgi tez savollar: qancha vaqt oldi, Chuqurga o'tgan bo'lsa — sababi (RLS tufayli mijoz buni ko'ra olmaydi)
         const { data, error } = await sb.from("case_answer_jobs")

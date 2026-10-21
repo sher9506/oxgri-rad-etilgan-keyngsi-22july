@@ -148,11 +148,16 @@ function ModelSettings({ adminCode }: { adminCode: string }) {
   const { toast } = useToast();
   const [models, setModels] = useState<Record<ModelPool, string>>({ fast: '', voice: '', router: '' });
   const [saving, setSaving] = useState<ModelPool | null>(null);
+  const [available, setAvailable] = useState<string[] | string>('');
 
   useEffect(() => {
     callKeys(adminCode, { action: 'models' }).then(d => d?.models && setModels(d.models)).catch(e => {
       console.error('[NasherApiKalitlari] modellar:', e);
       toast({ title: "Modellar o'qilmadi", description: e instanceof Error ? e.message : String(e), variant: 'destructive' });
+    });
+    callKeys(adminCode, { action: 'available_models' }).then(d => setAvailable(d?.available ?? [])).catch(e => {
+      console.error('[NasherApiKalitlari] mavjud modellar:', e);
+      setAvailable(e instanceof Error ? e.message : String(e));
     });
   }, [adminCode, toast]);
 
@@ -180,6 +185,11 @@ function ModelSettings({ adminCode }: { adminCode: string }) {
             </Button>
           </div>
         ))}
+        <p className="pt-2 text-xs text-slate-500">
+          {typeof available === 'string'
+            ? (available ? `Mavjud modellar o'qilmadi: ${available}` : 'Mavjud modellar yuklanmoqda…')
+            : <>Kalitingiz ishlata oladigan modellar: <span className="font-mono">{available.join(', ')}</span></>}
+        </p>
       </CardContent>
     </Card>
   );

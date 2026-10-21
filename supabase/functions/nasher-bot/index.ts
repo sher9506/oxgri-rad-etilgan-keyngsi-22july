@@ -1,4 +1,4 @@
-// deploy 2026-10-22 router-havza2
+// deploy 2026-10-22 router-model
 // deploy 2026-10-22 router-havza
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
@@ -112,13 +112,14 @@ async function routeQuestion(question: string): Promise<"fast" | "deep"> {
   const own = await loadPool(sb, "router");
   const keys = own.length ? own : (await loadPool(sb, "fast")).slice(0, 3);
   if (!keys.length) return "deep";
-  const model = (await settings(["NASHER_ROUTER_MODEL"]))["NASHER_ROUTER_MODEL"] || "gemini-2.5-flash-lite";
+  const model = (await settings(["NASHER_ROUTER_MODEL"]))["NASHER_ROUTER_MODEL"] || "gemini-3-flash-preview";
   try {
     // jami 3 soniya: ulgurmasa — tez rejim (tezlik ustun)
     const call = geminiWithPool(sb, own.length ? "router" : "fast", model, {
       systemInstruction: { parts: [{ text: ROUTER_INSTRUCTION }] },
       contents: [{ role: "user", parts: [{ text: question.slice(0, 2500) }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 256 },
+      // Gemini 3: o'ylashsiz (minimal) — bir so'zli javob 1–2 s; aks holda o'ylash tokenlari chegarani yeb qo'yadi
+      generationConfig: { temperature: 0, maxOutputTokens: 256, ...(model.startsWith("gemini-3") ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}) },
     }, { keys, timeoutMs: 2_500 });
     const { data } = await Promise.race([call, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("3 s o'tdi")), 3_000))]);
     return /DEEP/i.test(geminiText(data)) ? "deep" : "fast";
