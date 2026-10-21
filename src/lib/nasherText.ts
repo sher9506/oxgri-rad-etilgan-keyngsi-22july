@@ -45,13 +45,30 @@ export function latinizeMixed(text: string): string {
 // NotebookLM ba'zan turkcha harf yozadi (parvariş): o'zbek lotin yozuviga o'tkaziladi
 const TURKISH: Record<string, string> = { ş: 'sh', Ş: 'Sh', ç: 'ch', Ç: 'Ch', ğ: "g'", Ğ: "G'", ı: 'i', İ: 'I' };
 export const fixTurkishLetters = (t: string) => t.replace(/[şŞçÇğĞıİ]/g, (c) => TURKISH[c]);
+// AI so'z boshidagi "ye" ni "e" deb yozadi (echim, etarli, engil, etkaz-): 1995-yil imlo qoidasi — so'z boshida е → ye
+export const fixYe = (t: string) => t.replace(/\b([Ee])(chim|tarli|ngil|tkaz)/g, (_m, e: string, rest: string) => (e === 'E' ? 'Ye' : 'ye') + rest);
 
 // havola manzili ("#:~:text=…manba…") buzilmasin: "manba" faqat matnda almashtiriladi
 const LINK_URL = /(\]\(https:\/\/lex\.uz\/[^)\s]+\))/;
 
+// ── Yangi alifbo (O'RQ-1184, 21.10.2026): oʻ→ö, gʻ→ğ, sh→ş, ch→ç, tutuq belgisi → ’ (botdagi nasher-telegram.ts bilan bir xil) ──
+// Faqat ko'rinadigan matn: URL'lar, lex.uz havola manzillari va hujjat raqamlari (O'RQ-…) eski holicha qoladi.
+const KEEP_RE = /(\]\(https?:\/\/[^)\s]+\)|<a href="[^"]*">|https?:\/\/\S+|\bO['ʻʼ‘’]RQ-[\w/-]+|NaSher|@\w+)/;
+const APOS = "['ʻʼ‘’`´]";
+const OG_RE = new RegExp(`([OoGg])${APOS}`, 'g');
+const OG: Record<string, string> = { O: 'Ö', o: 'ö', G: 'Ğ', g: 'ğ' };
+const SH_CH: Record<string, string> = { sh: 'ş', Sh: 'Ş', SH: 'Ş', ch: 'ç', Ch: 'Ç', CH: 'Ç' };
+
+export function toNewAlphabet(text: string): string {
+  return text.split(KEEP_RE).map((p, i) => i % 2 ? p : p
+    .replace(OG_RE, (_m, l: string) => OG[l])
+    .replace(/sh|Sh|SH|ch|Ch|CH/g, (m) => SH_CH[m])
+    .replace(new RegExp(`(?<=\\p{L})${APOS}(?=\\p{L})`, 'gu'), '’')).join('');
+}
+
 export function prepareAnswer(raw: string): string {
-  return latinizeMixed(fixTurkishLetters(raw)).split(LINK_URL)
-    .map((p, i) => (i % 2 ? p : stripSourceWords(p).replace(/[ \t]+([.,;:!?])/g, '$1'))).join('');
+  return toNewAlphabet(fixYe(latinizeMixed(fixTurkishLetters(raw))).split(LINK_URL)
+    .map((p, i) => (i % 2 ? p : stripSourceWords(p).replace(/[ \t]+([.,;:!?])/g, '$1'))).join(''));
 }
 
 // Lexion katalogidagi lex.uz hujjat nomlari (public/lex-names.json, ~3000 ta). Bir marta yuklanadi, keyin keshda.
@@ -81,7 +98,7 @@ export function useLexNames(enabled: boolean): Record<string, string> {
 
 export function lexDocName(url: string, names: Record<string, string>): string {
   const id = url.match(/\/docs\/(-?\d+)/)?.[1];
-  return (id && names[id]) || (id ? `Qonun hujjati №${id.replace('-', '')}` : url);
+  return toNewAlphabet((id && names[id]) || (id ? `Qonun hujjati №${id.replace('-', '')}` : url));
 }
 
 // Javob matnini Claude kabi silliq "yozib" chiqaradi: ~2,5 s, so'z o'rtasida kesmaydi.

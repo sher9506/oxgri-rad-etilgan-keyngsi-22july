@@ -11,7 +11,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface ChannelInfo { channel: string | null; member: boolean | null }
 const OFF: ChannelInfo = { channel: null, member: null };
 
-export async function channelInfo(sb: SupabaseClient, userId: string, tgId?: string | number | null): Promise<ChannelInfo> {
+/** fresh — 1 kunlik keshga qaramay Telegram'dan qayta so'raladi (bot darvozasi: chiqib ketganlar darhol ko'rinsin). */
+export async function channelInfo(sb: SupabaseClient, userId: string, tgId?: string | number | null, fresh = false): Promise<ChannelInfo> {
   const { data } = await sb.from("settings").select("key, text_value")
     .in("key", ["NASHER_CHANNEL", "NASHER_CHANNEL_USERS", "NASHER_BOT_TOKEN"]);
   const s: Record<string, string> = {};
@@ -22,7 +23,7 @@ export async function channelInfo(sb: SupabaseClient, userId: string, tgId?: str
 
   const { data: row } = await sb.from("talabalar").select("telegram_id, telegram_chat_id, nasher_channel_ok_at")
     .eq("id", userId).maybeSingle();
-  if (row?.nasher_channel_ok_at && Date.now() - new Date(row.nasher_channel_ok_at).getTime() < DAY_MS) {
+  if (!fresh && row?.nasher_channel_ok_at && Date.now() - new Date(row.nasher_channel_ok_at).getTime() < DAY_MS) {
     return { channel, member: true };
   }
   // sayt logini (Telegram login-bot) telegram_chat_id ni yozadi — shaxsiy chatda u foydalanuvchi ID'si bilan bir xil

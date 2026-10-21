@@ -1,4 +1,4 @@
-// deploy 2026-10-19 turkish
+// deploy 2026-10-21 new-alphabet
 // deploy 2026-10-19 lunda-lexion
 // nasher-bot-dispatch — pg_cron har daqiqada chaqiradi (x-cron-secret, verify_jwt = false).
 // Botdan kelgan savollarda brauzer yo'q, Lexion bosqichlarini case-answer-status polling'i harakatga keltiradi:
