@@ -7,7 +7,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
-import { chatAppUrl, lawLinks, prepareAnswer, progressText, splitMessage, tg, toTelegramHtml, htmlToPlain } from "../_shared/nasher-telegram.ts";
+import { chatAppUrl, esc, lawLinks, prepareAnswer, progressText, splitMessage, tg, toTelegramHtml, htmlToPlain } from "../_shared/nasher-telegram.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -71,6 +71,11 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
       return;
     }
     const parts = splitMessage(toTelegramHtml(prepareAnswer(data.answer || "")));
+    if (!data.chat_followup) {   // suhbatning birinchi javobi: ishonch beruvchi kirish gapi (ism bilan)
+      const { data: u } = await sb.from("talabalar").select("ism").eq("id", job.teacher_id).maybeSingle();
+      const name = u?.ism ? `${esc(u.ism)}, savolingizni` : "Savolingizni";
+      parts.unshift(`${name} O'zbekiston qonun hujjatlari (lex.uz) asosida ko'rib chiqdim — har bir modda havolasini o'zingiz tekshirib ko'rishingiz mumkin 👇`);
+    }
     const urls: string[] = Array.isArray(data.lexion_urls) ? data.lexion_urls : [];
     const laws = lawLinks(urls, urls.length ? await names(miniUrl) : {});
     if (laws) parts.push(laws);

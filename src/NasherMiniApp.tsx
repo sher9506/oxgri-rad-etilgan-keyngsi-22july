@@ -2,6 +2,7 @@
 // Foydalanuvchi Telegram initData orqali aniqlanadi (nasher-bot miniapp_auth imzoni tekshiradi).
 import { useEffect, useState } from 'react';
 import NexusAI from '@/components/features/NexusAI';
+import ToolsPage from '@/components/features/nexus/tools/ToolsPage';
 import { supabase } from '@/lib/supabase';
 
 interface TgWebApp {
@@ -29,6 +30,8 @@ export default function NasherMiniApp() {
   const [needRegister, setNeedRegister] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const initialChatId = new URLSearchParams(window.location.search).get('chat') || undefined;
+  // ?tool=menu|aliment|boj|shablon|sud — vositalar sahifasi (bot tugmalari shu bilan ochadi); bo'sh — chat
+  const [tool, setTool] = useState(new URLSearchParams(window.location.search).get('tool') || '');
 
   useEffect(() => {
     document.title = 'NaSher AI';
@@ -70,7 +73,7 @@ export default function NasherMiniApp() {
           <div style={{ fontSize: 44 }}>📱</div>
           <h2 style={{ fontSize: 20, fontWeight: 700, margin: '12px 0 8px', color: '#1f1e1d' }}>Avval botda ro'yxatdan o'ting</h2>
           <p style={{ color: '#555', lineHeight: 1.5, marginBottom: 20 }}>
-            Botga qaytib, <b>«Telefon raqamni ulashish»</b> tugmasini bosing — FanFaster akkauntingiz bir bosishda ochiladi.
+            Botga qaytib, <b>/start</b> ni bosing — FanFaster akkauntingiz avtomatik ochiladi.
           </p>
           <button
             onClick={() => webApp()?.close?.()}
@@ -104,7 +107,9 @@ export default function NasherMiniApp() {
         background: '#fff',
       }}
     >
-      <NexusAI userId={userId} initialChatId={initialChatId} />
+      {tool
+        ? <div style={{ height: '100%', overflowY: 'auto' }}><ToolsPage tool={tool} onChange={setTool} onChat={() => setTool('')} /></div>
+        : <NexusAI userId={userId} initialChatId={initialChatId} />}
     </main>
   );
 }
