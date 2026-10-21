@@ -1,3 +1,4 @@
+// deploy 2026-10-21 new-alphabet
 // nasher-bot — NaSher AI Telegram boti (verify_jwt = false: Telegram serverlari Authorization yubormaydi).
 // 1) Telegram webhook (X-Telegram-Bot-Api-Secret-Token tekshiriladi):
 //    /start — salomlashuv; akkaunt Telegram ID bo'yicha avtomatik ochiladi (telefon so'ralmaydi; talabalar.telegram_id).
