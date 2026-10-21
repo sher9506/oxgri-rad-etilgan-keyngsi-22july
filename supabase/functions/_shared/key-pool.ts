@@ -1,3 +1,4 @@
+// deploy 2026-10-22 kvota-regex
 // Gemini kalitlari havzasi (nasher_api_keys): navbat bilan ishlatish, 429/kvotada keyingisiga o'tish, kunlik hisob.
 // Kalitlar faqat service_role orqali o'qiladi; loglarga hech qachon to'liq kalit yozilmaydi (faqat oxirgi 4 belgi).
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -33,7 +34,7 @@ export const tail = (k: string) => "…" + k.slice(-4);
 
 /** Hamma kalitlar 429 / kvota bilan qaytdi — chaqiruvchi foydalanuvchiga "kuting" deydi yoki chuqur rejimga o'tadi. */
 export class PoolExhausted extends Error {
-  constructor(public pool: Pool) { super(`${pool}: barcha kalitlar band yoki kvotasi tugagan`); }
+  constructor(public pool: Pool, public detail = "") { super(`${pool}: barcha kalitlar band yoki kvotasi tugagan`); }
 }
 
 export async function loadPool(sb: SupabaseClient, pool: Pool): Promise<PoolKey[]> {
@@ -47,8 +48,9 @@ export async function recordUsage(sb: SupabaseClient, keyId: string, kind: Kind,
   if (error) console.warn("[key-pool] hisob yozilmadi:", error.message);
 }
 
+// "rate" so'zi "generativelanguage" ichida ham bor — shuning uchun faqat aniq kvota iboralari
 const isQuota = (status: number, body: string) =>
-  status === 429 || (status === 403 && /quota|exceeded|rate/i.test(body)) || /RESOURCE_EXHAUSTED/.test(body);
+  status === 429 || (status === 403 && /\bquota\b|exceeded|rate.?limit/i.test(body)) || /RESOURCE_EXHAUSTED/.test(body);
 
 /**
  * Gemini generateContent: tasodifiy kalitdan boshlab navbat bilan (parallel so'rovlar kalitlarga teng tarqaladi).
@@ -87,7 +89,7 @@ export async function geminiWithPool(
     }
   }
   console.warn(`[key-pool] ${pool}: ${lastErr}`);
-  if (allQuota) throw new PoolExhausted(pool);
+  if (allQuota) throw new PoolExhausted(pool, lastErr);
   throw new Error(lastErr || "Gemini javob bermadi");
 }
 

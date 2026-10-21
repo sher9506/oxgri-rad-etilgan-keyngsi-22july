@@ -1,5 +1,4 @@
-// deploy 2026-10-22 ovoz-zaxira2
-// deploy 2026-10-22 ovoz-zaxira
+// deploy 2026-10-22 kvota-regex
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
 // deploy 2026-10-22 vertex
@@ -336,12 +335,13 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
       await show(`🎤 <b>Siz dedingiz:</b>\n<i>${esc(heard)}</i>`);
       text = heard;
     } catch (e) {
-      if (e instanceof PoolExhausted) {
-        await show(VOICE_BUSY);
-      } else {
-        console.error("[nasher-bot] ovoz:", String(e).slice(0, 300));
-        await show("⚠️ Ovozli xabarni o'qib bo'lmadi. Savolingizni yozib yuboring yoki birozdan keyin qayta urinib ko'ring.");
-      }
+      // sinov davrida (ro'yxat "*" emas) — sinovchiga xatoning qisqa sababi ham ko'rsatiladi (kalitning faqat oxirgi 4 belgisi)
+      const testing = (await settings(["NASHER_VOICE_USERS"]))["NASHER_VOICE_USERS"] !== "*";
+      const why = e instanceof PoolExhausted ? e.detail : String(e);
+      console.error("[nasher-bot] ovoz:", why.slice(0, 300));
+      const note = testing ? `\n\n<code>${esc(why.slice(0, 300))}</code>` : "";
+      await show((e instanceof PoolExhausted ? VOICE_BUSY
+        : "⚠️ Ovozli xabarni o'qib bo'lmadi. Savolingizni yozib yuboring yoki birozdan keyin qayta urinib ko'ring.") + note);
       return;
     }
   }
