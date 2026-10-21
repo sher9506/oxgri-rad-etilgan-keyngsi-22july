@@ -85,11 +85,12 @@ async function transcribeVoice(token: string, fileId: string, mime: string): Pro
   return text.length >= 3 ? text : null;
 }
 
-// ── Botda savol qaysi rejimga ketadi: FAST (tez, Gemini) yoki DEEP (Chuqur, NotebookLM) ──
-async function fastAllowed(userId: string): Promise<boolean> {
-  const users = (await settings(["NASHER_FAST_USERS"]))["NASHER_FAST_USERS"] ?? "";
+// ── Yangi imkoniyatlar avval sinov ro'yxatida: settings kaliti "*" (hamma) yoki vergul bilan talaba id'lari ──
+async function allowed(key: "NASHER_FAST_USERS" | "NASHER_VOICE_USERS", userId: string): Promise<boolean> {
+  const users = (await settings([key]))[key] ?? "";
   return users === "*" || users.split(",").map((s) => s.trim()).includes(userId);
 }
+const fastAllowed = (userId: string) => allowed("NASHER_FAST_USERS", userId);
 
 async function routeQuestion(question: string): Promise<"fast" | "deep"> {
   const keys = (await loadPool(sb, "fast")).slice(0, 3);   // yo'naltirish uchun havzaning birinchi 3 ta kaliti
@@ -301,6 +302,10 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
     return;
   }
 
+  if (voice && !(await allowed("NASHER_VOICE_USERS", user.id))) {
+    await reply("Savolingizni matn bilan yozib yuboring — ovozli xabar tez orada qo'shiladi.");
+    return;
+  }
   if (voice) {
     const wait = await reply("🎤 Ovozli xabaringiz matnga aylantirilmoqda…");
     const waitId = wait.result?.message_id;
