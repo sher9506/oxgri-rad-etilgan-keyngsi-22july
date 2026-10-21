@@ -155,11 +155,37 @@ export function lawLinks(urls: string[], names: Record<string, string>): string 
   return items.length ? `📚 <b>Qonun hujjatlari</b>\n${items.join("\n")}` : "";
 }
 
+// ── Yangi alifbo (O'RQ-1184, 21.10.2026): oʻ→ö, gʻ→ğ, sh→ş, ch→ç, tutuq belgisi → ’ (saytdagi nasherText.toNewAlphabet bilan bir xil) ──
+// Faqat ko'rinadigan matn: URL'lar, <a href>, lex.uz havola manzillari va hujjat raqamlari (O'RQ-…) eski holicha qoladi.
+const KEEP_RE = /(\]\(https?:\/\/[^)\s]+\)|<a href="[^"]*">|https?:\/\/\S+|\bO['ʻʼ‘’]RQ-[\w/-]+)/;
+const APOS = "['ʻʼ‘’`´]";
+const OG_RE = new RegExp(`([OoGg])${APOS}`, "g");
+const OG: Record<string, string> = { O: "Ö", o: "ö", G: "Ğ", g: "ğ" };
+const SH_CH: Record<string, string> = { sh: "ş", Sh: "Ş", SH: "Ş", ch: "ç", Ch: "Ç", CH: "Ç" };
+
+export function toNewAlphabet(text: string): string {
+  return text.split(KEEP_RE).map((p, i) => i % 2 ? p : p
+    .replace(OG_RE, (_m, l: string) => OG[l])
+    .replace(/sh|Sh|SH|ch|Ch|CH/g, (m) => SH_CH[m])
+    .replace(new RegExp(`(?<=\\p{L})${APOS}(?=\\p{L})`, "gu"), "’")).join("");
+}
+
+/** Bot yozadigan har bir matn (xabar, tugma, callback) yangi alifboda chiqadi. */
+function newAlphabetBody(body: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...body };
+  if (typeof out.text === "string") out.text = toNewAlphabet(out.text);
+  const rm = out.reply_markup as { inline_keyboard?: { text: string }[][] } | undefined;
+  if (rm?.inline_keyboard) {
+    out.reply_markup = { ...rm, inline_keyboard: rm.inline_keyboard.map((row) => row.map((b) => ({ ...b, text: toNewAlphabet(b.text) }))) };
+  }
+  return out;
+}
+
 export async function tg(token: string, method: string, body: Record<string, unknown>): Promise<{ ok: boolean; result?: any; description?: string }> {
   const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(newAlphabetBody(body)),
     signal: AbortSignal.timeout(20_000),
   });
   return await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }));
