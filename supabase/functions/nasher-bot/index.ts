@@ -50,6 +50,16 @@ async function channelGate(userId: string, tgId: number): Promise<{ channel: str
   const ch = await channelInfo(sb, userId, tgId, true);
   return { channel: ch.channel ?? "", member: ch.channel ? ch.member : null };
 }
+// Mini App vositalari (?tool=…): savol matniga qarab mos tugmalar
+const TOOL_RULES: { id: string; text: string; re: RegExp }[] = [
+  { id: "aliment", text: "👶 Aliment kalkulyatori", re: /aliment|алимент/i },
+  { id: "boj", text: "🧮 Davlat boji kalkulyatori", re: /davlat boji|sud boji|boj\b|пошлин|божи/i },
+  { id: "shablon", text: "📄 Ariza namunalari (Word)", re: /ariza|da'vo|daʼvo|shikoyat|namuna|shablon|ариза|даъво|шикоят/i },
+  { id: "sud", text: "🏛 Sud manzillari", re: /sud(ga|ning)? (manzil|telefon|qayer)|qaysi sudga|sud manzil|суд манзил/i },
+];
+const matchTools = (q: string) => TOOL_RULES.filter((t) => t.re.test(q));
+const toolUrl = (miniUrl: string, id: string) => miniUrl + (miniUrl.includes("?") ? "&" : "?") + "tool=" + id;
+
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -113,14 +123,15 @@ async function activate(): Promise<Response> {
   }
   await tg(token, "setMyName", { name: "NaSher AI · FanFaster" });
   await tg(token, "setMyDescription", { description:
-    "⚖️ NaSher AI — FanFaster platformasining huquqiy AI yordamchisi.\n\n" +
+    "⚖️ NaSher AI — bepul, ro'yxatsiz huquqiy yordamchi.\n\n" +
     "• Vaziyatingizni oddiy so'zlar bilan yozing\n" +
     "• 3000+ qonun hujjati ichidan keraklisini topadi\n" +
-    "• Moddalar bilan tushunarli javob beradi\n" +
+    "• Har modda va Plenum bandiga aniq lex.uz havolasi\n" +
     "• Javob tayyor bo'lganda o'zi yuboradi\n\n" +
+    "Yangiliklardan birinchi bo'lib xabardor bo'lish uchun @fanfasteruz kanaliga a'zolik so'raladi.\n\n" +
     "«Start» ni bosing 👇" });
   await tg(token, "setMyShortDescription", { short_description:
-    "FanFaster.uz ning AI yordamchisi: O'zbekiston qonunchiligi bo'yicha savolingizga qonun moddalari bilan javob beradi." });
+    "Bepul, ro'yxatsiz. O'zbekiston qonunchiligi bo'yicha savolingizga har modda va Plenum bandiga aniq lex.uz havolasi bilan javob." });
   return json({ ok: true, username: me.result?.username, webhook: WEBHOOK_URL });
 }
 
@@ -199,7 +210,10 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
   if (!chatId || !from?.id || msg.chat?.type !== "private") return;   // guruhlarda ishlamaydi
   const reply = (t: string, extra: Record<string, unknown> = {}) =>
     tg(token, "sendMessage", { chat_id: chatId, text: t, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
-  const appButton = miniUrl ? { inline_keyboard: [[{ text: "📱 NaSher AI ilovasi", web_app: { url: miniUrl } }]] } : undefined;
+  const appButton = miniUrl ? { inline_keyboard: [
+    [{ text: "📱 NaSher AI ilovasi", web_app: { url: miniUrl } }],
+    [{ text: "🧰 Vositalar: kalkulyator, ariza namunalari, sud manzillari", web_app: { url: toolUrl(miniUrl, "menu") } }],
+  ] } : undefined;
 
   const text: string = (msg.text ?? "").trim();
   const user = await findOrRegister(from);
@@ -267,6 +281,12 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
     if (progressId) await tg(token, "editMessageText", { chat_id: chatId, message_id: progressId, text: `⚠️ ${err}` });
     else await reply(`⚠️ ${esc(err)}`);
     return;
+  }
+  // Savol mavzusiga mos vosita (kalkulyator/shablon/manzil) — javobni kutmasdan ochib ko'rish uchun
+  const tools = miniUrl ? matchTools(text) : [];
+  if (tools.length) {
+    await reply("Javob tayyorlanayotganda foydali bo'lishi mumkin 👇", { reply_markup: { inline_keyboard:
+      tools.map((t) => [{ text: t.text, web_app: { url: toolUrl(miniUrl, t.id) } }]) } });
   }
   await sb.from("case_answer_jobs")
     .update({ tg_chat_id: chatId, tg_progress_msg_id: progressId ?? null, tg_phase: "searching" })

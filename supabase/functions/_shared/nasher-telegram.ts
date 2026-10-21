@@ -81,7 +81,7 @@ export function prepareAnswer(raw: string): string {
 
 // ── Telegram HTML ──
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // Saytdagi AnswerText.dedupeLinks bilan bir xil qoida (havolalar ko'payib ketmasin):
 // bir xil havola faqat birinchi marta; ko'rsatilgan moddaning tugmasi yo'q; Plenum/hujjat tugmasi abzatsda bir marta.
