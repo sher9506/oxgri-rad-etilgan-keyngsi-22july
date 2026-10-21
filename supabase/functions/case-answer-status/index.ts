@@ -1,3 +1,4 @@
+// deploy 2026-10-20 lexion-double
 // deploy 2026-10-19 lunda-lexion
 // deploy 2026-10-19 b
 // Lexion phase polling support — backend 3 failover qo'shilgan
@@ -231,7 +232,7 @@ Deno.serve(async (req: Request) => {
     // Fetch the job and verify ownership — lexion maydonlarini ham olamiz
     const { data: job, error: jobError } = await supabaseAdmin
       .from("case_answer_jobs")
-      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, finished_at, updated_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered, answer_style")
+      .select("id, case_id, teacher_id, service_job_id, status, answer, error, library_id, is_library_reuse, backend, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, created_at, finished_at, updated_at, chat_kazus_text, chat_title, chat_id, chat_followup, chat_keep_requested, chat_keep_registered, answer_style, cite_links")
       .eq("id", id)
       .maybeSingle();
 
@@ -492,6 +493,7 @@ Deno.serve(async (req: Request) => {
             external_id: `${id}-ans`,
             instruction: isChat ? chatInstruction(parseAnswerStyle(job.answer_style)) : INSTRUCTION,
             sources: serviceSources,
+            ...(job.cite_links ? { citations: true } : {}),   // [N] -> lex.uz moddasiga havola (sinov: faqat preview)
           };
 
           const keepCfg = await getKeepCfg();
@@ -1010,7 +1012,7 @@ async function retryLexionSearch(
 // ── Chat: 2-bosqichda boshqa Render'ga qayta yuborish (max 1 marta) ──
 async function redispatchChatWithSources(
   jobId: string,
-  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null; chat_id: string | null; teacher_id: string; chat_followup: boolean | null; answer_style?: string | null }
+  job: { case_id: string | null; lexion_urls: string | null; chat_kazus_text?: string | null; chat_title?: string | null; fallback_count: number | null; backend: number | null; chat_id: string | null; teacher_id: string; chat_followup: boolean | null; answer_style?: string | null; cite_links?: boolean | null }
 ): Promise<{ ok: boolean }> {
   const retryCount = job.fallback_count ?? 0;
   if (retryCount >= 1) {
@@ -1034,6 +1036,7 @@ async function redispatchChatWithSources(
     external_id: `${jobId}-ans2`,
     instruction: chatInstruction(parseAnswerStyle(job.answer_style)),
     sources: serviceSources,
+    ...(job.cite_links ? { citations: true } : {}),
   };
 
   const oldBackend = job.backend ?? 1;

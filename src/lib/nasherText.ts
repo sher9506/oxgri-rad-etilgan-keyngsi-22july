@@ -46,8 +46,12 @@ export function latinizeMixed(text: string): string {
 const TURKISH: Record<string, string> = { ş: 'sh', Ş: 'Sh', ç: 'ch', Ç: 'Ch', ğ: "g'", Ğ: "G'", ı: 'i', İ: 'I' };
 export const fixTurkishLetters = (t: string) => t.replace(/[şŞçÇğĞıİ]/g, (c) => TURKISH[c]);
 
+// havola manzili ("#:~:text=…manba…") buzilmasin: "manba" faqat matnda almashtiriladi
+const LINK_URL = /(\]\(https:\/\/lex\.uz\/[^)\s]+\))/;
+
 export function prepareAnswer(raw: string): string {
-  return stripSourceWords(latinizeMixed(fixTurkishLetters(raw))).replace(/[ \t]+([.,;:!?])/g, '$1');
+  return latinizeMixed(fixTurkishLetters(raw)).split(LINK_URL)
+    .map((p, i) => (i % 2 ? p : stripSourceWords(p).replace(/[ \t]+([.,;:!?])/g, '$1'))).join('');
 }
 
 // Lexion katalogidagi lex.uz hujjat nomlari (public/lex-names.json, ~3000 ta). Bir marta yuklanadi, keyin keshda.

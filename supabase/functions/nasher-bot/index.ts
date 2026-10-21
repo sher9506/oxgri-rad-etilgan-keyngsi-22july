@@ -248,11 +248,14 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
   const progressId = progress.result?.message_id;
   await tg(token, "sendChatAction", { chat_id: chatId, action: "typing" });
 
+  // Modda havolalari: settings.NASHER_BOT_CITE_CHAT_IDS dagi chat ID'lar uchun ("*" — hamma uchun; yozuv yo'q — o'chiq)
+  const citeIds = (await settings(["NASHER_BOT_CITE_CHAT_IDS"]))["NASHER_BOT_CITE_CHAT_IDS"] ?? "";
+  const cite = citeIds === "*" || citeIds.split(",").map((s) => s.trim()).includes(String(chatId));
   // Saytdagi bilan bir xil yo'l: case-answer-submit (kvota, Lexion, suhbat xotirasi, failover)
   const res = await fetch(`${SUPABASE_URL}/functions/v1/case-answer-submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
-    body: JSON.stringify({ kazus_text: text, title: text.slice(0, 60), ustoz_id: user.id, answer_mode: "lexion", chat_id: chat.chatId }),
+    body: JSON.stringify({ kazus_text: text, title: text.slice(0, 60), ustoz_id: user.id, answer_mode: "lexion", chat_id: chat.chatId, ...(cite ? { cite_links: true } : {}) }),
     signal: AbortSignal.timeout(100_000),
   }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: String(e) }) } as unknown as Response));
   const data = await res.json().catch(() => ({}));

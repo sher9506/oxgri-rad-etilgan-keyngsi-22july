@@ -1,8 +1,10 @@
+// deploy 2026-10-20 lexion-double
 // deploy 2026-10-19 lunda-lexion
 // deploy 2026-10-19 b
 // Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
 import { getLexionConfig, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
@@ -295,6 +297,7 @@ Deno.serve(async (req: Request) => {
     const isStandaloneChat = !case_id;
     const answerStyle = parseAnswerStyle(body.answer_style);   // 'lunda' faqat chat uchun
     const lexionPreview = body.lexion_preview === true;   // preview sayt yangi Lexion'ni sinaydi
+    const citeLinks = body.cite_links === true;           // faqat preview: [N] -> lex.uz moddasiga havola
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
     const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
 
@@ -363,7 +366,10 @@ Deno.serve(async (req: Request) => {
           .eq("teacher_id", ustoz_id)
           .in("status", ["queued", "running", "done"])
           .gte("created_at", windowStart);
-        if ((windowCount ?? 0) >= CHAT_LIMIT_COUNT) {
+        // Kanal a'zolariga +CHANNEL_BONUS (Telegram faqat asosiy limit tugaganda so'raladi)
+        const chatLimit = (windowCount ?? 0) >= CHAT_LIMIT_COUNT && (await channelInfo(supabaseAdmin, String(ustoz_id))).member
+          ? CHAT_LIMIT_COUNT + CHANNEL_BONUS : CHAT_LIMIT_COUNT;
+        if ((windowCount ?? 0) >= chatLimit) {
           // Tiklanish vaqtini hisoblash: eng eski job created_at + window
           const { data: oldestJob } = await supabaseAdmin
             .from("case_answer_jobs")
@@ -483,6 +489,7 @@ Deno.serve(async (req: Request) => {
       if (isStandaloneChat) { insertPayload.chat_kazus_text = kazus_text; insertPayload.chat_title = title; }
       if (chatId) insertPayload.chat_id = chatId;
       if (answerStyle === 'lunda') insertPayload.answer_style = 'lunda';   // 2-bosqich (case-answer-status) shundan biladi
+      if (citeLinks) insertPayload.cite_links = true;
 
       const { data: jobRow, error: jobError } = await supabaseAdmin
         .from("case_answer_jobs")

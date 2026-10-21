@@ -15,6 +15,7 @@ import {
 } from '@/constants/nexus';
 import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
+import ChannelPrompt from './nexus/ChannelPrompt';
 import AnswerText from './nexus/AnswerText';
 import { stripSourceWords, prepareAnswer, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
 import './nexus-claude.css';
@@ -983,7 +984,7 @@ export default function NexusAI({ userId, initialChatId }: { userId: string; ini
 
 function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId?: string }) {
   const {
-    chats, activeChatId, messages, isProcessing, quota,
+    chats, activeChatId, messages, isProcessing, quota, fetchQuota,
     memoryEnabled, chatLimitError, sendMessage, retry, deleteChat,
     switchChat, createNewChat, getChatTimer, isChatExpired,
     fetchChatsStatus, chatsStatus, serverOffset, pendingChatId,
@@ -1187,6 +1188,7 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
       onTogglePanel={togglePanel}
       title={chats.find(c => c.chatId === activeChatId)?.title || NEXUS_NOTES.NEW_CHAT}
     >
+      <ChannelPrompt quota={quota} answered={messages.some(m => m.fresh && m.status === 'done')} onCheck={fetchQuota} />
       <div className="nc-layout">
         {/* Desktop chat list panel */}
         <aside className={`nc-chat-sidebar ${panelCollapsed ? 'nc-chat-sidebar-collapsed' : ''}`}>

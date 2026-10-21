@@ -38,7 +38,13 @@ function stripListMarker(line: string): string {
   return line.replace(LIST_BULLET, '').replace(LIST_NUMBERED, '').trim();
 }
 
-function renderInline(text: string, keyBase: string): ReactNode[] {
+// [217-modda](https://lex.uz/docs/...#:~:text=...) — javobdagi iqtibos: lex.uz'da aynan o'sha gapni ochadi.
+// Faqat https://lex.uz havolalari qabul qilinadi (boshqa manzil oddiy matn bo'lib qoladi).
+// Iqtibos tugmasi ([1] o'rnida): "217-modda", "47⁴-modda", "Plenum №4", "lex.uz". Qolganlari — matn ichidagi modda eslatmasi.
+const CITE_CHIP = /^(\d+[⁰¹²³⁴⁵⁶⁷⁸⁹]*-modda|Plenum №\d+|[A-Z][A-Z']{0,4}-\d[\w/-]*|№[\w/-]+|lex\.uz)$/;
+const CITE_LINK = /\[([^\]\n]{1,40})\]\((https:\/\/lex\.uz\/[^)\s]+)\)/g;
+
+function renderBold(text: string, keyBase: string): ReactNode[] {
   const parts = text.split(/\*\*(.+?)\*\*/g);
   const nodes: ReactNode[] = [];
   for (let i = 0; i < parts.length; i++) {
@@ -51,9 +57,25 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
   return nodes;
 }
 
+function renderInline(text: string, keyBase: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  for (const m of text.matchAll(CITE_LINK)) {
+    nodes.push(...renderBold(text.slice(last, m.index), `${keyBase}-s${k}`));
+    nodes.push(
+      <a key={`${keyBase}-c${k}`} className={CITE_CHIP.test(m[1]) ? 'nc-cite' : 'nc-lawlink'} href={m[2]} target="_blank" rel="noopener noreferrer">{m[1]}</a>
+    );
+    last = (m.index ?? 0) + m[0].length;
+    k++;
+  }
+  nodes.push(...renderBold(text.slice(last), `${keyBase}-s${k}`));
+  return nodes;
+}
+
 function boldLead(text: string, keyBase: string): ReactNode[] {
   if (text.startsWith('http')) return renderInline(text, keyBase);
-  const colonIdx = text.indexOf(':');
+  const colonIdx = text.replace(CITE_LINK, m => '_'.repeat(m.length)).indexOf(':');   // havola ichidagi "https:" hisoblanmaydi
   if (colonIdx > 0 && colonIdx <= 60 && !text.slice(0, colonIdx).includes('\n')) {
     const lead = text.slice(0, colonIdx + 1);
     const rest = text.slice(colonIdx + 1);
@@ -98,10 +120,10 @@ function parseBlocks(text: string): Block[] {
 
 export default function AnswerText({ text, typing = false }: { text: string; typing?: boolean }) {
   const blocks = useMemo(() => {
-    const cleaned = cleanText(text);
+    const cleaned = cleanText(typing ? text.replace(/\s*\[[^\]\n]*(?:\]\([^)\s]*)?$/, '') : text);
     if (!cleaned) return [];
     return parseBlocks(cleaned);
-  }, [text]);
+  }, [text, typing]);
 
   return (
     <div className={`nc-answer ${typing ? 'nc-answer-typing' : ''}`} aria-live={typing ? 'off' : 'polite'}>

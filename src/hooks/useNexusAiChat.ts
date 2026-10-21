@@ -34,6 +34,9 @@ export interface QuotaInfo {
   next_reset_at: string | null;
   server_now: string;
   is_unlimited: boolean;
+  channel?: string | null;          // kanal taklifi (null — o'chiq)
+  channel_member?: boolean | null;  // null — Telegram bog'lanmagan
+  channel_bonus?: number;
 }
 
 export interface ChatMeta {
@@ -819,6 +822,7 @@ export function useNexusAiChat(userId: string | undefined) {
         answer_mode: 'lexion',
         ...(mode === 'lunda' ? { answer_style: 'lunda' } : {}),
         lexion_preview: true,   // yangi (python-api) Lexion — preview'da sinalgan; eski Lexion faqat zaxira
+        cite_links: true,   // javobdagi moddalar, qism/bandlar va Plenum bandlari lex.uz'dagi aniq joyga havola
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
 
@@ -943,6 +947,7 @@ export function useNexusAiChat(userId: string | undefined) {
     messages,
     isProcessing,
     quota,
+    fetchQuota,
     chatsStatus,
     memoryEnabled,
     serverOffset,
