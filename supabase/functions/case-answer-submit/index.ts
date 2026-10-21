@@ -4,6 +4,7 @@
 // Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
 import { getLexionConfig, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
@@ -365,7 +366,10 @@ Deno.serve(async (req: Request) => {
           .eq("teacher_id", ustoz_id)
           .in("status", ["queued", "running", "done"])
           .gte("created_at", windowStart);
-        if ((windowCount ?? 0) >= CHAT_LIMIT_COUNT) {
+        // Kanal a'zolariga +CHANNEL_BONUS (Telegram faqat asosiy limit tugaganda so'raladi)
+        const chatLimit = (windowCount ?? 0) >= CHAT_LIMIT_COUNT && (await channelInfo(supabaseAdmin, String(ustoz_id))).member
+          ? CHAT_LIMIT_COUNT + CHANNEL_BONUS : CHAT_LIMIT_COUNT;
+        if ((windowCount ?? 0) >= chatLimit) {
           // Tiklanish vaqtini hisoblash: eng eski job created_at + window
           const { data: oldestJob } = await supabaseAdmin
             .from("case_answer_jobs")

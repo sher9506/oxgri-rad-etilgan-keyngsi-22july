@@ -5,6 +5,7 @@
 // va javob tayyor bo'lganda Telegram'ga yuboradi.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
 import { chatAppUrl, lawLinks, prepareAnswer, progressText, splitMessage, tg, toTelegramHtml, htmlToPlain } from "../_shared/nasher-telegram.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -72,9 +73,14 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
     const urls: string[] = Array.isArray(data.lexion_urls) ? data.lexion_urls : [];
     const laws = lawLinks(urls, urls.length ? await names(miniUrl) : {});
     if (laws) parts.push(laws);
+    // Kanalga a'zo bo'lmaganlarga taklif (a'zo bo'lgach chiqmaydi)
+    const ch = job.teacher_id ? await channelInfo(sb, String(job.teacher_id), chat) : { channel: null, member: null };
+    const join = ch.channel && ch.member === false ? `https://t.me/${ch.channel.replace(/^@/, "")}` : null;
+    if (join) parts.push(`📢 <b>${ch.channel}</b> kanalimizga qo'shiling — har 5 soatda <b>+${CHANNEL_BONUS} ta qo'shimcha savol</b> olasiz! Qo'shilganingizdan keyin bonus avtomatik ishlaydi.`);
     // Mini App aynan shu suhbatni ochadi; "Yangi suhbat" — keyingi savol yangi suhbatda
     const markup = { inline_keyboard: [
       ...(miniUrl ? [[{ text: "📱 To'liq ko'rish", web_app: { url: chatAppUrl(miniUrl, job.chat_id) } }]] : []),
+      ...(join ? [[{ text: "📢 Kanalga qo'shilish (+2 savol)", url: join }]] : []),
       [{ text: "🆕 Yangi suhbat", callback_data: "new_chat" }],
     ] };
     for (let i = 0; i < parts.length; i++) {

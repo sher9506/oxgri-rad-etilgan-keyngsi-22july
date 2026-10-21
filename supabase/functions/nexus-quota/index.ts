@@ -1,6 +1,7 @@
 // nexus-quota — Nexus AI uchun o'qish uchun limit ma'lumoti
 // Hech narsa yozmaydi. verify_jwt = false (anon front chaqira oladi)
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +70,9 @@ Deno.serve(async (req: Request) => {
       .gte("created_at", windowStart);
 
     const used = windowCount ?? 0;
-    const remaining = Math.max(0, CHAT_LIMIT_COUNT - used);
+    const ch = await channelInfo(supabaseAdmin, String(user_id));
+    const limit = CHAT_LIMIT_COUNT + (ch.member ? CHANNEL_BONUS : 0);
+    const remaining = Math.max(0, limit - used);
 
     let nextResetAt: string | null = null;
     if (used > 0) {
@@ -90,10 +93,13 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({
-        limit: CHAT_LIMIT_COUNT,
+        limit,
         window_hours: CHAT_LIMIT_WINDOW_HOURS,
         used,
         remaining,
+        channel: ch.channel,            // null — kanal taklifi o'chiq
+        channel_member: ch.member,      // null — Telegram bog'lanmagan
+        channel_bonus: CHANNEL_BONUS,
         next_reset_at: nextResetAt,
         server_now: new Date().toISOString(),
         is_unlimited: false,
