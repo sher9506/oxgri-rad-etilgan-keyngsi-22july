@@ -6,6 +6,10 @@ export type Pool = "voice" | "fast";
 export interface PoolKey { id: string; api_key: string }
 
 export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+// "AQ." bilan boshlanadigan kalitlar — Vertex AI (express mode) kalitlari: boshqa manzil, so'rov tuzilishi bir xil
+export const VERTEX_BASE = "https://aiplatform.googleapis.com/v1/publishers/google/models";
+export const geminiUrl = (apiKey: string, model: string) =>
+  `${apiKey.startsWith("AQ.") ? VERTEX_BASE : GEMINI_BASE}/${model}:generateContent`;
 export const tail = (k: string) => "…" + k.slice(-4);
 
 /** Hamma kalitlar 429 / kvota bilan qaytdi — chaqiruvchi foydalanuvchiga "kuting" deydi yoki chuqur rejimga o'tadi. */
@@ -42,7 +46,7 @@ export async function geminiWithPool(
   for (let i = 0; i < keys.length; i++) {
     const key = keys[(start + i) % keys.length];
     try {
-      const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
+      const res = await fetch(geminiUrl(key.api_key, model), {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key.api_key },
         body: JSON.stringify(body),

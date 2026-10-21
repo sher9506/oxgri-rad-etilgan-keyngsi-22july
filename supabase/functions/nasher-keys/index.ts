@@ -2,7 +2,7 @@
 // To'liq kalit hech qachon javobga yoki logga chiqmaydi — faqat boshi va oxirgi 4 belgisi.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { GEMINI_BASE, tail, type Pool } from "../_shared/key-pool.ts";
+import { geminiUrl, tail, type Pool } from "../_shared/key-pool.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const cors = { ...corsHeaders, "Access-Control-Allow-Headers": corsHeaders["Access-Control-Allow-Headers"] + ", x-admin-code" };
@@ -40,10 +40,15 @@ async function readModels(): Promise<Record<keyof typeof MODEL_KEY, string>> {
 }
 
 /** Kichik haqiqiy so'rov bilan kalitni sinash. invalid=true bo'lsa kalit saqlanmaydi. */
+/** Google xato matni (kalitsiz, qisqa) — admin sababini darhol ko'rsin */
+const googleError = (body: string) => {
+  try { return String(JSON.parse(body)?.error?.message ?? body).slice(0, 220); } catch { return body.slice(0, 220); }
+};
+
 async function testKey(pool: Pool, apiKey: string): Promise<{ status: string; ok: boolean; invalid: boolean; message: string }> {
   const model = (await readModels())[pool];
   try {
-    const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
+    const res = await fetch(geminiUrl(apiKey, model), {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify({ contents: [{ parts: [{ text: "Salom" }] }], generationConfig: { maxOutputTokens: 5 } }),
@@ -57,10 +62,10 @@ async function testKey(pool: Pool, apiKey: string): Promise<{ status: string; ok
       // 400 "model not found" — kalit emas, model xato
       if (/not found|is not supported/i.test(body))
         return { status: `model xato (${res.status})`, ok: false, invalid: false, message: `❌ Model topilmadi: ${model}. Model nomini tekshiring.` };
-      return { status: "kalit noto'g'ri (400/403)", ok: false, invalid: true, message: "❌ Kalit noto'g'ri yoki ruxsati yo'q (400/403)." };
+      return { status: "kalit noto'g'ri (400/403)", ok: false, invalid: true, message: `❌ Kalit noto'g'ri yoki ruxsati yo'q (${res.status}). Google: ${googleError(body)}` };
     }
     if (res.status === 404) return { status: "model xato (404)", ok: false, invalid: false, message: `❌ Model topilmadi: ${model}.` };
-    return { status: `xato (${res.status})`, ok: false, invalid: false, message: `❌ Gemini xatosi: ${res.status}` };
+    return { status: `xato (${res.status})`, ok: false, invalid: false, message: `❌ Gemini xatosi: ${res.status}. Google: ${googleError(body)}` };
   } catch (e) {
     console.warn("[nasher-keys] sinov tarmoq xatosi:", String(e).slice(0, 200));
     return { status: "tarmoq xatosi", ok: false, invalid: false, message: "❌ Gemini bilan bog'lanib bo'lmadi (tarmoq/timeout)." };
