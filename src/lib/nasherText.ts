@@ -45,12 +45,14 @@ export function latinizeMixed(text: string): string {
 // NotebookLM ba'zan turkcha harf yozadi (parvariş): o'zbek lotin yozuviga o'tkaziladi
 const TURKISH: Record<string, string> = { ş: 'sh', Ş: 'Sh', ç: 'ch', Ç: 'Ch', ğ: "g'", Ğ: "G'", ı: 'i', İ: 'I' };
 export const fixTurkishLetters = (t: string) => t.replace(/[şŞçÇğĞıİ]/g, (c) => TURKISH[c]);
+// AI so'z boshidagi "ye" ni "e" deb yozadi (echim, etarli, engil, etkaz-): 1995-yil imlo qoidasi — so'z boshida е → ye
+export const fixYe = (t: string) => t.replace(/\b([Ee])(chim|tarli|ngil|tkaz)/g, (_m, e: string, rest: string) => (e === 'E' ? 'Ye' : 'ye') + rest);
 
 // havola manzili ("#:~:text=…manba…") buzilmasin: "manba" faqat matnda almashtiriladi
 const LINK_URL = /(\]\(https:\/\/lex\.uz\/[^)\s]+\))/;
 
 export function prepareAnswer(raw: string): string {
-  return latinizeMixed(fixTurkishLetters(raw)).split(LINK_URL)
+  return fixYe(latinizeMixed(fixTurkishLetters(raw))).split(LINK_URL)
     .map((p, i) => (i % 2 ? p : stripSourceWords(p).replace(/[ \t]+([.,;:!?])/g, '$1'))).join('');
 }
 

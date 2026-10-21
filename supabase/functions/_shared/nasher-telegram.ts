@@ -71,6 +71,8 @@ export function prepareAnswer(raw: string): string {
   const cyr = (t.match(/[а-яёўқғҳ]/gi) ?? []).length;
   const lat = (t.match(/[a-z]/gi) ?? []).length;
   if (cyr > 0 && cyr <= lat) t = t.replace(/[а-яёўқғҳА-ЯЁЎҚҒҲ'ʼ]+/g, (w) => (/[а-яёўқғҳ]/i.test(w) ? latinWord(w) : w));
+  // AI so'z boshidagi "ye" ni "e" deb yozadi (echim, etarli, engil, etkaz-): imlo qoidasi — so'z boshida е → ye (saytdagi fixYe bilan bir xil)
+  t = t.replace(/\b([Ee])(chim|tarli|ngil|tkaz)/g, (_m, e: string, rest: string) => (e === "E" ? "Ye" : "ye") + rest);
   // havola manzili ("#:~:text=…manba…") buzilmasin: "manba" faqat matnda almashtiriladi
   t = t.split(LINK_URL).map((p, i) => (i % 2 ? p : p.replace(SOURCE_WORD, (m: string, plural?: string, suffix?: string) =>
     `${m[0] === m[0].toUpperCase() ? "Q" : "q"}onun hujjat${plural ? "lari" : "i"}${suffix ?? ""}`))).join("");
