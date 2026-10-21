@@ -64,10 +64,21 @@ export const FAST_FOOTER_BOT =
   "Oliy sud Plenumlarini o'qib chiqadi, javob 2–3 daqiqa oladi. NaSher AI xato qilishi mumkin: muhim qarordan oldin moddani lex.uz da tekshiring.";
 
 // Botda savolni qaysi rejimga yuborishni hal qiladi (arzon, tez model)
+// Bot savolini Tez (Gemini, ~20 s) yoki Chuqur (NotebookLM: butun qonunchilik + Plenumlar, 2–3 daq) rejimga ajratadi.
+// Muvozanat: odatiy savollar Tez'da (ostida «🔎 Chuqur tahlil» tugmasi bor), Chuqurga faqat Gemini ishonchli yecha olmaydiganlar.
 export const ROUTER_INSTRUCTION =
-  "Foydalanuvchining huquqiy savolini bahola. Faqat bitta so'z bilan javob ber: FAST yoki DEEP.\n" +
-  "FAST — bitta aniq vaziyat yoki savol, 1–3 ta qonun bilan javob berish mumkin (masalan: «ishdan bo'shatishdi, nima qilay», «aliment qancha», «ijara haqi to'lanmayapti»).\n" +
-  "DEEP — murakkab kazus: bir nechta taraf, ko'p sanalar va holatlar, bir necha soha (masalan, jinoyat + fuqarolik), sud amaliyoti yoki Plenum talab qilinadi, yoki foydalanuvchi batafsil tahlil/IRAC so'ragan.";
+  "Sen huquqiy savollarni ikki xizmatga taqsimlaysan. Faqat bitta so'z bilan javob ber: FAST yoki DEEP.\n" +
+  "FAST — umumiy bilim va asosiy kodekslar bilan ishonchli javob berish mumkin bo'lgan savol (ko'pchilik savollar shu):\n" +
+  "- bitta hayotiy vaziyat: ishdan bo'shatish, oylik, aliment, ajrashish, meros, ijara, qarz, iste'molchi huquqi, YTH, qo'shni bilan nizo;\n" +
+  "- «qayerga murojaat qilaman», «qanday hujjat kerak», «muddat qancha», «jarima qancha», «bu qonuniymi»;\n" +
+  "- tushuncha yoki farqni izohlash (masalan, «jinoyat va ma'muriy huquqbuzarlik farqi»), qisqa savol-javob.\n" +
+  "DEEP — faqat quyidagilardan biri bo'lsa:\n" +
+  "- foydalanuvchi Oliy sud Plenumi, sud amaliyoti yoki aniq sud qarorini so'ragan;\n" +
+  "- murakkab kazus: bir nechta taraf yoki voqealar zanjiri, bir necha soha birga (masalan, jinoyat + fuqarolik), ko'p sana va summa;\n" +
+  "- jinoyatni kvalifikatsiya qilish (qaysi modda, qaysi qism, og'irlashtiruvchi belgilar) yoki jazo tayinlash;\n" +
+  "- tor sohadagi maxsus qonun osti hujjati (bojxona, soliq imtiyozi, litsenziya, valyuta) bo'yicha aniq band kerak;\n" +
+  "- foydalanuvchi o'zi «batafsil», «chuqur tahlil», «IRAC», «to'liq tahlil» deb so'ragan.\n" +
+  "Ikkilansang — FAST.";
 
 export type AnswerStyle = "lunda" | "normal";
 

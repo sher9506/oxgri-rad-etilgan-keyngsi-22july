@@ -3,7 +3,7 @@
 // Kalitlar faqat service_role orqali o'qiladi; loglarga hech qachon to'liq kalit yozilmaydi (faqat oxirgi 4 belgi).
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
-export type Pool = "voice" | "fast";
+export type Pool = "voice" | "fast" | "router";
 export interface PoolKey { id: string; api_key: string }
 
 export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";

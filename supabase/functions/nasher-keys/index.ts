@@ -1,4 +1,4 @@
-// deploy 2026-10-22 kvota-regex
+// deploy 2026-10-22 router-havza
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
 // NaSher Gemini kalitlari havzasini boshqarish (admin panel). Auth: x-admin-code — PIN (secret NASHER_ADMIN_CODE yoki nasher_private_settings dagi SHA-256 xesh).
@@ -12,15 +12,16 @@ const cors = { ...corsHeaders, "Access-Control-Allow-Headers": corsHeaders["Acce
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const LIMIT: Record<Pool, number> = { voice: 10, fast: 15 };
+const LIMIT: Record<Pool, number> = { voice: 10, fast: 15, router: 3 };
 const MODEL_KEY = { fast: "NASHER_FAST_MODEL", voice: "NASHER_VOICE_MODEL", router: "NASHER_ROUTER_MODEL" } as const;
 const DEFAULT_MODEL = "gemini-3-flash-preview";
+const ROUTER_DEFAULT_MODEL = "gemini-2.5-flash-lite";   // bot/index.ts bilan bir xil
 // Google AI Studio kalitlari: eski "AIza…" va yangi "AQ.…" formatlari
 const KEY_RE = /^(AIza[0-9A-Za-z_\-]{30,}|AQ\.[0-9A-Za-z_\-.]{20,})$/;
 const MODEL_RE = /^gemini-[\w.\-]+$/;
 
 const mask = (k: string) => k.slice(0, 4) + tail(k);
-const isPool = (p: unknown): p is Pool => p === "voice" || p === "fast";
+const isPool = (p: unknown): p is Pool => p === "voice" || p === "fast" || p === "router";
 const tashkentDay = (offsetDays = 0) =>
   new Date(Date.now() + 5 * 3600_000 - offsetDays * 86400_000).toISOString().slice(0, 10);
 
@@ -38,7 +39,7 @@ async function readModels(): Promise<Record<keyof typeof MODEL_KEY, string>> {
   return {
     fast: m[MODEL_KEY.fast] || DEFAULT_MODEL,
     voice: m[MODEL_KEY.voice] || DEFAULT_MODEL,
-    router: m[MODEL_KEY.router] || DEFAULT_MODEL,
+    router: m[MODEL_KEY.router] || ROUTER_DEFAULT_MODEL,
   };
 }
 
@@ -124,11 +125,11 @@ Deno.serve(async (req) => {
   try {
     switch (b.action) {
       case "list": {
-        if (!isPool(b.pool)) return json({ error: "pool: voice yoki fast" }, 400);
+        if (!isPool(b.pool)) return json({ error: "pool: voice, fast yoki router" }, 400);
         return json({ keys: await list(b.pool), limit: LIMIT[b.pool] });
       }
       case "add": {
-        if (!isPool(b.pool)) return json({ error: "pool: voice yoki fast" }, 400);
+        if (!isPool(b.pool)) return json({ error: "pool: voice, fast yoki router" }, 400);
         const apiKey = String(b.api_key ?? "").trim();
         const label = String(b.label ?? "").trim().slice(0, 60);
         if (!KEY_RE.test(apiKey)) return json({ error: "Kalit ko'rinishi noto'g'ri (AIza… yoki AQ. bilan boshlanishi kerak)" }, 400);

@@ -1,5 +1,4 @@
-// deploy 2026-10-22 kvota-regex2
-// deploy 2026-10-22 kvota-regex
+// deploy 2026-10-22 router-havza
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
 // deploy 2026-10-22 vertex
@@ -108,12 +107,14 @@ async function allowed(key: "NASHER_FAST_USERS" | "NASHER_VOICE_USERS", userId: 
 const fastAllowed = (userId: string) => allowed("NASHER_FAST_USERS", userId);
 
 async function routeQuestion(question: string): Promise<"fast" | "deep"> {
-  const keys = (await loadPool(sb, "fast")).slice(0, 3);   // yo'naltirish uchun havzaning birinchi 3 ta kaliti
+  // o'z havzasi (admin: "Rejim tanlovchi API"); bo'sh bo'lsa — tez havzaning birinchi 3 ta kaliti
+  const own = await loadPool(sb, "router");
+  const keys = own.length ? own : (await loadPool(sb, "fast")).slice(0, 3);
   if (!keys.length) return "deep";
-  const model = (await settings(["NASHER_ROUTER_MODEL"]))["NASHER_ROUTER_MODEL"] || "gemini-3.1-flash-lite";
+  const model = (await settings(["NASHER_ROUTER_MODEL"]))["NASHER_ROUTER_MODEL"] || "gemini-2.5-flash-lite";
   try {
     // jami 3 soniya: ulgurmasa — tez rejim (tezlik ustun)
-    const call = geminiWithPool(sb, "fast", model, {
+    const call = geminiWithPool(sb, own.length ? "router" : "fast", model, {
       systemInstruction: { parts: [{ text: ROUTER_INSTRUCTION }] },
       contents: [{ role: "user", parts: [{ text: question.slice(0, 2500) }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 256 },

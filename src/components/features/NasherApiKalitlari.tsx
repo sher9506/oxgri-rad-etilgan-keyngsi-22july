@@ -7,8 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
-type Pool = 'voice' | 'fast';
-type ModelPool = Pool | 'router';
+type Pool = 'voice' | 'fast' | 'router';
+type ModelPool = Pool;
 interface Counts { ok: number; quota: number; errors: number }
 interface KeyRow {
   id: string; label: string; masked: string; enabled: boolean;
@@ -19,6 +19,7 @@ interface TestResult { ok: boolean; status: string; message: string }
 const POOLS: { pool: Pool; title: string; limit: number; fallback: string }[] = [
   { pool: 'voice', title: '🎤 Ovoz API (ovozli xabarni matnga)', limit: 10, fallback: 'foydalanuvchiga «kuting» xabari' },
   { pool: 'fast', title: "⚡ Tez rejim API (Lo'nda)", limit: 15, fallback: 'avtomatik Chuqur rejim' },
+  { pool: 'router', title: '🧭 Rejim tanlovchi API (botda: Tez yoki Chuqur)', limit: 3, fallback: "tez havzaning 3 ta kaliti, ular ham ishlamasa — Tez rejim" },
 ];
 const MODEL_LABELS: Record<ModelPool, string> = { fast: 'Tez rejim modeli', voice: 'Ovoz modeli', router: 'Router modeli' };
 
