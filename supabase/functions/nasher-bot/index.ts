@@ -1,3 +1,4 @@
+// deploy 2026-10-22 vertex
 // deploy 2026-10-22 ovoz-tez
 // nasher-bot — NaSher AI Telegram boti (verify_jwt = false: Telegram serverlari Authorization yubormaydi).
 // 1) Telegram webhook (X-Telegram-Bot-Api-Secret-Token tekshiriladi):
