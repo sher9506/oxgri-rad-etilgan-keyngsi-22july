@@ -1,6 +1,7 @@
 // Mini App vositalari: ?tool=menu|aliment|boj|shablon|sud. Bot savolga qarab shu sahifalarga tugma beradi.
 import { lazy, Suspense } from 'react';
 import { ChevronRight, MessageSquare } from 'lucide-react';
+import './tools.css';
 
 const AlimentKalkulyator = lazy(() => import('./AlimentKalkulyator'));
 const DavlatBojiKalkulyator = lazy(() => import('./DavlatBojiKalkulyator'));
@@ -15,6 +16,12 @@ export const TOOLS = [
 ] as const;
 export type ToolId = typeof TOOLS[number]['id'];
 
+// Telefonda klaviatura chiqqanda yozilayotgan maydon ko'rinib tursin (Telegram webview o'zi surmaydi)
+const keepInView = (e: React.FocusEvent) => {
+  const el = e.target as HTMLElement;
+  if (el.matches('input, textarea')) setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+};
+
 export default function ToolsPage({ tool, sh, onChange, onChat }: { tool: string; sh?: string; onChange: (t: string) => void; onChat: () => void }) {
   const back = () => onChange('menu');
   const page =
@@ -22,10 +29,10 @@ export default function ToolsPage({ tool, sh, onChange, onChat }: { tool: string
     tool === 'boj' ? <DavlatBojiKalkulyator onBack={back} /> :
     tool === 'shablon' ? <Shablonlar onBack={back} initialId={sh} /> :
     tool === 'sud' ? <SudManzillari onBack={back} /> : null;
-  if (page) return <Suspense fallback={<div className="p-6 text-center text-slate-500">Yuklanmoqda…</div>}>{page}</Suspense>;
+  if (page) return <div className="nasher-tools" onFocusCapture={keepInView}><Suspense fallback={<div className="p-6 text-center text-slate-500">Yuklanmoqda…</div>}>{page}</Suspense></div>;
 
   return (
-    <div className="mx-auto max-w-md p-4">
+    <div className="nasher-tools mx-auto max-w-md p-4">
       <h1 className="mb-1 text-xl font-bold">🧰 Vositalar</h1>
       <p className="mb-4 text-sm text-slate-500">Tez hisob-kitob va tayyor hujjatlar. Savol bo'lsa — NaSher AI chatiga yozing.</p>
       <div className="space-y-2">

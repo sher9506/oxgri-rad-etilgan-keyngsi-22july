@@ -1160,7 +1160,9 @@ ol.nc-answer-list {
   z-index: 60;
   overflow-y: auto;
   background: #fff;
-  padding-top: var(--tg-content-safe-area-inset-top, 0px);
+  /* Telegram to'liq ekranda: tizim satri + "Yopish / ⋯" tugmalari ostidan boshlanadi */
+  padding-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
+  padding-bottom: var(--tg-safe-area-inset-bottom, 0px);
 }
 
 .nc-mode-hint {

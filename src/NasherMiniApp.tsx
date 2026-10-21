@@ -69,7 +69,8 @@ export default function NasherMiniApp() {
   // Vositalar foydalanuvchiga bog'liq emas — Telegram'siz (oddiy brauzerda, ulashilgan havola orqali) ham ochiladi
   if (tool) {
     return (
-      <main style={{ minHeight: '100dvh', background: '#fff', paddingTop: 'var(--tg-content-safe-area-inset-top, 0px)' }}>
+      // to'liq ekranda vosita sarlavhasi Telegram tugmalari ("Yopish", "⋯") ostidan boshlanadi
+      <main style={{ minHeight: '100dvh', background: '#fff', paddingTop: 'calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))', paddingBottom: 'var(--tg-safe-area-inset-bottom, 0px)' }}>
         <ToolsPage tool={tool} sh={new URLSearchParams(window.location.search).get('sh') || undefined} onChange={setTool} onChat={() => setTool('')} />
       </main>
     );
