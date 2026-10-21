@@ -6,12 +6,16 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { SHABLONLAR, renderMatn, yuklabOlDocx, type Shablon } from './shablonlar-data';
+import { BOLIMLAR, SHABLONLAR, renderMatn, yuklabOlDocx, type Shablon } from './shablonlar-data';
 
 export default function Shablonlar({ onBack }: { onBack: () => void }) {
   const [tanlangan, setTanlangan] = useState<Shablon | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [xabar, setXabar] = useState('');
+  const [qidiruv, setQidiruv] = useState('');
+  // apostrof turlari (' ʻ ʼ ’) farqlanmaydi: "toʻgʻrisida" = "to'g'risida"
+  const norm = (s: string) => s.toLowerCase().replace(/['ʻʼ’‘`]/g, '');
+  const mos = (sh: Shablon) => !qidiruv.trim() || norm(`${sh.title} ${sh.short}`).includes(norm(qidiruv.trim()));
 
   const ortga = () => (tanlangan ? (setTanlangan(null), setValues({}), setXabar('')) : onBack());
 
@@ -49,13 +53,25 @@ export default function Shablonlar({ onBack }: { onBack: () => void }) {
       </p>
 
       {!tanlangan ? (
-        <div className="space-y-3">
-          {SHABLONLAR.map((sh) => (
-            <Card key={sh.id} className="p-4 cursor-pointer active:bg-slate-100" onClick={() => setTanlangan(sh)}>
-              <div className="font-medium">{sh.title}</div>
-              <div className="text-sm text-slate-500">{sh.short}</div>
-            </Card>
-          ))}
+        <div className="space-y-4">
+          <Input value={qidiruv} onChange={(e) => setQidiruv(e.target.value)} placeholder={`${SHABLONLAR.length} ta namuna ichidan qidirish`} />
+          {BOLIMLAR.map((b) => {
+            const royxat = b.shablonlar.filter((sh) => mos(sh));
+            if (!royxat.length) return null;
+            return (
+              <section key={b.nomi} className="space-y-2">
+                <h2 className="text-sm font-semibold text-slate-700">{b.nomi} <span className="font-normal text-slate-500">· {royxat.length}</span></h2>
+                {royxat.map((sh) => (
+                  <Card key={sh.id} className="p-3 cursor-pointer bg-white active:bg-slate-100" onClick={() => setTanlangan(sh)}>
+                    <div className="font-medium leading-snug">{sh.title}</div>
+                    <div className="text-sm text-slate-500">{sh.short}</div>
+                  </Card>
+                ))}
+              </section>
+            );
+          })}
+          {!SHABLONLAR.some(mos) && <p className="text-center text-sm text-slate-500">Hech narsa topilmadi</p>}
+          <p className="text-xs text-slate-500">Manba: Adliya vazirligi «Adolat» markazining yurxizmat.uz namunalari; moddalar lex.uz bo'yicha tekshirilgan.</p>
         </div>
       ) : (
         <div className="space-y-4">
