@@ -44,6 +44,31 @@ function stripListMarker(line: string): string {
 const CITE_CHIP = /^(\d+[⁰¹²³⁴⁵⁶⁷⁸⁹]*-modda|Plenum №\d+|[A-Z][A-Z']{0,4}-\d[\w/-]*|№[\w/-]+|lex\.uz)$/;
 const CITE_LINK = /\[([^\]\n]{1,40})\]\((https:\/\/lex\.uz\/[^)\s]+)\)/g;
 
+/**
+ * Ekranda havolalar ko'payib ketmasin:
+ *  1) matn ichidagi bir xil havola faqat birinchi uchraganda havola, keyingisi oddiy matn;
+ *  2) shu havola oldinroq ko'rsatilgan bo'lsa, gap oxiridagi tugma ("161-modda") chiqmaydi;
+ *  3) Plenum / hujjat tugmasi ("Plenum №26", "lex.uz") bitta abzatsda bir marta.
+ */
+export function dedupeLinks(text: string): string {
+  const seen = new Set<string>();
+  return text.split(/(\n\s*\n)/).map((para) => {
+    const docChips = new Set<string>();
+    return para.replace(/(, )?\[([^\]\n]{1,40})\]\((https:\/\/lex\.uz\/[^)\s]+)\)/g, (m, sep: string | undefined, label: string, href: string) => {
+      const chip = CITE_CHIP.test(label);
+      if (chip && !/^\d/.test(label)) {           // Plenum / farmon / lex.uz tugmasi: abzatsda hujjat bo'yicha bir marta
+        const doc = href.split('#')[0];
+        if (docChips.has(doc)) return '';
+        docChips.add(doc);
+        return m;
+      }
+      if (seen.has(href)) return chip ? '' : (sep ?? '') + label;
+      seen.add(href);
+      return m;
+    }).replace(/(\s), (?=\[)/g, '$1');   // birinchi tugma olib tashlansa, qolgan "  , [..]" vergulsiz
+  }).join('');
+}
+
 function renderBold(text: string, keyBase: string): ReactNode[] {
   const parts = text.split(/\*\*(.+?)\*\*/g);
   const nodes: ReactNode[] = [];
@@ -120,7 +145,7 @@ function parseBlocks(text: string): Block[] {
 
 export default function AnswerText({ text, typing = false }: { text: string; typing?: boolean }) {
   const blocks = useMemo(() => {
-    const cleaned = cleanText(typing ? text.replace(/\s*\[[^\]\n]*(?:\]\([^)\s]*)?$/, '') : text);
+    const cleaned = cleanText(dedupeLinks(typing ? text.replace(/\s*\[[^\]\n]*(?:\]\([^)\s]*)?$/, '') : text));
     if (!cleaned) return [];
     return parseBlocks(cleaned);
   }, [text, typing]);
