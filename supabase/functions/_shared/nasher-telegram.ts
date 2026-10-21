@@ -81,9 +81,32 @@ export function prepareAnswer(raw: string): string {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// Saytdagi AnswerText.dedupeLinks bilan bir xil qoida (havolalar ko'payib ketmasin):
+// bir xil havola faqat birinchi marta; ko'rsatilgan moddaning tugmasi yo'q; Plenum/hujjat tugmasi abzatsda bir marta.
+const CITE_CHIP = /^(\d+[⁰¹²³⁴⁵⁶⁷⁸⁹]*-modda|Plenum №\d+|[A-Z][A-Z']{0,4}-\d[\w/-]*|№[\w/-]+|lex\.uz)$/;
+
+export function dedupeLinks(text: string): string {
+  const seen = new Set<string>();
+  return text.split(/(\n\s*\n)/).map((para) => {
+    const docChips = new Set<string>();
+    return para.replace(/(, )?\[([^\]\n]{1,40})\]\((https:\/\/lex\.uz\/[^)\s]+)\)/g, (m, sep: string | undefined, label: string, href: string) => {
+      const chip = CITE_CHIP.test(label);
+      if (chip && !/^\d/.test(label)) {
+        const doc = href.split("#")[0];
+        if (docChips.has(doc)) return "";
+        docChips.add(doc);
+        return m;
+      }
+      if (seen.has(href)) return chip ? "" : (sep ?? "") + label;
+      seen.add(href);
+      return m;
+    }).replace(/(\s), (?=\[)/g, "$1").replace(/[ \t]+([.,;:!?])/g, "$1");
+  }).join("");
+}
+
 /** Javob matnini Telegram HTML'ga o'tkazadi: sarlavhalar va **qalin** -> <b>, ro'yxat belgilari -> •. */
 export function toTelegramHtml(text: string): string {
-  return text.split("\n").map((line) => {
+  return dedupeLinks(text).split("\n").map((line) => {
     const t = line.trim();
     if (!t) return "";
     const heading = t.match(/^#{1,6}\s*(.+)$/);
