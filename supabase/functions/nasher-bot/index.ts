@@ -1,3 +1,4 @@
+// deploy 2026-10-22 ovoz-zaxira
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
 // deploy 2026-10-22 vertex
@@ -72,6 +73,8 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /** Telegram ovozini yuklab, matnga aylantiradi. null — ovoz bo'sh/tushunarsiz. PoolExhausted — hamma kalit band. */
+const VOICE_FALLBACK_MODEL = "gemini-2.5-flash";
+
 async function transcribeVoice(token: string, fileId: string, mime: string): Promise<string | null> {
   const f = await tg(token, "getFile", { file_id: fileId });
   const path = f.result?.file_path;
@@ -80,10 +83,18 @@ async function transcribeVoice(token: string, fileId: string, mime: string): Pro
   if (!audio.ok) throw new Error("ovoz yuklanmadi: " + audio.status);
   const bytes = new Uint8Array(await audio.arrayBuffer());
   const model = (await settings(["NASHER_VOICE_MODEL"]))["NASHER_VOICE_MODEL"] || "gemini-3-flash-preview";
-  const { data } = await geminiWithPool(sb, "voice", model, {
+  const body = {
     contents: [{ role: "user", parts: [{ inline_data: { mime_type: mime, data: toBase64(bytes) } }, { text: TRANSCRIBE_PROMPT }] }],
     generationConfig: { temperature: 0, maxOutputTokens: 1500 },
-  }, { timeoutMs: 45_000 });
+  };
+  let data;
+  try {
+    ({ data } = await geminiWithPool(sb, "voice", model, body, { timeoutMs: 45_000 }));
+  } catch (e) {
+    // asosiy model kvotasi tugasa — zaxira model (kvotasi alohida); u ham band bo'lsa PoolExhausted foydalanuvchiga "kuting"
+    if (!(e instanceof PoolExhausted) || model === VOICE_FALLBACK_MODEL) throw e;
+    ({ data } = await geminiWithPool(sb, "voice", VOICE_FALLBACK_MODEL, body, { timeoutMs: 45_000 }));
+  }
   const text = geminiText(data).trim();
   return text.length >= 3 ? text : null;
 }
