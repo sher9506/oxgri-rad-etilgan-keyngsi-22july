@@ -147,3 +147,6 @@ verify_jwt = false
 
 [functions.nasher-bot-dispatch]
 verify_jwt = false
+
+[functions.nasher-keys]
+verify_jwt = false
