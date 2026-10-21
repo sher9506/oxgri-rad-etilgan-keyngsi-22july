@@ -184,6 +184,45 @@ function ModelSettings({ adminCode }: { adminCode: string }) {
   );
 }
 
+interface FastJob { id: string; created_at: string; finished_at: string | null; status: string; answer_mode: string; lexion_fallback_reason: string | null }
+
+/** Oxirgi tez savollar: necha soniyada javob berildi yoki nega Chuqur rejimga o'tdi */
+function FastLog({ adminCode }: { adminCode: string }) {
+  const [jobs, setJobs] = useState<FastJob[] | null>(null);
+  const [error, setError] = useState('');
+  const load = useCallback(() => {
+    setError('');
+    callKeys(adminCode, { action: 'fast_log' }).then(d => setJobs(d?.jobs ?? [])).catch(e => {
+      console.error('[NasherApiKalitlari] fast_log:', e);
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  }, [adminCode]);
+  useEffect(load, [load]);
+
+  const sec = (j: FastJob) => j.finished_at ? Math.round((Date.parse(j.finished_at) - Date.parse(j.created_at)) / 1000) + ' s' : '…';
+  return (
+    <Card className="bg-white">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-lg">⚡ Oxirgi tez savollar</CardTitle>
+        <Button variant="outline" size="sm" onClick={load}>Yangilash</Button>
+      </CardHeader>
+      <CardContent className="space-y-1 text-sm">
+        {error && <p className="text-red-600">{error}</p>}
+        {jobs?.length === 0 && <p className="text-slate-500">Hali tez savol yo'q.</p>}
+        {jobs?.map(j => (
+          <div key={j.id} className="flex flex-wrap gap-x-3 border-b py-1">
+            <span className="text-slate-500">{new Date(j.created_at).toLocaleString('uz-UZ')}</span>
+            {j.answer_mode === 'fast'
+              ? <span className="text-green-700">✅ Tez · {j.status} · {sec(j)}</span>
+              : <span className="text-amber-700">↪ Chuqurga o'tdi · {j.status}</span>}
+            {j.lexion_fallback_reason && <span className="w-full break-all font-mono text-xs text-red-700">{j.lexion_fallback_reason}</span>}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 // Kalitlar bo'limi alohida PIN bilan himoyalangan: sayt kodida ochiq turgan admin kodi bilan kirib bo'lmaydi.
 // PIN Supabase secret NASHER_ADMIN_CODE ga teng bo'lishi kerak; brauzerda faqat shu oyna yopilguncha saqlanadi.
 const PIN_KEY = 'nasher_keys_pin';
@@ -224,6 +263,7 @@ export default function NasherApiKalitlari() {
   return (
     <div className="space-y-6">
       {POOLS.map(p => <PoolCard key={p.pool} adminCode={pin} {...p} />)}
+      <FastLog adminCode={pin} />
       <ModelSettings adminCode={pin} />
     </div>
   );

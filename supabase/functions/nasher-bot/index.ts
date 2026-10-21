@@ -103,7 +103,7 @@ async function routeQuestion(question: string): Promise<"fast" | "deep"> {
     const call = geminiWithPool(sb, "fast", model, {
       systemInstruction: { parts: [{ text: ROUTER_INSTRUCTION }] },
       contents: [{ role: "user", parts: [{ text: question.slice(0, 2500) }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 5 },
+      generationConfig: { temperature: 0, maxOutputTokens: 256 },
     }, { keys, timeoutMs: 2_500 });
     const { data } = await Promise.race([call, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("3 s o'tdi")), 3_000))]);
     return /DEEP/i.test(geminiText(data)) ? "deep" : "fast";

@@ -162,6 +162,15 @@ Deno.serve(async (req) => {
       }
       case "models":
         return json({ models: await readModels() });
+      case "fast_log": {
+        // Oxirgi tez savollar: qancha vaqt oldi, Chuqurga o'tgan bo'lsa — sababi (RLS tufayli mijoz buni ko'ra olmaydi)
+        const { data, error } = await sb.from("case_answer_jobs")
+          .select("id, created_at, finished_at, status, answer_mode, lexion_fallback_reason")
+          .or("answer_mode.eq.fast,lexion_fallback_reason.like.tez→chuqur*")
+          .order("created_at", { ascending: false }).limit(15);
+        if (error) throw new Error(error.message);
+        return json({ jobs: data ?? [] });
+      }
       case "set_model": {
         const pool = b.pool as keyof typeof MODEL_KEY;
         const model = String(b.model ?? "").trim();
