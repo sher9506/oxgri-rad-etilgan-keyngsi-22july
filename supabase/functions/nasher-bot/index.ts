@@ -1,3 +1,4 @@
+// deploy 2026-10-22 kvota-regex2
 // deploy 2026-10-22 kvota-regex
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval

@@ -1,3 +1,4 @@
+// deploy 2026-10-22 kvota-regex
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
 // NaSher Gemini kalitlari havzasini boshqarish (admin panel). Auth: x-admin-code — PIN (secret NASHER_ADMIN_CODE yoki nasher_private_settings dagi SHA-256 xesh).
