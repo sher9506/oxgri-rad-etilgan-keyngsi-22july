@@ -53,7 +53,7 @@ const LINK_URL = /(\]\(https:\/\/lex\.uz\/[^)\s]+\))/;
 
 // ── Yangi alifbo (O'RQ-1184, 21.10.2026): oʻ→ö, gʻ→ğ, sh→ş, ch→ç, tutuq belgisi → ’ (botdagi nasher-telegram.ts bilan bir xil) ──
 // Faqat ko'rinadigan matn: URL'lar, lex.uz havola manzillari va hujjat raqamlari (O'RQ-…) eski holicha qoladi.
-const KEEP_RE = /(\]\(https?:\/\/[^)\s]+\)|<a href="[^"]*">|https?:\/\/\S+|\bO['ʻʼ‘’]RQ-[\w/-]+)/;
+const KEEP_RE = /(\]\(https?:\/\/[^)\s]+\)|<a href="[^"]*">|https?:\/\/\S+|\bO['ʻʼ‘’]RQ-[\w/-]+|NaSher|@\w+)/;
 const APOS = "['ʻʼ‘’`´]";
 const OG_RE = new RegExp(`([OoGg])${APOS}`, 'g');
 const OG: Record<string, string> = { O: 'Ö', o: 'ö', G: 'Ğ', g: 'ğ' };

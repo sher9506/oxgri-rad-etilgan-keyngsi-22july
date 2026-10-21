@@ -157,7 +157,7 @@ export function lawLinks(urls: string[], names: Record<string, string>): string 
 
 // ── Yangi alifbo (O'RQ-1184, 21.10.2026): oʻ→ö, gʻ→ğ, sh→ş, ch→ç, tutuq belgisi → ’ (saytdagi nasherText.toNewAlphabet bilan bir xil) ──
 // Faqat ko'rinadigan matn: URL'lar, <a href>, lex.uz havola manzillari va hujjat raqamlari (O'RQ-…) eski holicha qoladi.
-const KEEP_RE = /(\]\(https?:\/\/[^)\s]+\)|<a href="[^"]*">|https?:\/\/\S+|\bO['ʻʼ‘’]RQ-[\w/-]+)/;
+const KEEP_RE = /(\]\(https?:\/\/[^)\s]+\)|<a href="[^"]*">|https?:\/\/\S+|\bO['ʻʼ‘’]RQ-[\w/-]+|NaSher|@\w+)/;
 const APOS = "['ʻʼ‘’`´]";
 const OG_RE = new RegExp(`([OoGg])${APOS}`, "g");
 const OG: Record<string, string> = { O: "Ö", o: "ö", G: "Ğ", g: "ğ" };
