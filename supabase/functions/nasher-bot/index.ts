@@ -50,14 +50,7 @@ async function channelGate(userId: string, tgId: number): Promise<{ channel: str
   const ch = await channelInfo(sb, userId, tgId, true);
   return { channel: ch.channel ?? "", member: ch.channel ? ch.member : null };
 }
-// Mini App vositalari (?tool=…): savol matniga qarab mos tugmalar
-const TOOL_RULES: { id: string; text: string; re: RegExp }[] = [
-  { id: "aliment", text: "👶 Aliment kalkulyatori", re: /aliment|алимент/i },
-  { id: "boj", text: "🧮 Davlat boji kalkulyatori", re: /davlat boji|sud boji|boj\b|пошлин|божи/i },
-  { id: "shablon", text: "📄 Ariza namunalari (Word)", re: /ariza|da'vo|daʼvo|shikoyat|namuna|shablon|ариза|даъво|шикоят/i },
-  { id: "sud", text: "🏛 Sud manzillari", re: /sud(ga|ning)? (manzil|telefon|qayer)|qaysi sudga|sud manzil|суд манзил/i },
-];
-const matchTools = (q: string) => TOOL_RULES.filter((t) => t.re.test(q));
+// Mini App vositalari (?tool=…)
 const toolUrl = (miniUrl: string, id: string) => miniUrl + (miniUrl.includes("?") ? "&" : "?") + "tool=" + id;
 
 const json = (data: unknown, status = 200) =>
@@ -281,12 +274,6 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
     if (progressId) await tg(token, "editMessageText", { chat_id: chatId, message_id: progressId, text: `⚠️ ${err}` });
     else await reply(`⚠️ ${esc(err)}`);
     return;
-  }
-  // Savol mavzusiga mos vosita (kalkulyator/shablon/manzil) — javobni kutmasdan ochib ko'rish uchun
-  const tools = miniUrl ? matchTools(text) : [];
-  if (tools.length) {
-    await reply("Javob tayyorlanayotganda foydali bo'lishi mumkin 👇", { reply_markup: { inline_keyboard:
-      tools.map((t) => [{ text: t.text, web_app: { url: toolUrl(miniUrl, t.id) } }]) } });
   }
   await sb.from("case_answer_jobs")
     .update({ tg_chat_id: chatId, tg_progress_msg_id: progressId ?? null, tg_phase: "searching" })

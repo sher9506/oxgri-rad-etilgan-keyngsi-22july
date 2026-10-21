@@ -70,7 +70,7 @@ export default function NasherMiniApp() {
   if (tool) {
     return (
       <main style={{ minHeight: '100dvh', background: '#fff', paddingTop: 'var(--tg-content-safe-area-inset-top, 0px)' }}>
-        <ToolsPage tool={tool} onChange={setTool} onChat={() => setTool('')} />
+        <ToolsPage tool={tool} sh={new URLSearchParams(window.location.search).get('sh') || undefined} onChange={setTool} onChat={() => setTool('')} />
       </main>
     );
   }

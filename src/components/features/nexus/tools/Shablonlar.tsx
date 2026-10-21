@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { BOLIMLAR, SHABLONLAR, renderMatn, yuklabOlDocx, type Shablon } from './shablonlar-data';
 
-export default function Shablonlar({ onBack }: { onBack: () => void }) {
-  const [tanlangan, setTanlangan] = useState<Shablon | null>(null);
+export default function Shablonlar({ onBack, initialId }: { onBack: () => void; initialId?: string }) {
+  // savolga mos tugmadan kelganda (?sh=…) namuna darhol ochiladi
+  const [tanlangan, setTanlangan] = useState<Shablon | null>(() => SHABLONLAR.find((s) => s.id === initialId) ?? null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [xabar, setXabar] = useState('');
   const [qidiruv, setQidiruv] = useState('');

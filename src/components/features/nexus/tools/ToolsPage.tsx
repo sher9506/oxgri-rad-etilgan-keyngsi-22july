@@ -15,12 +15,12 @@ export const TOOLS = [
 ] as const;
 export type ToolId = typeof TOOLS[number]['id'];
 
-export default function ToolsPage({ tool, onChange, onChat }: { tool: string; onChange: (t: string) => void; onChat: () => void }) {
+export default function ToolsPage({ tool, sh, onChange, onChat }: { tool: string; sh?: string; onChange: (t: string) => void; onChat: () => void }) {
   const back = () => onChange('menu');
   const page =
     tool === 'aliment' ? <AlimentKalkulyator onBack={back} /> :
     tool === 'boj' ? <DavlatBojiKalkulyator onBack={back} /> :
-    tool === 'shablon' ? <Shablonlar onBack={back} /> :
+    tool === 'shablon' ? <Shablonlar onBack={back} initialId={sh} /> :
     tool === 'sud' ? <SudManzillari onBack={back} /> : null;
   if (page) return <Suspense fallback={<div className="p-6 text-center text-slate-500">Yuklanmoqda…</div>}>{page}</Suspense>;
 

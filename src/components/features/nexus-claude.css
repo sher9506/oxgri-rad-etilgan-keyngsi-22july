@@ -1122,6 +1122,47 @@ ol.nc-answer-list {
   box-shadow: var(--nc-shadow);
 }
 
+/* ── Vositalar: doimiy tugma (yozish oynasi tagida) va javob tagidagi mos tugmalar ── */
+.nc-tools-btn {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border: 1px solid var(--nc-border);
+  border-radius: 999px;
+  background: var(--nc-surface);
+  color: var(--nc-text-2);
+  font-family: var(--nc-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.nc-tools-btn svg { width: 13px; height: 13px; }
+.nc-tools-btn:hover { color: var(--nc-accent); }
+.nc-tool-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.nc-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px solid var(--nc-border);
+  border-radius: 999px;
+  background: var(--nc-surface-2);
+  color: var(--nc-text);
+  font-family: var(--nc-sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+.nc-tool-chip:hover { color: var(--nc-accent); border-color: var(--nc-accent); }
+.nc-tools-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background: #fff;
+  padding-top: var(--tg-content-safe-area-inset-top, 0px);
+}
+
 .nc-mode-hint {
   white-space: nowrap;
   overflow: hidden;

@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import {
   ArrowUp, Sparkles, Trash2, RotateCcw, Copy, Check,
   FileText, ExternalLink, AlertCircle, Clock, ChevronDown, Loader2,
-  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search, Target,
+  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search, Target, Wrench,
 } from 'lucide-react';
+import { TOOL_BUTTONS } from '../../../supabase/functions/_shared/nasher-tools';
+
 import { useNexusAiChat } from '@/hooks/useNexusAiChat';
 import type { ChatMeta, NasherMode } from '@/hooks/useNexusAiChat';
 import { useNow } from '@/hooks/useNow';
@@ -19,6 +21,10 @@ import ChannelPrompt from './nexus/ChannelPrompt';
 import AnswerText from './nexus/AnswerText';
 import { stripSourceWords, prepareAnswer, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
 import './nexus-claude.css';
+
+// Vositalar faqat ochilganda yuklanadi (asosiy chat tezligi o'zgarmaydi)
+const ToolsPage = lazy(() => import('./nexus/tools/ToolsPage'));
+type OpenTool = (t: { tool: string }) => void;
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -317,9 +323,10 @@ interface NexusMessageProps {
   copiedId: string | null;
   onCopy: (id: string, text: string) => void;
   onRetry: (aiMsgId: string) => void;
+  onOpenTool: OpenTool;
 }
 
-function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
+function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool }: NexusMessageProps) {
   const isDone = msg.role === 'assistant' && msg.status === 'done';
   const answer = useMemo(() => prepareAnswer(msg.content), [msg.content]);
   const { shown, typing } = useTypewriter(msg.id, answer, isDone && !!msg.fresh);
@@ -416,6 +423,13 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry }: NexusMessageProps) {
           </div>
         </div>
       )}
+      {!typing && (
+        <div className="nc-tool-chips">
+          {TOOL_BUTTONS.map((t) => (
+            <button key={t.tool} type="button" className="nc-tool-chip" onClick={() => onOpenTool(t)}>{t.text}</button>
+          ))}
+        </div>
+      )}
       <div className={`nc-actions ${typing ? 'nc-actions-hidden' : ''}`} aria-live="polite">
         <button onClick={() => onCopy(msg.id, answer)} className="nc-action-btn" aria-label={copiedId === msg.id ? COPIED_LABEL : COPY_LABEL}>
           {copiedId === msg.id ? <Check /> : <Copy />}
@@ -470,13 +484,14 @@ interface NexusComposerProps {
   onNewChat: () => void;
   newChatBlocked: boolean;
   waitingElsewhere: boolean;
+  onOpenTools: () => void;
 }
 
 function NexusComposer({
   input, setInput, onSend, onKeyDown, mode, onModeChange,
   isProcessing, canSend, inputBlocked, inputTooLong, inputTooShort,
   minInput, maxInput, resetText, inputRef, chatLimitError, onOpenChats, memoryNote,
-  chatExpired, onNewChat, newChatBlocked, waitingElsewhere,
+  chatExpired, onNewChat, newChatBlocked, waitingElsewhere, onOpenTools,
 }: NexusComposerProps) {
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -578,6 +593,10 @@ function NexusComposer({
               </button>
             ))}
           </div>
+          <button type="button" className="nc-tools-btn" onClick={onOpenTools} title="Kalkulyatorlar, ariza namunalari, sud manzillari">
+            <Wrench />
+            Vositalar
+          </button>
           {input.length > maxInput * 0.8 && (
             <span className={`nc-counter nc-counter-sm ${counterWarn || inputTooLong ? 'nc-counter-warn' : ''}`}>
               {input.length} / {maxInput}
@@ -1002,6 +1021,7 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
   }, [initialChatId, chats, switchChat]);
 
   const [input, setInput] = useState('');
+  const [openTool, setOpenTool] = useState<{ tool: string; sh?: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1261,6 +1281,7 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
                       copiedId={copiedId}
                       onCopy={handleCopy}
                       onRetry={retry}
+                      onOpenTool={setOpenTool}
                     />
                   ))}
                   {chatExpired && (
@@ -1300,9 +1321,22 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
             onNewChat={handleNewChat}
             newChatBlocked={activeCount >= maxActive}
             waitingElsewhere={!!pendingChatId && pendingChatId !== activeChatId}
+            onOpenTools={() => setOpenTool({ tool: 'menu' })}
           />
         </div>
       </div>
+      {openTool && (
+        <div className="nc-tools-overlay" role="dialog" aria-label="Vositalar">
+          <Suspense fallback={<div className="p-6 text-center text-slate-500">Yuklanmoqda…</div>}>
+            <ToolsPage
+              tool={openTool.tool}
+              sh={openTool.sh}
+              onChange={(t) => setOpenTool({ tool: t })}
+              onChat={() => setOpenTool(null)}
+            />
+          </Suspense>
+        </div>
+      )}
     </NexusShell>
   );
 }
