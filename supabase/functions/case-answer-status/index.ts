@@ -1,3 +1,4 @@
+// deploy 2026-10-22 tez-diag
 // deploy 2026-10-20 lexion-double
 // deploy 2026-10-19 lunda-lexion
 // deploy 2026-10-19 b
@@ -221,6 +222,15 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const { id, ustoz_id } = body;
+
+    // Tashxis: shu foydalanuvchining oxirgi tez (Lo'nda) savollari — necha soniya va nega Chuqurga o'tgani (matn/kalitsiz)
+    if (body.diag === "fast" && typeof ustoz_id === "string" && ustoz_id) {
+      const { data } = await supabaseAdmin.from("case_answer_jobs")
+        .select("created_at, finished_at, status, answer_mode, lexion_fallback_reason")
+        .eq("teacher_id", ustoz_id).or("answer_mode.eq.fast,lexion_fallback_reason.like.tez→chuqur*")
+        .order("created_at", { ascending: false }).limit(5);
+      return new Response(JSON.stringify({ jobs: data ?? [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (!id || !ustoz_id) {
       return new Response(

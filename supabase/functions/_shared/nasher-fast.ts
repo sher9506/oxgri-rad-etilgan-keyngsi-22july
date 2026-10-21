@@ -1,9 +1,12 @@
+// deploy 2026-10-22 tez-diag
 // Tez rejim (Lo'nda): savol to'g'ridan-to'g'ri Gemini'ga ("fast" kalitlar havzasi), Render/NotebookLM'siz.
 // Yoqilgan: settings.NASHER_FAST_USERS ("*" yoki talaba id'lari) va havzada kamida bitta kalit bo'lsa.
 // NASHER_FAST_SEARCH = "off" bo'lmasa, Gemini Google qidiruvi bilan amaldagi qonun matnini tekshiradi (modda raqamlari aniqroq).
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { geminiText, geminiWithPool, loadPool, PoolExhausted, type PoolKey } from "./key-pool.ts";
 import { FAST_INSTRUCTION } from "./nasher-prompts.ts";
+
+const FALLBACK_MODEL = "gemini-2.5-flash";
 
 export interface FastCfg { keys: PoolKey[]; model: string; search: boolean }
 
@@ -46,8 +49,8 @@ function fastBody(contents: unknown[], search: boolean, thinking: boolean) {
 }
 
 /**
- * Tezkor javob matni. Ketma-ket urinishlar: (qidiruv + past o'ylash) → (qidiruvsiz + past o'ylash) → (oddiy so'rov).
- * Keyingi urinishga faqat so'rov/javob muammosida o'tiladi; PoolExhausted (hamma kalit band) darhol chaqiruvchiga — u Chuqurga o'tkazadi.
+ * Tezkor javob matni. Ketma-ket urinishlar: (qidiruv + past o'ylash) → (qidiruvsiz) → (oddiy so'rov) → zaxira model.
+ * Hammasi muvaffaqiyatsiz bo'lsa xato (chaqiruvchi Chuqurga o'tkazadi); faqat kvota bo'lsa — PoolExhausted.
  */
 export async function answerFast(sb: SupabaseClient, cfg: FastCfg, question: string, history: { q: string; a: string }[]): Promise<string> {
   const contents = [
@@ -57,18 +60,27 @@ export async function answerFast(sb: SupabaseClient, cfg: FastCfg, question: str
     ]),
     { role: "user", parts: [{ text: question }] },
   ];
-  const attempts: [boolean, boolean][] = cfg.search ? [[true, true], [false, true], [false, false]] : [[false, true], [false, false]];
+  // [model, qidiruv, o'ylash]; zaxira model (2.5) kvotasi alohida va thinkingLevel'ni bilmaydi — o'ylashsiz
+  const attempts: [string, boolean, boolean][] = [
+    ...(cfg.search ? [[cfg.model, true, true]] as [string, boolean, boolean][] : []),
+    [cfg.model, false, true], [cfg.model, false, false],
+    ...(cfg.model !== FALLBACK_MODEL ? [[FALLBACK_MODEL, false, false]] as [string, boolean, boolean][] : []),
+  ];
   const errors: string[] = [];
-  for (const [search, thinking] of attempts) {
+  let exhausted: PoolExhausted | null = null;
+  for (const [model, search, thinking] of attempts) {
+    if (exhausted && model === cfg.model) continue;   // asosiy model kvotasi tugagan — darhol zaxiraga
     try {
-      const { data } = await geminiWithPool(sb, "fast", cfg.model, fastBody(contents, search, thinking), { keys: cfg.keys, timeoutMs: 40_000 });
+      const { data } = await geminiWithPool(sb, "fast", model, fastBody(contents, search, thinking), { keys: cfg.keys, timeoutMs: 40_000 });
       const text = geminiText(data);
       if (text) return text;
-      errors.push(`bo'sh javob (${data?.candidates?.[0]?.finishReason ?? "?"}, qidiruv=${search}, o'ylash=${thinking})`);
+      errors.push(`${model}: bo'sh javob (${data?.candidates?.[0]?.finishReason ?? "?"}, qidiruv=${search}, o'ylash=${thinking})`);
     } catch (e) {
-      if (e instanceof PoolExhausted) throw e;
-      errors.push(`${String(e).slice(0, 160)} (qidiruv=${search}, o'ylash=${thinking})`);
+      if (e instanceof PoolExhausted) exhausted = e;
+      errors.push(`${model}: ${String(e).slice(0, 160)} (qidiruv=${search}, o'ylash=${thinking})`);
     }
   }
+  console.warn("[nasher-fast]", errors.join(" | "));
+  if (exhausted && errors.every((x) => x.includes("kalitlar band"))) throw exhausted;
   throw new Error("Gemini javob bermadi: " + errors.join(" | "));
 }

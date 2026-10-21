@@ -1,3 +1,4 @@
+// deploy 2026-10-22 tez-diag
 // deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
 // deploy 2026-10-22 vertex
@@ -499,7 +500,7 @@ Deno.serve(async (req: Request) => {
               console.log(`[case-answer-submit] tez javob: job=${jobId} ms=${Date.now() - t0}`);
             } catch (e) {
               // foydalanuvchi javobsiz qolmasin: shu savol Chuqur rejimda (Lexion → NotebookLM) davom etadi
-              const reason = String(e).slice(0, 200);
+              const reason = String(e).slice(0, 800);
               console.log(`[case-answer-submit] tez rejim ishlamadi (${reason}), Chuqurga o'tildi: job=${jobId}`);
               const lex = await sendToLexion(lexionCfg, { title: "Lexion", kazus_text, external_id: `${jobId}-lex` });
               await supabaseAdmin.from("case_answer_jobs").update(lex.serviceJobId
