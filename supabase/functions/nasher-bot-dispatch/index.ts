@@ -87,7 +87,10 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
     // Mini App aynan shu suhbatni ochadi; "Yangi suhbat" — keyingi savol yangi suhbatda
     // 4 ta vosita har javob oxirida doim (2 qatorda), Mini App'da ochiladi
     const tool = (b: (typeof TOOL_BUTTONS)[number]) => ({ text: b.text, web_app: { url: miniUrl + (miniUrl.includes("?") ? "&" : "?") + toolQuery(b) } });
+    // Tezkor javob (oxirida FAST_FOOTER) — yetarli bo'lmasa o'sha savolni Chuqur rejimda qayta so'rash tugmasi
+    const isFast = String(data.answer ?? "").includes("Bu tezkor javob");
     const markup = { inline_keyboard: [
+      ...(isFast ? [[{ text: "🔎 Chuqur tahlil (batafsil)", callback_data: "deep:" + job.id }]] : []),
       ...(miniUrl ? [[{ text: "📱 To'liq ko'rish", web_app: { url: chatAppUrl(miniUrl, job.chat_id) } }]] : []),
       ...(miniUrl ? [TOOL_BUTTONS.slice(0, 2).map(tool), TOOL_BUTTONS.slice(2, 4).map(tool)] : []),
       ...(join ? [[{ text: "📢 Kanalga qo'shilish (+2 savol)", url: join }]] : []),

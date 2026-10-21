@@ -456,7 +456,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool }: NexusMessa
 
 // Tezlik tartibida: eng qisqasidan eng chuqurigacha
 const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof Zap }[] = [
-  { id: 'lunda', label: "Lo'nda", hint: "Qisqa javob: qaysi modda, nima qilish kerak · ~1,5 daqiqa", Icon: Target },
+  { id: 'lunda', label: "Lo'nda", hint: "Tezkor javob: qaysi modda, nima qilish kerak · ~1 daqiqa", Icon: Target },
   { id: 'chuqur', label: 'Chuqur', hint: "Butun qonunchilik bo'yicha tahlil · ~2–3 daqiqa", Icon: Search },
 ];
 const MODE_KEY = 'nasher_mode';

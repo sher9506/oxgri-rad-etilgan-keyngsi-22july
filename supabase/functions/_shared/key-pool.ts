@@ -1,0 +1,78 @@
+// Gemini kalitlari havzasi (nasher_api_keys): navbat bilan ishlatish, 429/kvotada keyingisiga o'tish, kunlik hisob.
+// Kalitlar faqat service_role orqali o'qiladi; loglarga hech qachon to'liq kalit yozilmaydi (faqat oxirgi 4 belgi).
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+
+export type Pool = "voice" | "fast";
+export interface PoolKey { id: string; api_key: string }
+
+export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+export const tail = (k: string) => "…" + k.slice(-4);
+
+/** Hamma kalitlar 429 / kvota bilan qaytdi — chaqiruvchi foydalanuvchiga "kuting" deydi yoki chuqur rejimga o'tadi. */
+export class PoolExhausted extends Error {
+  constructor(public pool: Pool) { super(`${pool}: barcha kalitlar band yoki kvotasi tugagan`); }
+}
+
+export async function loadPool(sb: SupabaseClient, pool: Pool): Promise<PoolKey[]> {
+  const { data } = await sb.from("nasher_api_keys").select("id, api_key").eq("pool", pool).eq("enabled", true).order("created_at");
+  return (data ?? []) as PoolKey[];
+}
+
+type Kind = "ok" | "quota" | "error";
+export async function recordUsage(sb: SupabaseClient, keyId: string, kind: Kind, status: string) {
+  const { error } = await sb.rpc("nasher_api_usage_add", { p_key: keyId, p_kind: kind, p_status: status });
+  if (error) console.warn("[key-pool] hisob yozilmadi:", error.message);
+}
+
+const isQuota = (status: number, body: string) =>
+  status === 429 || (status === 403 && /quota|exceeded|rate/i.test(body)) || /RESOURCE_EXHAUSTED/.test(body);
+
+/**
+ * Gemini generateContent: tasodifiy kalitdan boshlab navbat bilan (parallel so'rovlar kalitlarga teng tarqaladi).
+ * 429/kvota yoki 5xx — keyingi kalit; 400 — so'rovning o'zi xato, boshqa kalit yordam bermaydi.
+ */
+export async function geminiWithPool(
+  sb: SupabaseClient, pool: Pool, model: string, body: unknown, opts: { keys?: PoolKey[]; timeoutMs?: number } = {},
+): Promise<{ data: any; key: PoolKey }> {
+  const keys = opts.keys ?? await loadPool(sb, pool);
+  if (!keys.length) throw new PoolExhausted(pool);
+  const start = Math.floor(Math.random() * keys.length);
+  let lastErr = "";
+  let allQuota = true;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[(start + i) % keys.length];
+    try {
+      const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key.api_key },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000),
+      });
+      const text = await res.text();
+      if (res.ok) {
+        await recordUsage(sb, key.id, "ok", "200");
+        return { data: JSON.parse(text), key };
+      }
+      if (isQuota(res.status, text)) {
+        await recordUsage(sb, key.id, "quota", String(res.status));
+        lastErr = `${tail(key.api_key)}: ${res.status} kvota`;
+        continue;
+      }
+      allQuota = false;
+      await recordUsage(sb, key.id, "error", String(res.status));
+      lastErr = `${tail(key.api_key)}: ${res.status} ${text.slice(0, 200)}`;
+      if (res.status === 400) break;
+    } catch (e) {
+      allQuota = false;
+      await recordUsage(sb, key.id, "error", "network");
+      lastErr = `${tail(key.api_key)}: ${String(e).slice(0, 200)}`;
+    }
+  }
+  console.warn(`[key-pool] ${pool}: ${lastErr}`);
+  if (allQuota) throw new PoolExhausted(pool);
+  throw new Error(lastErr || "Gemini javob bermadi");
+}
+
+/** Javobdagi matn qismlari */
+export const geminiText = (data: any): string =>
+  (data?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("").trim();

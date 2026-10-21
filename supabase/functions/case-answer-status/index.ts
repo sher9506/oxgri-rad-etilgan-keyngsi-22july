@@ -5,8 +5,9 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getLexionConfig, parseLexionJobId, tagLexionJobId } from "../_shared/lexion-target.ts";
-import { KAZUS_INSTRUCTION as INSTRUCTION, LUNDA_MAX_DOCS, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
+import { FAST_FOOTER, FAST_INSTRUCTION, KAZUS_INSTRUCTION as INSTRUCTION, LUNDA_MAX_DOCS, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
 import { canKeepOn, expireChatNotebook, getChatNotebook, getKeepCfg, lexDocId, registerKeptNotebook } from "../_shared/nexus-notebooks.ts";
+import { loadPool, recordUsage } from "../_shared/key-pool.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +19,40 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 );
+
+// ── Tez rejim (Lo'nda): NotebookLM'siz, Render lex.uz moddalari + Gemini ("fast" kalitlar havzasi) ──
+// Yoqilgan: settings.NASHER_FAST_USERS ("*" yoki talaba id'lari) va havzada kamida bitta kalit bo'lsa.
+const FAST_MAX_DOCS = 5;
+async function fastConfig(teacherId: string): Promise<{ keys: { id: string; key: string }[]; model: string } | null> {
+  const { data } = await supabaseAdmin.from("settings").select("key, text_value").in("key", ["NASHER_FAST_USERS", "NASHER_FAST_MODEL"]);
+  const s: Record<string, string> = {};
+  for (const r of data ?? []) if (r.text_value) s[r.key] = String(r.text_value).trim();
+  const users = s["NASHER_FAST_USERS"] ?? "";
+  if (users !== "*" && !users.split(",").map((x) => x.trim()).includes(String(teacherId))) return null;
+  const keys = await loadPool(supabaseAdmin, "fast");
+  if (!keys.length) return null;
+  return { keys: keys.map((k) => ({ id: k.id, key: k.api_key })), model: s["NASHER_FAST_MODEL"] || "gemini-3-flash-preview" };
+}
+
+/** Shu suhbatdagi oxirgi 2 ta savol-javob — tez rejim aniqlashtiruvchi savollarga javobni tushunsin */
+async function chatHistory(chatId: string | null, excludeId: string): Promise<{ q: string; a: string }[]> {
+  if (!chatId) return [];
+  const { data } = await supabaseAdmin.from("case_answer_jobs").select("chat_kazus_text, answer")
+    .eq("chat_id", chatId).eq("status", "done").neq("id", excludeId)
+    .order("created_at", { ascending: false }).limit(2);
+  return (data ?? []).reverse()
+    .filter((r) => r.chat_kazus_text && r.answer)
+    .map((r) => ({ q: String(r.chat_kazus_text).slice(0, 1500), a: String(r.answer).slice(0, 2000) }));
+}
+
+/** Render qaytargan kalitlar hisobini yozish (kalit o'zi kelmaydi, faqat id) */
+async function saveKeyUsage(usage: unknown) {
+  if (!Array.isArray(usage)) return;
+  for (const u of usage) {
+    const kind = u?.kind === "ok" || u?.kind === "quota" ? u.kind : "error";
+    if (typeof u?.id === "string") await recordUsage(supabaseAdmin, u.id, kind, String(u.status ?? ""));
+  }
+}
 
 
 function sanitizeAnswer(text: string): string {
@@ -392,7 +427,9 @@ Deno.serve(async (req: Request) => {
 
         if (lexionStatus === "done" || lexionStatus === "completed" || lexionStatus === "success") {
           const lexionAnswer = typeof lexionData.answer === "string" ? lexionData.answer : "";
-          const urls = parseLexionUrls(lexionAnswer).slice(0, job.answer_style === "lunda" ? LUNDA_MAX_DOCS : undefined);
+          // Tez rejimda hamma URL saqlanadi: tez yo'l eng mos 5 tasini oladi, hamma kalit band bo'lsa Chuqur hammasidan foydalanadi
+          const fast = job.answer_style === "lunda" && !job.case_id ? await fastConfig(job.teacher_id) : null;
+          const urls = parseLexionUrls(lexionAnswer).slice(0, job.answer_style === "lunda" && !fast ? LUNDA_MAX_DOCS : undefined);
 
           // URL ro'yxati bo'sh
           if (urls.length === 0) {
@@ -495,6 +532,31 @@ Deno.serve(async (req: Request) => {
             sources: serviceSources,
             ...(job.cite_links ? { citations: true } : {}),   // [N] -> lex.uz moddasiga havola (sinov: faqat preview)
           };
+
+          // Tez rejim: NotebookLM navbatiga kirmaydi, Render darhol lex.uz moddalari + Gemini bilan javob beradi
+          if (fast) {
+            const fastBody = {
+              ...serviceBody,
+              external_id: `${id}-fast`,
+              instruction: FAST_INSTRUCTION,
+              sources: urls.slice(0, FAST_MAX_DOCS).map((u) => ({ title: "Lex.uz hujjati", url: u })),
+              fast: { keys: fast.keys, model: fast.model, history: await chatHistory(job.chat_id, id) },
+            };
+            const sent = await sendWithFailover(await pickBackend(cfg), cfg, fastBody);
+            if (sent.result.serviceJobId) {
+              await supabaseAdmin.from("case_answer_jobs")
+                .update({ backend: sent.backend, service_job_id: sent.result.serviceJobId, status: "queued", chat_followup: false })
+                .eq("id", id);
+              console.log(`[case-answer-status] tez rejim yuborildi: job=${id} backend=${sent.backend}`);
+              return new Response(
+                JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: urls, created_at: job.created_at, server_now: serverNowIso }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+            console.log(`[case-answer-status] tez rejim yuborilmadi, Chuqur rejimga o'tiladi: job=${id}`);
+            await supabaseAdmin.from("case_answer_jobs").update({ answer_style: "normal" }).eq("id", id);
+            serviceBody.instruction = chatInstruction("normal");
+          }
 
           const keepCfg = await getKeepCfg();
           const useKeep = isChat && keepCfg.on && !!job.chat_id;
@@ -763,6 +825,36 @@ Deno.serve(async (req: Request) => {
 
       const serviceData = await serviceRes.json();
       const remoteStatus: string = (serviceData.status || "").toLowerCase();
+
+      // ── Tez rejim natijasi ──
+      const isFast = serviceData.fast === true;
+      if (isFast && (remoteStatus === "done" || remoteStatus === "error")) await saveKeyUsage(serviceData.key_usage);
+      if (isFast && remoteStatus === "error" && !job.case_id && parsedLexionUrls.length > 0) {
+        // Hamma tez kalit band (429) yoki tez yo'l ishlamadi — foydalanuvchi kutmasin, avtomatik Chuqur rejim
+        const reason = serviceData.error_code === "fast_exhausted" ? "barcha tez kalitlar band" : "tez yo'l xatosi";
+        console.log(`[case-answer-status] ${reason}, Chuqur rejimga o'tildi: job=${id}`);
+        const deepBody: Record<string, unknown> = {
+          title: job.chat_title || "Lexion",
+          kazus_text: job.chat_kazus_text || "",
+          external_id: `${id}-deep`,
+          instruction: chatInstruction("normal"),
+          sources: parsedLexionUrls.map((u) => ({ title: "Lex.uz hujjati", url: u })),
+          ...(job.cite_links ? { citations: true } : {}),
+        };
+        const deep = await sendWithFailover(await pickBackend(cfg), cfg, deepBody);
+        if (deep.result.serviceJobId) {
+          await supabaseAdmin.from("case_answer_jobs")
+            .update({ backend: deep.backend, service_job_id: deep.result.serviceJobId, status: "queued", answer_style: "normal", lexion_fallback_reason: `tez→chuqur: ${reason}` })
+            .eq("id", id);
+          return new Response(
+            JSON.stringify({ status: "queued", answer: null, error: null, lexion_phase: "answering", lexion_urls: parsedLexionUrls, created_at: job.created_at, server_now: serverNowIso }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+      if (isFast && remoteStatus === "done" && typeof serviceData.answer === "string") {
+        serviceData.answer += FAST_FOOTER;
+      }
 
       let newStatus = job.status;
       let answer: string | null = null;
