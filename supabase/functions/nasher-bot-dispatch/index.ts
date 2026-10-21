@@ -5,7 +5,7 @@
 // va javob tayyor bo'lganda Telegram'ga yuboradi.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { chatAppUrl, lawLinks, prepareAnswer, progressText, splitMessage, tg, toTelegramHtml } from "../_shared/nasher-telegram.ts";
+import { chatAppUrl, lawLinks, prepareAnswer, progressText, splitMessage, tg, toTelegramHtml, htmlToPlain } from "../_shared/nasher-telegram.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -84,7 +84,7 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
         ...(last && markup ? { reply_markup: markup } : {}),
       });
       if (!r.ok) {   // HTML xatosi bo'lsa — oddiy matn bilan qayta
-        await tg(token, "sendMessage", { chat_id: chat, text: parts[i].replace(/<[^>]+>/g, ""), ...(last && markup ? { reply_markup: markup } : {}) });
+        await tg(token, "sendMessage", { chat_id: chat, text: htmlToPlain(parts[i]), ...(last && markup ? { reply_markup: markup } : {}) });
       }
     }
     return;

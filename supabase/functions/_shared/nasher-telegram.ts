@@ -39,6 +39,7 @@ export async function verifyInitData(initData: string, botToken: string, maxAgeS
 
 // ── Javob matnini tozalash (saytdagi src/lib/nasherText.ts bilan bir xil qoidalar) ──
 
+const LINK_URL = /(\]\(https:\/\/lex\.uz\/[^)\s]+\))/;
 const SOURCE_WORD = /\b(?:[Tt]aqdim etilgan |[Bb]erilgan )?[Mm]anba(lar)?(?:si)?(dagi|da|ga|dan|ni|ning)?\b/g;
 const CYR: Record<string, string> = {
   а: "a", б: "b", в: "v", г: "g", д: "d", ё: "yo", ж: "j", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n",
@@ -70,8 +71,9 @@ export function prepareAnswer(raw: string): string {
   const cyr = (t.match(/[а-яёўқғҳ]/gi) ?? []).length;
   const lat = (t.match(/[a-z]/gi) ?? []).length;
   if (cyr > 0 && cyr <= lat) t = t.replace(/[а-яёўқғҳА-ЯЁЎҚҒҲ'ʼ]+/g, (w) => (/[а-яёўқғҳ]/i.test(w) ? latinWord(w) : w));
-  t = t.replace(SOURCE_WORD, (m: string, plural?: string, suffix?: string) =>
-    `${m[0] === m[0].toUpperCase() ? "Q" : "q"}onun hujjat${plural ? "lari" : "i"}${suffix ?? ""}`);
+  // havola manzili ("#:~:text=…manba…") buzilmasin: "manba" faqat matnda almashtiriladi
+  t = t.split(LINK_URL).map((p, i) => (i % 2 ? p : p.replace(SOURCE_WORD, (m: string, plural?: string, suffix?: string) =>
+    `${m[0] === m[0].toUpperCase() ? "Q" : "q"}onun hujjat${plural ? "lari" : "i"}${suffix ?? ""}`))).join("");
   return t.replace(/[ \t]+([.,;:!?])/g, "$1").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -86,12 +88,17 @@ export function toTelegramHtml(text: string): string {
     if (!t) return "";
     const heading = t.match(/^#{1,6}\s*(.+)$/);
     if (heading) return `<b>${esc(heading[1].replace(/\*\*/g, ""))}</b>`;
-    let s = esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^[-*•]\s+/, "• ");
+    let s = esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^[-*•]\s+/, "• ")
+      .replace(/\[([^\]\n]{1,40})\]\((https:\/\/lex\.uz\/[^)\s"]+)\)/g, '<a href="$2">$1</a>');   // modda havolalari
     // "ISSUE (Huquqiy masala)" kabi qisqa, nuqtasiz yakka qator — sarlavha
     if (t.length <= 70 && !/[.,;:!?]$/.test(t) && !/^[-*•\d]/.test(t) && !s.includes("<b>")) s = `<b>${s}</b>`;
     return s;
   }).join("\n").replace(/\n{3,}/g, "\n\n");
 }
+
+/** HTML yuborilmasa — oddiy matn: havola "yorliq (manzil)" bo'lib qoladi. */
+export const htmlToPlain = (html: string) => html.replace(/<a href="([^"]+)">([^<]*)<\/a>/g, "$2 ($1)")
+  .replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
 /** Telegram 4096 belgi chegarasi: bo'limlar (bo'sh qator) bo'yicha bo'ladi, teglar uzilmaydi. */
 export function splitMessage(html: string, limit = 3900): string[] {
