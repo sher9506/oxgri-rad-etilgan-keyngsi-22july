@@ -1,7 +1,8 @@
 // nasher-bot — NaSher AI Telegram boti (verify_jwt = false: Telegram serverlari Authorization yubormaydi).
 // 1) Telegram webhook (X-Telegram-Bot-Api-Secret-Token tekshiriladi):
-//    /start — salomlashuv; FanFaster'ga kirmagan bo'lsa telefon raqam so'raladi (boshqa FanFaster botlari bilan bir xil:
-//    talabalar.telegram_id / telefon -> bitta akkaunt). Matnli savol — Chuqur (Lexion) rejimi, joriy suhbatda (5 soat).
+//    /start — salomlashuv; akkaunt Telegram ID bo'yicha avtomatik ochiladi (telefon so'ralmaydi; talabalar.telegram_id).
+//    settings.NASHER_CHANNEL kanaliga a'zolik MAJBURIY: a'zo bo'lmaganga darvoza xabari + «A'zo bo'ldim» tugmasi.
+//    Matnli savol — Chuqur (Lexion) rejimi, joriy suhbatda (5 soat).
 //    "Yangi suhbat" tugmasi (callback) yangi suhbat boshlaydi. Javobni nasher-bot-dispatch yetkazadi.
 // 2) {action:"activate"} — admin panel: webhook, menyu tugmasi, buyruqlar va bot tavsiflarini o'rnatadi.
 // 3) {action:"miniapp_auth", init_data} — Mini App: initData imzosi tekshirilib, FanFaster foydalanuvchi ID'si qaytariladi.
@@ -9,7 +10,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { tg, verifyInitData } from "../_shared/nasher-telegram.ts";
-import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
+import { channelInfo } from "../_shared/nasher-channel.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -20,30 +21,33 @@ const MAX_LEN = 2500;
 const CHAT_TTL_MS = 5 * 60 * 60 * 1000;   // saytdagi suhbat xotirasi bilan bir xil
 const WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/nasher-bot`;
 
-const WELCOME_KNOWN = (name: string) =>
-  `👋 Assalomu alaykum${name ? ", " + esc(name) : ""}!\n\n` +
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const hi = (name: string) => `Assalomu alaykum${name ? ", " + esc(name) : ""}!`;
+
+const WELCOME = (name: string, channel: string) =>
+  `👋 ${hi(name)}\n\n` +
   "⚖️ <b>NaSher AI</b> — O'zbekiston qonunchiligi bo'yicha yordamchingiz.\n\n" +
+  (channel ? `✅ Siz ${esc(channel)} kanalimizga a'zosiz — rahmat!\n\n` : "") +
   "✍️ Vaziyatingizni oddiy so'zlar bilan yozing — kerakli qonunlarni topib, moddalar bilan tushuntirib beraman.\n" +
   "⏱ Javob 2–3 daqiqada keladi, tayyor bo'lganda o'zim yuboraman.\n" +
   "💬 Suhbat 5 soat davom etadi: keyingi savollaringizda oldingilarini eslayman.";
 
-const WELCOME_NEW =
-  "👋 Assalomu alaykum!\n\n" +
-  "⚖️ <b>NaSher AI</b> — O'zbekiston qonunchiligi bo'yicha yordamchi.\n\n" +
-  "Boshlash uchun bir marta <b>telefon raqamingizni ulashing</b> 👇\n" +
-  "<i>Shu bilan FanFaster akkauntingiz ochiladi (akkauntingiz bo'lsa, o'shanga ulanadi).</i>";
+// Kanalga a'zo bo'lmaganlar uchun darvoza: savol qabul qilinmaydi
+const GATE = (name: string, channel: string) =>
+  `👋 ${hi(name)}\n\n` +
+  "⚖️ <b>NaSher AI</b> — O'zbekiston qonunchiligi bo'yicha yordamchingiz.\n\n" +
+  `Botdan foydalanish va yangiliklardan birinchi bo'lib xabardor bo'lish uchun ${esc(channel)} kanalimizga a'zo bo'ling.\n\n` +
+  "1️⃣ «Kanalga qo'shilish» ni bosing\n" +
+  "2️⃣ Qaytib, «A'zo bo'ldim» ni bosing — tekshirib, darhol savolingizni kutaman 👇";
+const GATE_KEYBOARD = (channel: string) => ({ inline_keyboard: [
+  [{ text: "📢 Kanalga qo'shilish", url: `https://t.me/${channel.replace(/^@/, "")}` }],
+  [{ text: "✅ A'zo bo'ldim", callback_data: "check_channel" }],
+] });
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-// /start va ro'yxatdan o'tishda kanal taklifi — faqat hali a'zo bo'lmaganlarga (a'zo bo'lgach chiqmaydi)
-async function channelPromo(userId: string, tgId: number): Promise<{ text: string; button: { text: string; url: string } } | null> {
-  const ch = await channelInfo(sb, userId, tgId);
-  if (!ch.channel || ch.member !== false) return null;
-  return {
-    text: `\n\n📢 Yangiliklardan birinchi bo'lib xabardor bo'ling — ${esc(ch.channel)} kanaliga qo'shiling.\n` +
-      `🎁 A'zolarga 5 soatda 8 emas, ${8 + CHANNEL_BONUS} ta savol.`,
-    button: { text: `📢 Kanalga qo'shilish (+${CHANNEL_BONUS} savol)`, url: `https://t.me/${ch.channel.replace(/^@/, "")}` },
-  };
+/** Kanal darvozasi: member false — a'zo emas; null — kanal sozlanmagan yoki tekshirib bo'lmadi (to'siq qo'yilmaydi). */
+async function channelGate(userId: string, tgId: number): Promise<{ channel: string; member: boolean | null }> {
+  const ch = await channelInfo(sb, userId, tgId, true);
+  return { channel: ch.channel ?? "", member: ch.channel ? ch.member : null };
 }
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -53,15 +57,6 @@ async function settings(keys: string[]): Promise<Record<string, string>> {
   const m: Record<string, string> = {};
   for (const r of data ?? []) if (r.text_value) m[r.key] = String(r.text_value).trim();
   return m;
-}
-
-function normalizePhone(phone: string): string {   // telegram-miniapp-auth dagi bilan bir xil qoida
-  let d = phone.replace(/\D/g, "");
-  if (!d.startsWith("998")) {
-    if (d.startsWith("0")) d = "998" + d.slice(1);
-    else if (d.length <= 9) d = "998" + d;
-  }
-  return d;
 }
 
 // ── FanFaster foydalanuvchisi (boshqa botlar bilan umumiy: talabalar.telegram_id) ──
@@ -77,20 +72,14 @@ async function findUser(tgId: number): Promise<{ id: string; ism: string } | nul
   return null;
 }
 
-/** Telefon orqali kirish: telefon bo'yicha mavjud akkaunt topiladi, bo'lmasa yangi talaba yaratiladi. */
-async function registerByPhone(from: any, rawPhone: string): Promise<{ id: string; ism: string } | null> {
-  const phone = normalizePhone(rawPhone);
-  await sb.from("miniapp_contacts").upsert({ telegram_id: from.id, phone }, { onConflict: "telegram_id" });
-  const tgFields = { telegram_id: from.id, telegram_username: from.username || null, telegram_ism: from.first_name || null };
-  const { data: byPhone } = await sb.from("talabalar").select("id, ism")
-    .in("phone", [phone, "+" + phone]).is("merged_into", null).maybeSingle();
-  if (byPhone) {
-    await sb.from("talabalar").update(tgFields).eq("id", byPhone.id);
-    return { id: String(byPhone.id), ism: byPhone.ism ?? "" };
-  }
+/** Telefonsiz kirish: Telegram ID bo'yicha akkaunt topiladi, bo'lmasa yangi talaba yaratiladi (telegram-login-callback kabi login_id telefon emas). */
+async function findOrRegister(from: any): Promise<{ id: string; ism: string } | null> {
+  const found = await findUser(from.id);
+  if (found) return found;
   const { data: created, error } = await sb.from("talabalar").insert({
     ism: from.first_name || "Foydalanuvchi", familiya: from.last_name || "", guruh: "", kurs: "",
-    login_id: phone, phone, telegram_chat_id: String(from.id), ...tgFields,
+    login_id: `tg_${from.id}`, telegram_chat_id: String(from.id),
+    telegram_id: from.id, telegram_username: from.username || null, telegram_ism: from.first_name || null,
   }).select("id, ism").single();
   if (error || !created) {
     console.error("[nasher-bot] talaba yaratilmadi:", error?.message);
@@ -98,12 +87,6 @@ async function registerByPhone(from: any, rawPhone: string): Promise<{ id: strin
   }
   return { id: String(created.id), ism: created.ism ?? "" };
 }
-
-const CONTACT_KEYBOARD = {
-  keyboard: [[{ text: "📱 Telefon raqamni ulashish", request_contact: true }]],
-  resize_keyboard: true,
-  one_time_keyboard: true,
-};
 
 // ── Admin: botni faollashtirish ──
 async function activate(): Promise<Response> {
@@ -188,6 +171,20 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
       await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "🆕 Yangi suhbat boshlandi" });
       await tg(token, "sendMessage", { chat_id: chatId, parse_mode: "HTML",
         text: "🆕 <b>Yangi suhbat boshlandi.</b>\nSavolingizni yozing — oldingi suhbat bu javobga ta'sir qilmaydi." });
+    } else if (cq.data === "check_channel" && chatId) {
+      // «A'zo bo'ldim» — Telegram'dan qayta tekshiriladi
+      const user = await findOrRegister(cq.from);
+      const name = user?.ism || cq.from.first_name || "";
+      const gate = user ? await channelGate(user.id, cq.from.id) : { channel: "", member: null };
+      if (gate.member === false) {
+        await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, show_alert: true,
+          text: `Hali a'zo emassiz. Avval «Kanalga qo'shilish» ni bosing, keyin «A'zo bo'ldim» ni bosing.` });
+      } else {
+        await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "✅ Tasdiqlandi" });
+        await tg(token, "sendMessage", { chat_id: chatId, parse_mode: "HTML",
+          text: `✅ Rahmat${name ? ", " + esc(name) : ""}! Siz ${esc(gate.channel)} kanalimizga a'zo bo'ldingiz.\n\nEndi savolingizni yozing 👇`,
+          ...(miniUrl ? { reply_markup: { inline_keyboard: [[{ text: "📱 NaSher AI ilovasi", web_app: { url: miniUrl } }]] } } : {}) });
+      }
     } else {
       await tg(token, "answerCallbackQuery", { callback_query_id: cq.id });
     }
@@ -203,36 +200,22 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
     tg(token, "sendMessage", { chat_id: chatId, text: t, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
   const appButton = miniUrl ? { inline_keyboard: [[{ text: "📱 NaSher AI ilovasi", web_app: { url: miniUrl } }]] } : undefined;
 
-  // Telefon ulashildi -> FanFaster'ga kirish
-  if (msg.contact) {
-    if (msg.contact.user_id !== from.id) {
-      await reply("Iltimos, <b>o'zingizning</b> raqamingizni tugma orqali ulashing.", { reply_markup: CONTACT_KEYBOARD });
-      return;
-    }
-    const user = await registerByPhone(from, msg.contact.phone_number);
-    if (!user) {
-      await reply("⚠️ Akkauntni ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring.");
-      return;
-    }
-    const promo = await channelPromo(user.id, from.id);
-    await reply("✅ <b>Tayyor!</b> FanFaster akkauntingiz ulandi.\n\nEndi savolingizni yozing 👇" + (promo?.text ?? ""), { reply_markup: { remove_keyboard: true } });
-    if (promo) await reply("👇", { reply_markup: { inline_keyboard: [[promo.button]] } });
+  const text: string = (msg.text ?? "").trim();
+  const user = await findOrRegister(from);
+  if (!user) {
+    await reply("⚠️ Akkauntni ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring.");
     return;
   }
-
-  const text: string = (msg.text ?? "").trim();
-  const user = await findUser(from.id);
+  const name = user.ism || from.first_name || "";
+  // Kanal darvozasi: har xabarda jonli tekshiriladi — chiqib ketganlar ham darhol taklif oladi
+  const gate = await channelGate(user.id, from.id);
+  if (gate.member === false) {
+    await reply(GATE(name, gate.channel), { reply_markup: GATE_KEYBOARD(gate.channel) });
+    return;
+  }
 
   if (text.startsWith("/start") || text === "/help") {
-    if (user) {
-      const promo = await channelPromo(user.id, from.id);
-      const rows = [...(appButton?.inline_keyboard ?? []), ...(promo ? [[promo.button]] : [])];
-      await reply(WELCOME_KNOWN(user.ism || from.first_name || "") + (promo?.text ?? ""), rows.length ? { reply_markup: { inline_keyboard: rows } } : {});
-    } else await reply(WELCOME_NEW, { reply_markup: CONTACT_KEYBOARD });
-    return;
-  }
-  if (!user) {
-    await reply("Davom etish uchun avval telefon raqamingizni ulashing 👇", { reply_markup: CONTACT_KEYBOARD });
+    await reply(WELCOME(name, gate.channel), appButton ? { reply_markup: appButton } : {});
     return;
   }
   if (text === "/yangi") {
@@ -261,7 +244,7 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
   if (chat.expiredOld) {
     await reply("⏰ <b>Oldingi suhbat yopildi</b> — har bir suhbat 5 soat saqlanadi.\nBu savol <b>yangi suhbatda</b> boshlanadi (oldingi savollaringizni bu safar eslamayman).");
   }
-  const progress = await reply("⏳ <b>Savolingiz qabul qilindi</b>\n\n▱▱▱▱▱▱▱▱▱▱  0%\n🔎 Kerakli qonun hujjatlari izlanmoqda…");
+  const progress = await reply(`⏳ <b>Savolingiz qabul qilindi${name ? ", " + esc(name) : ""}</b>\n\n▱▱▱▱▱▱▱▱▱▱  0%\n🔎 Kerakli qonun hujjatlari izlanmoqda…`);
   const progressId = progress.result?.message_id;
   await tg(token, "sendChatAction", { chat_id: chatId, action: "typing" });
 
