@@ -1,3 +1,4 @@
+// deploy 2026-10-22 tez-fix
 // deploy 2026-10-22 ai-studio-avval
 // deploy 2026-10-22 vertex
 // deploy 2026-10-22 ovoz-tez
