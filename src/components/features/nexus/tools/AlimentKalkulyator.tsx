@@ -47,7 +47,8 @@ export default function AlimentKalkulyator({ onBack }: { onBack: () => void }) {
                 <Button
                   key={s.kids}
                   type="button"
-                  variant={kids === s.kids ? 'default' : 'outline'}
+                  variant="outline"
+                  className={kids === s.kids ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 hover:text-white' : ''}
                   onClick={() => setKids(s.kids)}
                 >
                   {s.label}

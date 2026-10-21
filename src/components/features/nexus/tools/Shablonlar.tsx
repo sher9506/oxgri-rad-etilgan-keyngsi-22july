@@ -75,7 +75,7 @@ export default function Shablonlar({ onBack }: { onBack: () => void }) {
             ))}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={yukla} className="flex-1">Word (.docx) yuklab olish</Button>
+            <Button onClick={yukla} className="flex-1 bg-blue-600 text-white hover:bg-blue-700">Word (.docx) yuklab olish</Button>
             <Button onClick={nusxala} variant="outline" className="flex-1">Matnni nusxalash</Button>
           </div>
           {xabar && <p className="text-sm text-muted-foreground">{xabar}</p>}

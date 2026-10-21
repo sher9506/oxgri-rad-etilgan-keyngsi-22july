@@ -66,6 +66,14 @@ export default function NasherMiniApp() {
     return () => wa.offEvent?.('fullscreenChanged', syncFull);
   }, []);
 
+  // Vositalar foydalanuvchiga bog'liq emas — Telegram'siz (oddiy brauzerda, ulashilgan havola orqali) ham ochiladi
+  if (tool) {
+    return (
+      <main style={{ minHeight: '100dvh', background: '#fff', paddingTop: 'var(--tg-content-safe-area-inset-top, 0px)' }}>
+        <ToolsPage tool={tool} onChange={setTool} onChat={() => setTool('')} />
+      </main>
+    );
+  }
   if (needRegister) {
     return (
       <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -107,9 +115,7 @@ export default function NasherMiniApp() {
         background: '#fff',
       }}
     >
-      {tool
-        ? <div style={{ height: '100%', overflowY: 'auto' }}><ToolsPage tool={tool} onChange={setTool} onChat={() => setTool('')} /></div>
-        : <NexusAI userId={userId} initialChatId={initialChatId} />}
+      <NexusAI userId={userId} initialChatId={initialChatId} />
     </main>
   );
 }

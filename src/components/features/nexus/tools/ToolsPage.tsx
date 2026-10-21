@@ -41,7 +41,7 @@ export default function ToolsPage({ tool, onChange, onChat }: { tool: string; on
           </button>
         ))}
       </div>
-      <button onClick={onChat} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary p-3 font-semibold text-primary-foreground">
+      <button onClick={onChat} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 p-3 font-semibold text-white">
         <MessageSquare className="h-4 w-4" /> NaSher AI ga savol berish
       </button>
     </div>
