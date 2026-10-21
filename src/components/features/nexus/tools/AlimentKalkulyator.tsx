@@ -86,21 +86,21 @@ export default function AlimentKalkulyator({ onBack }: { onBack: () => void }) {
             </p>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 Formula: {fmt(income)} × {share.num}/{share.den}
               </p>
               <p className="text-3xl font-bold">{fmt(result)} so'm</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 oyiga — daromadning {share.num}/{share.den} qismi
               </p>
             </>
           )}
-          <p className="text-xs text-muted-foreground">Taxminiy hisob. Aniq summani sud belgilaydi.</p>
+          <p className="text-xs text-slate-500">Taxminiy hisob. Aniq summani sud belgilaydi.</p>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className="space-y-2 pt-6 text-xs text-muted-foreground">
+        <CardContent className="space-y-2 pt-6 text-xs text-slate-500">
           <p className="font-medium text-foreground">Asos</p>
           <p>
             <a className="underline" href={`${LEX}#159203`} target="_blank" rel="noopener noreferrer">

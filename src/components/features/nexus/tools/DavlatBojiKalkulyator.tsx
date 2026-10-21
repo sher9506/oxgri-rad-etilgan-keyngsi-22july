@@ -76,9 +76,9 @@ export default function DavlatBojiKalkulyator({ onBack }: { onBack: () => void }
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-white text-slate-900">
                 {TURLAR.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
+                  <SelectItem className="focus:bg-slate-100" key={t.id} value={t.id}>
                     {t.nom}
                   </SelectItem>
                 ))}
@@ -109,7 +109,7 @@ export default function DavlatBojiKalkulyator({ onBack }: { onBack: () => void }
               value={bhmNum ? fmt(bhmNum) : ""}
               onChange={(e) => setBhm(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">2026-yil 1-sentabrdan 440 000 so'm</p>
+            <p className="text-xs text-slate-500">2026-yil 1-sentabrdan 440 000 so'm</p>
           </div>
         </CardContent>
       </Card>
@@ -117,17 +117,17 @@ export default function DavlatBojiKalkulyator({ onBack }: { onBack: () => void }
       {natija && (
         <Card>
           <CardContent className="space-y-2 pt-6">
-            <p className="text-sm text-muted-foreground">Davlat boji</p>
+            <p className="text-sm text-slate-500">Davlat boji</p>
             <p className="text-2xl font-bold">{fmt(natija.boj)} so'm</p>
             <p className="text-sm">Qoida: {natija.qoida}</p>
-            <a href={ASOS} target="_blank" rel="noreferrer" className="text-sm text-primary underline">
+            <a href={ASOS} target="_blank" rel="noreferrer" className="text-sm text-blue-600 underline">
               Asos: O'RQ-600, Ilova, 1-band (lex.uz)
             </a>
           </CardContent>
         </Card>
       )}
 
-      <p className="text-xs text-muted-foreground">Taxminiy hisob. Imtiyozlar hisobga olinmagan.</p>
+      <p className="text-xs text-slate-500">Taxminiy hisob. Imtiyozlar hisobga olinmagan.</p>
     </div>
   );
 }

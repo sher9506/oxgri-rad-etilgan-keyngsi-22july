@@ -44,16 +44,16 @@ export default function Shablonlar({ onBack }: { onBack: () => void }) {
         </Button>
         <h1 className="text-lg font-semibold">Ariza namunalari</h1>
       </div>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-slate-500">
         Namuna. Vaziyatingizga moslang; zarur bo'lsa yurist bilan maslahatlashing.
       </p>
 
       {!tanlangan ? (
         <div className="space-y-3">
           {SHABLONLAR.map((sh) => (
-            <Card key={sh.id} className="p-4 cursor-pointer active:bg-accent" onClick={() => setTanlangan(sh)}>
+            <Card key={sh.id} className="p-4 cursor-pointer active:bg-slate-100" onClick={() => setTanlangan(sh)}>
               <div className="font-medium">{sh.title}</div>
-              <div className="text-sm text-muted-foreground">{sh.short}</div>
+              <div className="text-sm text-slate-500">{sh.short}</div>
             </Card>
           ))}
         </div>
@@ -78,7 +78,7 @@ export default function Shablonlar({ onBack }: { onBack: () => void }) {
             <Button onClick={yukla} className="flex-1 bg-blue-600 text-white hover:bg-blue-700">Word (.docx) yuklab olish</Button>
             <Button onClick={nusxala} variant="outline" className="flex-1">Matnni nusxalash</Button>
           </div>
-          {xabar && <p className="text-sm text-muted-foreground">{xabar}</p>}
+          {xabar && <p className="text-sm text-slate-500">{xabar}</p>}
           <Card className="p-4">
             <pre className="whitespace-pre-wrap font-serif text-sm">{renderMatn(tanlangan, values)}</pre>
           </Card>
