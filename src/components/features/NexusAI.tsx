@@ -324,9 +324,12 @@ interface NexusMessageProps {
   onCopy: (id: string, text: string) => void;
   onRetry: (aiMsgId: string) => void;
   onOpenTool: OpenTool;
+  question?: string;   // Lo'nda javobi uchun: shu javob berilgan savol (Chuqurda qayta so'rash uchun)
+  onAskDeep: (q: string) => void;
+  deepBlocked: boolean;
 }
 
-function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool }: NexusMessageProps) {
+function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool, question, onAskDeep, deepBlocked }: NexusMessageProps) {
   const isDone = msg.role === 'assistant' && msg.status === 'done';
   const answer = useMemo(() => prepareAnswer(msg.content), [msg.content]);
   const { shown, typing } = useTypewriter(msg.id, answer, isDone && !!msg.fresh);
@@ -421,6 +424,17 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool }: NexusMessa
               </a>
             ))}
           </div>
+        </div>
+      )}
+      {msg.mode === 'lunda' && question && !typing && (
+        <div className="nc-deep-offer">
+          <p>
+            <b>Batafsilroq tahlil kerakmi?</b> «Chuqur» rejim butun qonunchilik va Oliy sud Plenumlarini o'qib chiqadi,
+            har bir moddaga lex.uz havolasini beradi. Javob biroz ko'proq — 2–3 daqiqa vaqt oladi.
+          </p>
+          <button type="button" className="nc-deep-btn" onClick={() => onAskDeep(question)} disabled={deepBlocked}>
+            <Search /> Chuqur rejimda so'rash
+          </button>
         </div>
       )}
       {!typing && (
@@ -1084,6 +1098,12 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
     setInput('');
   }, [input, isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId, mode]);
 
+  // Lo'nda javobi ostidagi «Chuqur rejimda so'rash»: o'sha savol Chuqur rejimda qayta yuboriladi (tanlangan rejim o'zgarmaydi)
+  const deepBlocked = isProcessing || isChatExpired(activeChatId) || (!!quota && !quota.is_unlimited && quota.remaining <= 0);
+  const askDeep = useCallback((q: string) => {
+    if (!deepBlocked && q.trim()) sendMessage(q, 'chuqur');
+  }, [deepBlocked, sendMessage]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   }, [handleSend]);
@@ -1274,7 +1294,7 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
                 <NexusEmptyState onPick={(q) => { setInput(q); inputRef.current?.focus(); }} disabled={chatExpired} />
               ) : (
                 <div className="nc-messages">
-                  {messages.map((msg) => (
+                  {messages.map((msg, i) => (
                     <NexusMessage
                       key={msg.id}
                       msg={msg}
@@ -1282,6 +1302,9 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
                       onCopy={handleCopy}
                       onRetry={retry}
                       onOpenTool={setOpenTool}
+                      question={msg.mode === 'lunda' ? messages.slice(0, i).reverse().find(m => m.role === 'user')?.content : undefined}
+                      onAskDeep={askDeep}
+                      deepBlocked={deepBlocked}
                     />
                   ))}
                   {chatExpired && (

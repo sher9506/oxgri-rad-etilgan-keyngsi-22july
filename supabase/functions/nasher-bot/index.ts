@@ -96,11 +96,13 @@ async function routeQuestion(question: string): Promise<"fast" | "deep"> {
   if (!keys.length) return "deep";
   const model = (await settings(["NASHER_ROUTER_MODEL"]))["NASHER_ROUTER_MODEL"] || "gemini-3.1-flash-lite";
   try {
-    const { data } = await geminiWithPool(sb, "fast", model, {
+    // jami 3 soniya: ulgurmasa — tez rejim (tezlik ustun)
+    const call = geminiWithPool(sb, "fast", model, {
       systemInstruction: { parts: [{ text: ROUTER_INSTRUCTION }] },
       contents: [{ role: "user", parts: [{ text: question.slice(0, 2500) }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 5 },
-    }, { keys, timeoutMs: 8_000 });
+    }, { keys, timeoutMs: 2_500 });
+    const { data } = await Promise.race([call, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("3 s o'tdi")), 3_000))]);
     return /DEEP/i.test(geminiText(data)) ? "deep" : "fast";
   } catch (e) {
     // yo'naltiruvchi ishlamasa — tezlik ustun: tez rejim (u ham ishlamasa, status o'zi Chuqurga o'tkazadi)

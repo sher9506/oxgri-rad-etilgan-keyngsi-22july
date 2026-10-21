@@ -1141,6 +1141,35 @@ ol.nc-answer-list {
 .nc-tools-btn svg { width: 13px; height: 13px; }
 .nc-tools-btn:hover { color: var(--nc-accent); }
 .nc-tool-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+/* Lo'nda javobi ostida: Chuqur rejim taklifi */
+.nc-deep-offer {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--nc-border);
+  border-radius: 12px;
+  background: var(--nc-surface-2);
+  font-family: var(--nc-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--nc-text-2);
+}
+.nc-deep-offer b { color: var(--nc-text); }
+.nc-deep-btn {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nc-deep-btn svg { width: 14px; height: 14px; }
+.nc-deep-btn:disabled { opacity: 0.5; cursor: default; }
 .nc-tool-chip {
   display: inline-flex;
   align-items: center;

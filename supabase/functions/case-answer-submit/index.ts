@@ -8,6 +8,7 @@ import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
 import { getLexionConfig, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
+import { answerFast, chatHistory, fastConfig } from "../_shared/nasher-fast.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -474,6 +475,42 @@ Deno.serve(async (req: Request) => {
           JSON.stringify({ error: "Lexion model hozir mavjud emas. Boshqa rejim tanlang." }),
           { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      }
+
+      // ── Tez rejim (Lo'nda): savol darhol Gemini'ga; hamma kalit band yoki xato bo'lsa — avtomatik Chuqur (Lexion) ──
+      const fast = answerStyle === 'lunda' && isStandaloneChat ? await fastConfig(supabaseAdmin, ustoz_id) : null;
+      if (fast) {
+        const { data: fastRow, error: fastErr } = await supabaseAdmin.from("case_answer_jobs").insert({
+          teacher_id: ustoz_id, status: "running", source_count: 0, source_file_paths: '[]',
+          answer_mode: 'fast', job_kind: jobKind, answer_style: 'lunda',
+          chat_kazus_text: kazus_text, chat_title: title, ...(chatId ? { chat_id: chatId } : {}),
+        }).select("id").single();
+        if (!fastErr && fastRow) {
+          const jobId = fastRow.id;
+          const run = (async () => {
+            const t0 = Date.now();
+            try {
+              const answer = await answerFast(supabaseAdmin, fast, kazus_text, await chatHistory(supabaseAdmin, chatId, jobId));
+              await supabaseAdmin.from("case_answer_jobs")
+                .update({ status: "done", answer, finished_at: new Date().toISOString() }).eq("id", jobId);
+              console.log(`[case-answer-submit] tez javob: job=${jobId} ms=${Date.now() - t0}`);
+            } catch (e) {
+              // foydalanuvchi javobsiz qolmasin: shu savol Chuqur rejimda (Lexion → NotebookLM) davom etadi
+              const reason = String(e).slice(0, 200);
+              console.log(`[case-answer-submit] tez rejim ishlamadi (${reason}), Chuqurga o'tildi: job=${jobId}`);
+              const lex = await sendToLexion(lexionCfg, { title: "Lexion", kazus_text, external_id: `${jobId}-lex` });
+              await supabaseAdmin.from("case_answer_jobs").update(lex.serviceJobId
+                ? { answer_mode: 'lexion', lexion_phase: 'lexion_searching', answer_style: 'normal', status: "queued",
+                    lexion_job_id: tagLexionJobId(lex.serviceJobId, lexionPreview), lexion_fallback_reason: `tez→chuqur: ${reason}` }
+                : { status: "error", error: "Xizmat vaqtincha band, birozdan keyin qayta urinib ko'ring.", finished_at: new Date().toISOString() },
+              ).eq("id", jobId);
+            }
+          })();
+          const rt = (globalThis as Record<string, unknown>).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+          if (rt?.waitUntil) rt.waitUntil(run); else await run;
+          return new Response(JSON.stringify({ id: jobId, fast: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        console.error("[case-answer-submit] tez rejim job yaratilmadi, oddiy yo'l:", fastErr?.message);
       }
 
       const insertPayload: Record<string, unknown> = {

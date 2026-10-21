@@ -8,6 +8,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
 import { TOOL_BUTTONS, toolQuery } from "../_shared/nasher-tools.ts";
+import { FAST_FOOTER_BOT } from "../_shared/nasher-prompts.ts";
 import { chatAppUrl, esc, lawLinks, prepareAnswer, progressText, splitMessage, tg, toTelegramHtml, htmlToPlain } from "../_shared/nasher-telegram.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -42,6 +43,7 @@ interface BotJob {
   tg_chat_id: number;
   tg_progress_msg_id: number | null;
   tg_phase: string | null;
+  answer_mode: string | null;
 }
 
 async function claimDelivery(id: string): Promise<boolean> {
@@ -71,11 +73,20 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
       await tg(token, "sendMessage", { chat_id: chat, text: `⚠️ ${data.error || "Javob tayyorlab bo'lmadi."}\n\nSavolni qayta yuborib ko'ring.` });
       return;
     }
-    const parts = splitMessage(toTelegramHtml(prepareAnswer(data.answer || "")));
-    if (!data.chat_followup) {   // suhbatning birinchi javobi: ishonch beruvchi kirish gapi (ism bilan)
+    // Tezkor javob (Gemini): oxirida izoh, ostida «Chuqur tahlil» tugmasi
+    const isFast = job.answer_mode === "fast";
+    const parts = splitMessage(toTelegramHtml(prepareAnswer((data.answer || "") + (isFast ? FAST_FOOTER_BOT : ""))));
+    // Suhbatning birinchi javobi: ishonch beruvchi kirish gapi (ism bilan). Avvalgi javob bormi — o'zimiz tekshiramiz.
+    const { count: before } = job.chat_id
+      ? await sb.from("case_answer_jobs").select("id", { count: "exact", head: true })
+        .eq("chat_id", job.chat_id).eq("status", "done").neq("id", job.id).lt("created_at", job.created_at)
+      : { count: 0 };
+    if (!before) {
       const { data: u } = await sb.from("talabalar").select("ism").eq("id", job.teacher_id).maybeSingle();
       const name = u?.ism ? `${esc(u.ism)}, savolingizni` : "Savolingizni";
-      parts.unshift(`${name} O'zbekiston qonun hujjatlari (lex.uz) asosida ko'rib chiqdim — har bir modda havolasini o'zingiz tekshirib ko'rishingiz mumkin 👇`);
+      parts.unshift(isFast
+        ? `${name} O'zbekiston Respublikasining amaldagi qonunchiligi asosida ko'rib chiqdim 👇`
+        : `${name} O'zbekiston qonun hujjatlari (lex.uz) asosida ko'rib chiqdim — har bir modda havolasini o'zingiz tekshirib ko'rishingiz mumkin 👇`);
     }
     const urls: string[] = Array.isArray(data.lexion_urls) ? data.lexion_urls : [];
     const laws = lawLinks(urls, urls.length ? await names(miniUrl) : {});
@@ -87,8 +98,6 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
     // Mini App aynan shu suhbatni ochadi; "Yangi suhbat" — keyingi savol yangi suhbatda
     // 4 ta vosita har javob oxirida doim (2 qatorda), Mini App'da ochiladi
     const tool = (b: (typeof TOOL_BUTTONS)[number]) => ({ text: b.text, web_app: { url: miniUrl + (miniUrl.includes("?") ? "&" : "?") + toolQuery(b) } });
-    // Tezkor javob (oxirida FAST_FOOTER) — yetarli bo'lmasa o'sha savolni Chuqur rejimda qayta so'rash tugmasi
-    const isFast = String(data.answer ?? "").includes("Bu tezkor javob");
     const markup = { inline_keyboard: [
       ...(isFast ? [[{ text: "🔎 Chuqur tahlil (batafsil)", callback_data: "deep:" + job.id }]] : []),
       ...(miniUrl ? [[{ text: "📱 To'liq ko'rish", web_app: { url: chatAppUrl(miniUrl, job.chat_id) } }]] : []),
@@ -140,7 +149,7 @@ Deno.serve(async (req) => {
   while (Date.now() < until) {
     const since = new Date(Date.now() - MAX_AGE_MIN * 60_000).toISOString();
     const { data: jobs } = await sb.from("case_answer_jobs")
-      .select("id, teacher_id, chat_id, created_at, tg_chat_id, tg_progress_msg_id, tg_phase")
+      .select("id, teacher_id, chat_id, created_at, tg_chat_id, tg_progress_msg_id, tg_phase, answer_mode")
       .not("tg_chat_id", "is", null).is("tg_delivered_at", null).gte("created_at", since)
       .order("created_at", { ascending: true }).limit(20);
     if (!jobs || jobs.length === 0) break;   // ish yo'q — keyingi daqiqagacha kutamiz
