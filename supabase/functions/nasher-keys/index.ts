@@ -2,7 +2,7 @@
 // To'liq kalit hech qachon javobga yoki logga chiqmaydi — faqat boshi va oxirgi 4 belgisi.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { geminiUrl, tail, type Pool } from "../_shared/key-pool.ts";
+import { fetchGemini, tail, type Pool } from "../_shared/key-pool.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const cors = { ...corsHeaders, "Access-Control-Allow-Headers": corsHeaders["Access-Control-Allow-Headers"] + ", x-admin-code" };
@@ -48,14 +48,9 @@ const googleError = (body: string) => {
 async function testKey(pool: Pool, apiKey: string): Promise<{ status: string; ok: boolean; invalid: boolean; message: string }> {
   const model = (await readModels())[pool];
   try {
-    const res = await fetch(geminiUrl(apiKey, model), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({ contents: [{ parts: [{ text: "Salom" }] }], generationConfig: { maxOutputTokens: 5 } }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    const body = await res.text();
-    if (res.ok) return { status: "ok", ok: true, invalid: false, message: `✅ Kalit ishlayapti (${model})` };
+    const res = await fetchGemini(apiKey, model, { contents: [{ parts: [{ text: "Salom" }] }], generationConfig: { maxOutputTokens: 5 } }, 20_000);
+    const body = res.text;
+    if (res.status < 400) return { status: "ok", ok: true, invalid: false, message: `✅ Kalit ishlayapti (${model})` };
     if (res.status === 429 || /RESOURCE_EXHAUSTED/.test(body))
       return { status: "kvota tugagan (429)", ok: false, invalid: false, message: "⏳ Kalit to'g'ri, lekin kvotasi hozir tugagan (429). Keyinroq tiklanadi." };
     if (res.status === 400 || res.status === 403) {

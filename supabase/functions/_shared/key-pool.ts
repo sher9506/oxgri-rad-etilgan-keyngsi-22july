@@ -6,10 +6,29 @@ export type Pool = "voice" | "fast";
 export interface PoolKey { id: string; api_key: string }
 
 export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-// "AQ." bilan boshlanadigan kalitlar — Vertex AI (express mode) kalitlari: boshqa manzil, so'rov tuzilishi bir xil
 export const VERTEX_BASE = "https://aiplatform.googleapis.com/v1/publishers/google/models";
-export const geminiUrl = (apiKey: string, model: string) =>
-  `${apiKey.startsWith("AQ.") ? VERTEX_BASE : GEMINI_BASE}/${model}:generateContent`;
+
+/**
+ * Gemini generateContent so'rovi. Avval AI Studio manzili (AIza… va yangi AQ.… kalitlari shu yerda ishlaydi);
+ * AQ.… kaliti u yerda 401/403 olsa — Vertex AI (express mode) manzili sinab ko'riladi. Javob: oxirgi urinish natijasi.
+ */
+export async function fetchGemini(apiKey: string, model: string, body: unknown, timeoutMs: number): Promise<{ status: number; text: string }> {
+  const call = async (base: string) => {
+    const res = await fetch(`${base}/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return { status: res.status, text: await res.text() };
+  };
+  const first = await call(GEMINI_BASE);
+  if (apiKey.startsWith("AQ.") && (first.status === 401 || first.status === 403)) {
+    const vertex = await call(VERTEX_BASE);
+    if (vertex.status < 400 || vertex.status === 429) return vertex;
+  }
+  return first;
+}
 export const tail = (k: string) => "…" + k.slice(-4);
 
 /** Hamma kalitlar 429 / kvota bilan qaytdi — chaqiruvchi foydalanuvchiga "kuting" deydi yoki chuqur rejimga o'tadi. */
@@ -46,14 +65,9 @@ export async function geminiWithPool(
   for (let i = 0; i < keys.length; i++) {
     const key = keys[(start + i) % keys.length];
     try {
-      const res = await fetch(geminiUrl(key.api_key, model), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key.api_key },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000),
-      });
-      const text = await res.text();
-      if (res.ok) {
+      const res = await fetchGemini(key.api_key, model, body, opts.timeoutMs ?? 60_000);
+      const text = res.text;
+      if (res.status < 400) {
         await recordUsage(sb, key.id, "ok", "200");
         return { data: JSON.parse(text), key };
       }
