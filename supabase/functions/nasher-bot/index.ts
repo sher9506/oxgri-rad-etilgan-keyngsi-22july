@@ -1,4 +1,4 @@
-// deploy 2026-10-22 router-model2
+// deploy 2026-10-22 ovoz-503
 // deploy 2026-10-22 router-model
 // deploy 2026-10-22 router-havza
 // deploy 2026-10-22 tez-fix
@@ -93,8 +93,9 @@ async function transcribeVoice(token: string, fileId: string, mime: string): Pro
   try {
     ({ data } = await geminiWithPool(sb, "voice", model, body, { timeoutMs: 45_000 }));
   } catch (e) {
-    // asosiy model kvotasi tugasa — zaxira model (kvotasi alohida); u ham band bo'lsa PoolExhausted foydalanuvchiga "kuting"
-    if (!(e instanceof PoolExhausted) || model === VOICE_FALLBACK_MODEL) throw e;
+    // asosiy model kvotasi tugasa yoki Google "band" (503) desa — zaxira model; u ham ishlamasa foydalanuvchiga xabar
+    if (model === VOICE_FALLBACK_MODEL) throw e;
+    console.warn("[nasher-bot] ovoz zaxira modelga:", (e instanceof PoolExhausted ? e.detail : String(e)).slice(0, 200));
     ({ data } = await geminiWithPool(sb, "voice", VOICE_FALLBACK_MODEL, body, { timeoutMs: 45_000 }));
   }
   const text = geminiText(data).trim();
