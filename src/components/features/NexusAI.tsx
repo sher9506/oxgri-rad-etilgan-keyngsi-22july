@@ -475,6 +475,9 @@ const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof 
   { id: 'lunda', label: "Lo'nda", hint: "Tezkor javob: qaysi modda, nima qilish kerak · ~1 daqiqa", Icon: Target },
   { id: 'chuqur', label: 'Chuqur', hint: "Butun qonunchilik bo'yicha tahlil · ~2–3 daqiqa", Icon: Search },
 ];
+// Hozircha hamma savol Chuqur rejimda (Lo'nda vaqtincha o'chirilgan). Qaytarish: ro'yxatga 'lunda' ni qo'shish.
+// NASHER_MODES to'liq qoladi — tarixdagi Lo'nda javoblarining belgisi uchun.
+const ACTIVE_MODES = NASHER_MODES.filter(m => m.id === 'chuqur');
 const MODE_KEY = 'nasher_mode';
 
 interface NexusComposerProps {
@@ -634,7 +637,7 @@ function NexusComposer({
         </div>
         <div className="nc-composer-footer">
           <div className="nc-mode-switch" role="radiogroup" aria-label="Javob rejimi">
-            {NASHER_MODES.map(m => (
+            {ACTIVE_MODES.map(m => (
               <button
                 key={m.id}
                 type="button"
@@ -1125,7 +1128,7 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
   }, [isNearBottom, messages.length]);
 
   const [mode, setMode] = useState<NasherMode>(() => {
-    try { const v = localStorage.getItem(MODE_KEY); return NASHER_MODES.some(m => m.id === v) ? v as NasherMode : 'chuqur'; } catch { return 'chuqur'; }
+    try { const v = localStorage.getItem(MODE_KEY); return ACTIVE_MODES.some(m => m.id === v) ? v as NasherMode : 'chuqur'; } catch { return 'chuqur'; }
   });
   const changeMode = useCallback((m: NasherMode) => {
     setMode(m);
