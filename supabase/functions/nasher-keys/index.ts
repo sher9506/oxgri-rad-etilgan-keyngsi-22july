@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
         const floor = Date.now() - hours * 3600_000, since = Date.parse(String(b.since ?? ""));
         const { data, error } = await sb.from("case_answer_jobs")
           .select("id, teacher_id, tg_chat_id, created_at, chat_kazus_text")
-          .eq("job_kind", "chat").eq("status", "error").is("deep_of", null).is("tg_delivered_at", null)
+          .eq("job_kind", "chat").eq("status", "error").is("deep_of", null)   // botda xato xabari yetkazilgan bo'lsa ham savol javobsiz
           .gte("created_at", new Date(Math.max(floor, since || 0)).toISOString())
           .order("created_at").limit(500);
         if (error) throw new Error(error.message);
