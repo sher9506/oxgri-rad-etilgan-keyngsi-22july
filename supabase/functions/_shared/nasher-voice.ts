@@ -9,11 +9,14 @@ export const VOICE_TOO_LONG = "🎤 Iltimos, 2 daqiqagacha gapiring yoki ikkiga 
 export const VOICE_BUSY = "⏳ Xizmatdan foydalanuvchilar ko'pligi sababli vaqtincha kutishingizga to'g'ri keladi. Birozdan keyin qayta yuboring yoki savolingizni yozib yuboring.";
 const VOICE_FALLBACK_MODEL = "gemini-2.5-flash";
 const VOICE_POOLS = ["voice", "fast", "router"] as const;
+// Ko'rsatma inglizcha: o'zbekcha ko'rsatma bilan model ruscha nutqni o'zbekchaga tarjima qilib yuborardi
 const TRANSCRIBE_PROMPT =
-  "Bu ovozli xabarni so'zma-so'z matnga aylantir. Til o'zbek yoki rus (aralash bo'lishi mumkin). " +
-  "O'zbekcha nutqni o'zbek lotin yozuvida, ruscha nutqni rus kirill yozuvida, tinish belgilari bilan yoz. " +
-  "Faqat aytilgan matnni qaytar — izoh, sarlavha, tarjima qo'shma. " +
-  "Agar nutq eshitilmasa, faqat bo'sh qator qaytar.";
+  "Transcribe this voice message verbatim, word for word, in the SAME language the speaker uses. " +
+  "The speaker speaks Uzbek or Russian (sometimes mixed). NEVER translate. " +
+  "Russian speech must be written in Russian Cyrillic exactly as spoken. " +
+  "Uzbek speech must be written in Uzbek Latin script. Keep mixed speech mixed. " +
+  "Add punctuation. Return only the spoken text — no comments, headings or translation. " +
+  "If there is no audible speech, return an empty line.";
 
 export function toBase64(bytes: Uint8Array): string {
   let s = "";
