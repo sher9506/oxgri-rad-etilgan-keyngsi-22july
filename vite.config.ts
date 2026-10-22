@@ -18,6 +18,9 @@ export default defineConfig({
   },
   build: {
     target: 'es2020',
+    // Har build o'z papkasida: deploy paytida telefon keshlagan "topilmadi" javobi (Cloudflare uni 1 yilga immutable beradi)
+    // keyingi versiyada qayta so'ralmaydi — Telegram Mini App'da oppoq ekran qolib ketmaydi.
+    assetsDir: `assets/${Date.now().toString(36)}`,
     rollupOptions: {
       output: {
         manualChunks: {

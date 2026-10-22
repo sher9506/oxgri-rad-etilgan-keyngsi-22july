@@ -39,6 +39,31 @@
     </script>
   </head>
   <body>
+    <!-- Sahifa ochilmasa oppoq ekran o'rniga sabab va «Qayta yuklash» (eski kesh, fayl yuklanmadi, JS xatosi). Ochilsa — o'zi yo'qoladi. -->
+    <script>
+      (function () {
+        var err = '';
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.src || t.href)) err = 'Fayl yuklanmadi: ' + String(t.src || t.href).split('/').slice(-2).join('/');
+          else if (e.message) err = e.message;
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) { err = String((e.reason && e.reason.message) || e.reason || ''); });
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (!root || root.childNodes.length) return;
+          var box = document.createElement('div');
+          box.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#fff;font:15px/1.5 system-ui,sans-serif;color:#333;text-align:center;z-index:99999';
+          box.innerHTML = '<div style="max-width:320px"><p style="margin:0 0 14px">Sahifa ochilmadi. Iltimos, qayta yuklang.</p>' +
+            '<button style="background:#2563EB;color:#fff;border:0;border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;width:100%">Qayta yuklash</button>' +
+            '<p style="margin:14px 0 0;font-size:12px;color:#888;word-break:break-all"></p></div>';
+          box.querySelector('p:last-child').textContent = err;
+          box.querySelector('button').onclick = function () { location.reload(); };
+          document.body.appendChild(box);
+          new MutationObserver(function (_, o) { if (root.childNodes.length) { box.remove(); o.disconnect(); } }).observe(root, { childList: true });
+        }, 10000);
+      })();
+    </script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <main id="root"></main>
     <script type="module" src="/src/main.tsx"></script>
