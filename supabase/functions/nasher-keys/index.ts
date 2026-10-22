@@ -1,4 +1,4 @@
-// deploy 2026-10-22 xatolar-1-5
+// deploy 2026-10-22 statistika
 // deploy 2026-10-22 router-model2
 // deploy 2026-10-22 router-model
 // deploy 2026-10-22 router-havza
@@ -168,6 +168,50 @@ Deno.serve(async (req) => {
       }
       case "models":
         return json({ models: await readModels() });
+      case "stats": {
+        // NaSher statistikasi (PIN bilan): oxirgi N kun savollari — soat/kun, holat, rejim, javob vaqti, foydalanuvchilar reytingi
+        const days = Math.min(Math.max(Number(b.days) || 1, 1), 31);
+        const since = new Date(Date.now() - days * 86400_000).toISOString();
+        const jobs: any[] = [];
+        for (let from = 0; from < 50_000; from += 1000) {
+          const { data, error } = await sb.from("case_answer_jobs")
+            .select("teacher_id, created_at, finished_at, status, answer_mode, tg_chat_id, lexion_fallback")
+            .eq("job_kind", "chat").gte("created_at", since).order("created_at").range(from, from + 999);
+          if (error) throw new Error(error.message);
+          jobs.push(...(data ?? []));
+          if (!data || data.length < 1000) break;
+        }
+        const hour = (iso: string) => new Date(new Date(iso).getTime() + 5 * 3600_000).toISOString().slice(0, 13);   // Toshkent soati
+        const byHour: Record<string, { jami: number; bot: number; sayt: number; xato: number }> = {};
+        const byUser: Record<string, { jami: number; bot: number; xato: number; oxirgi: string }> = {};
+        const status: Record<string, number> = {}, mode: Record<string, number> = {};
+        const secs: number[] = [];
+        for (const j of jobs) {
+          const h = byHour[hour(j.created_at)] ??= { jami: 0, bot: 0, sayt: 0, xato: 0 };
+          h.jami++; j.tg_chat_id ? h.bot++ : h.sayt++; if (j.status === "error") h.xato++;
+          const u = byUser[j.teacher_id] ??= { jami: 0, bot: 0, xato: 0, oxirgi: j.created_at };
+          u.jami++; if (j.tg_chat_id) u.bot++; if (j.status === "error") u.xato++; if (j.created_at > u.oxirgi) u.oxirgi = j.created_at;
+          status[j.status] = (status[j.status] ?? 0) + 1;
+          const m = j.answer_mode === "fast" ? "tez" : j.lexion_fallback ? "umumiy (zahira)" : "chuqur";
+          mode[m] = (mode[m] ?? 0) + 1;
+          if (j.status === "done" && j.finished_at) secs.push((Date.parse(j.finished_at) - Date.parse(j.created_at)) / 1000);
+        }
+        secs.sort((x, y) => x - y);
+        const ids = Object.keys(byUser);
+        const names: Record<string, { ism: string; username: string | null; telegram: boolean }> = {};
+        for (let i = 0; i < ids.length; i += 200) {
+          const { data } = await sb.from("talabalar").select("id, ism, familiya, telegram_username, telegram_id").in("id", ids.slice(i, i + 200));
+          for (const t of data ?? []) names[t.id] = { ism: [t.ism, t.familiya].filter(Boolean).join(" "), username: t.telegram_username, telegram: !!t.telegram_id };
+        }
+        const { count: botUsers } = await sb.from("talabalar").select("id", { count: "exact", head: true }).not("telegram_id", "is", null);
+        const users = ids.map((id) => ({ ism: names[id]?.ism || "Ustoz/admin", username: names[id]?.username ?? null, ...byUser[id] }))
+          .sort((x, y) => y.jami - x.jami);
+        const pct = (p: number) => secs.length ? Math.round(secs[Math.min(secs.length - 1, Math.floor(p * secs.length))]) : null;
+        return json({
+          days, generated_at: new Date().toISOString(), jami: jobs.length, foydalanuvchilar: users.length, bot_foydalanuvchilari: botUsers ?? 0,
+          status, mode, javob_vaqti: { median: pct(0.5), p90: pct(0.9) }, soatlar: byHour, users,
+        });
+      }
       case "available_models": {
         // birinchi yoqilgan kalit ko'ra oladigan generateContent modellari — model nomini taxmin qilmaslik uchun
         const { data: k } = await sb.from("nasher_api_keys").select("api_key").eq("enabled", true).limit(1).maybeSingle();
