@@ -114,8 +114,8 @@
       "hash": "ae11d9105d4fc17ef664bfcee63f818fcf1ac124878ae5001f9ee0fab46a38ea8e6791ec1759385422a63848416bc984e45ec9ce0230a313f5855b610ecc611e"
     },
     "nasher-keys": {
-      "hasChanged": false,
-      "hash": "c3f6de9b0568457159bab5ae3f14285fcabbdbd80293e942c3ce2f6c67c6505a8e6791ec1759385422a63848416bc984e45ec9ce0230a313f5855b610ecc611e"
+      "hasChanged": true,
+      "hash": "2b39ce160ba8022c12c2bd9592d8fd6e5045f7b477f2f0f7315a27972904c8228e6791ec1759385422a63848416bc984e45ec9ce0230a313f5855b610ecc611e"
     },
     "nasher-transcribe": {
       "hasChanged": false,
