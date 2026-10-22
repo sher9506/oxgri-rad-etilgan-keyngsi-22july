@@ -76,7 +76,7 @@ export default function DavlatBojiKalkulyator({ onBack }: { onBack: () => void }
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-white text-slate-900">
+              <SelectContent className="z-[70] bg-white text-slate-900">
                 {TURLAR.map((t) => (
                   <SelectItem className="focus:bg-slate-100" key={t.id} value={t.id}>
                     {t.nom}

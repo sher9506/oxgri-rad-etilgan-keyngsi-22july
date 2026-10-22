@@ -46,7 +46,7 @@ export default function SudManzillari({ onBack }: { onBack: () => void }) {
         <SelectTrigger aria-label="Viloyat">
           <SelectValue placeholder="Viloyat" />
         </SelectTrigger>
-        <SelectContent className="bg-white text-slate-900">
+        <SelectContent className="z-[70] bg-white text-slate-900">
           <SelectItem className="focus:bg-slate-100" value={HAMMASI}>Barcha hududlar</SelectItem>
           {viloyatlar.map((v) => (
             <SelectItem className="focus:bg-slate-100" key={v} value={v}>{v}</SelectItem>
@@ -58,7 +58,7 @@ export default function SudManzillari({ onBack }: { onBack: () => void }) {
           <SelectTrigger aria-label="Tuman">
             <SelectValue placeholder="Tuman" />
           </SelectTrigger>
-          <SelectContent className="bg-white text-slate-900">
+          <SelectContent className="z-[70] bg-white text-slate-900">
             <SelectItem className="focus:bg-slate-100" value={HAMMASI}>Barcha tumanlar</SelectItem>
             {tumanlar.map((t) => (
               <SelectItem className="focus:bg-slate-100" key={t} value={t}>{t}</SelectItem>
