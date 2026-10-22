@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import NexusAI from '@/components/features/NexusAI';
 import ToolsPage from '@/components/features/nexus/tools/ToolsPage';
 import { supabase } from '@/lib/supabase';
+import { useTelegramBackButton } from '@/lib/telegramBackButton';
 
 interface TgWebApp {
   initData: string;
@@ -32,6 +33,8 @@ export default function NasherMiniApp() {
   const initialChatId = new URLSearchParams(window.location.search).get('chat') || undefined;
   // ?tool=menu|aliment|boj|shablon|sud — vositalar sahifasi (bot tugmalari shu bilan ochadi); bo'sh — chat
   const [tool, setTool] = useState(new URLSearchParams(window.location.search).get('tool') || '');
+  // Telegram "Orqaga": vosita → vositalar ro'yxati → NaSher AI chati (chatda tugma yana "Yopish" bo'ladi)
+  useTelegramBackButton(tool ? () => setTool(tool === 'menu' ? '' : 'menu') : null);
 
   useEffect(() => {
     document.title = 'NaSher AI';

@@ -20,6 +20,7 @@ import DocStack from './nexus/DocStack';
 import ChannelPrompt from './nexus/ChannelPrompt';
 import AnswerText from './nexus/AnswerText';
 import { useVoiceRecorder, VOICE_MAX_SEC } from './nexus/useVoiceRecorder';
+import { useTelegramBackButton } from '@/lib/telegramBackButton';
 import { stripSourceWords, prepareAnswer, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
 import './nexus-claude.css';
 
@@ -1077,6 +1078,8 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
 
   const [input, setInput] = useState('');
   const [openTool, setOpenTool] = useState<{ tool: string; sh?: string } | null>(null);
+  // Mini App: Telegram'ning "Orqaga" tugmasi — vosita → vositalar ro'yxati → chat (chatda yana "Yopish")
+  useTelegramBackButton(openTool ? () => setOpenTool(openTool.tool === 'menu' ? null : { tool: 'menu' }) : null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
