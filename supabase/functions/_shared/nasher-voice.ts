@@ -1,5 +1,5 @@
 // deploy 2026-10-22 xatolar-1-5
-// Ovoz → matn (Gemini, "voice" kalitlar havzasi): bot (Telegram ovozi) va sayt/Mini App mikrofoni uchun umumiy.
+// Ovoz → matn (Gemini; voice, keyin fast va router kalitlar havzalari): bot (Telegram ovozi) va sayt/Mini App mikrofoni uchun umumiy.
 // Asosiy model band (503) yoki kvotasi tugasa — zaxira model; u ham ishlamasa xato chaqiruvchiga (PoolExhausted — "kuting").
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { geminiText, geminiWithPool, PoolExhausted } from "./key-pool.ts";
@@ -8,6 +8,7 @@ export const VOICE_MAX_SEC = 120;
 export const VOICE_TOO_LONG = "🎤 Iltimos, 2 daqiqagacha gapiring yoki ikkiga bo'lib yuboring.";
 export const VOICE_BUSY = "⏳ Xizmatdan foydalanuvchilar ko'pligi sababli vaqtincha kutishingizga to'g'ri keladi. Birozdan keyin qayta yuboring yoki savolingizni yozib yuboring.";
 const VOICE_FALLBACK_MODEL = "gemini-2.5-flash";
+const VOICE_POOLS = ["voice", "fast", "router"] as const;
 const TRANSCRIBE_PROMPT =
   "Bu ovozli xabarni so'zma-so'z matnga aylantir. Til o'zbek (ba'zan rus so'zlari aralashadi). " +
   "O'zbek lotin yozuvida, tinish belgilari bilan yoz. Faqat aytilgan matnni qaytar — izoh, sarlavha, tarjima qo'shma. " +
@@ -30,14 +31,20 @@ export async function transcribeAudio(sb: SupabaseClient, audioBase64: string, m
   });
   // umumiy muddat 60 s (zaxira model bilan birga): bot/server funksiyasi to'xtatilmasidan oldin foydalanuvchiga javob qaytsin
   const deadline = Date.now() + 60_000;
-  let data;
-  try {
-    ({ data } = await geminiWithPool(sb, "voice", model, body(model), { timeoutMs: 45_000, deadline }));
-  } catch (e) {
-    if (model === VOICE_FALLBACK_MODEL) throw e;
-    console.warn("[nasher-voice] zaxira modelga:", (e instanceof PoolExhausted ? e.detail : String(e)).slice(0, 200));
-    ({ data } = await geminiWithPool(sb, "voice", VOICE_FALLBACK_MODEL, body(VOICE_FALLBACK_MODEL), { timeoutMs: 45_000, deadline }));
+  // har model uchun havzalar navbat bilan: voice → fast → router (biri ishlamasa keyingisi)
+  let lastErr: unknown = new PoolExhausted("voice");
+  for (const m of model === VOICE_FALLBACK_MODEL ? [model] : [model, VOICE_FALLBACK_MODEL]) {
+    for (const pool of VOICE_POOLS) {
+      if (deadline - Date.now() < 3_000) throw lastErr;
+      try {
+        const { data } = await geminiWithPool(sb, pool, m, body(m), { timeoutMs: 45_000, deadline });
+        const text = geminiText(data).trim();
+        return text.length >= 3 ? text : null;
+      } catch (e) {
+        lastErr = e;
+        console.warn(`[nasher-voice] ${m}/${pool} ishlamadi:`, (e instanceof PoolExhausted ? e.detail : String(e)).slice(0, 200));
+      }
+    }
   }
-  const text = geminiText(data).trim();
-  return text.length >= 3 ? text : null;
+  throw lastErr;
 }
