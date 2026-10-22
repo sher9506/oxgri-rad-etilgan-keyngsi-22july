@@ -253,3 +253,4 @@ Deno.serve(async (req) => {
     return json({ error: "Server xatosi: " + msg }, 500);
   }
 });
+ 
