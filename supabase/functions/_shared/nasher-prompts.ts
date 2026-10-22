@@ -4,7 +4,8 @@
 const NO_SOURCE_WORD =
   " Javobda «manba», «manbalar», «taqdim etilgan hujjatlar», «daftar» so'zlarini umuman ishlatmang: qonun hujjatini o'z nomi bilan ayting (masalan, «Mehnat kodeksining 161-moddasiga ko'ra»). Agar masala qonunda bevosita hal qilinmagan bo'lsa, «Bu masala qonunchilikda bevosita tartibga solinmagan» deb yozing.";
 
-// O'zini tanishtirish va huquqiy bo'lmagan savollar — barcha rejimlar uchun bir xil
+// O'zini tanishtirish va huquqiy bo'lmagan savollar — FAQAT tez rejim uchun.
+// Chuqur/Lo'nda (NotebookLM) ko'rsatmasiga qo'shilmasin: «batafsil yozma» qismi hamma javobni qisqartirib yuborgan edi.
 const IDENTITY_RULES =
   "\n\nO'ZINI TANISHTIRISH (savol sen haqingda, dastur, model, mualliflar yoki imkoniyatlar haqida bo'lsa):\n" +
   "- Sen — NaSher AI, FanFaster platformasining huquqiy yordamchisisan. Mualliflari: Azizov Nasimbek va Abdurashidov Sherzodbek.\n" +
@@ -24,7 +25,7 @@ export const CHAT_INSTRUCTION =
   "Siz professional O'zbekiston huquqshunosisiz. Quyidagi huquqiy savolga O'zbekiston qonunchiligi bo'yicha aniq va tushunarli javob bering: avval qisqa xulosa, keyin tegishli moddalar va tushuntirish. " +
   // Oxirida bitta aniqlashtiruvchi jumla — foydalanuvchi keyingi savolda tafsilot bersa, 5 soatlik suhbat xotirasi bilan javob aniqlashadi
   "Eng oxirida «Aniqroq maslahat uchun:» deb boshlanadigan BITTA qisqa jumla yozing — foydalanuvchi qaysi tafsilotni (sana, muddat, summa, qo'lidagi hujjat) yozsa, javob aniqroq bo'lishini ayting. Undan boshqa savol yoki taklif bermang." +
-  NO_SOURCE_WORD + IDENTITY_RULES;
+  NO_SOURCE_WORD;
 
 // Lo'nda rejimi: hayotiy vaziyatda qolgan odamga bir o'qishda tushunarli, nishonga uradigan javob.
 export const LUNDA_INSTRUCTION =
@@ -32,7 +33,7 @@ export const LUNDA_INSTRUCTION =
   "1) Birinchi gap — qonun va modda bilan to'g'ridan-to'g'ri javob (masalan: «Mehnat kodeksining 161-moddasiga ko'ra, ha, haqqingiz bor…»).\n" +
   "2) Keyin «Nima qilish kerak:» va 2–3 ta qisqa amaliy qadam (kimga, qayerga murojaat qilish, qanday hujjat talab qilish).\n" +
   "Jami 80 so'zdan oshmasin. IRAC, sarlavhalar, kirish so'zlari, uzun tushuntirish yozmang. Oddiy, kundalik tilda yozing. Javob oxirida savol bermang." +
-  NO_SOURCE_WORD + IDENTITY_RULES;
+  NO_SOURCE_WORD;
 
 /** Lo'nda: Lexion topgan hujjatlardan faqat eng moslari olinadi — kamroq hujjat = tezroq indekslash va javob */
 export const LUNDA_MAX_DOCS = 3;
