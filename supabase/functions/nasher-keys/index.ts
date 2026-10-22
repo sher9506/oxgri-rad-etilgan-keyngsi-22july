@@ -212,6 +212,34 @@ Deno.serve(async (req) => {
           status, mode, javob_vaqti: { median: pct(0.5), p90: pct(0.9) }, soatlar: byHour, users,
         });
       }
+      case "errors": {
+        // Xato bilan tugagan, javobi yetkazilmagan chat savollari — zahira javob yozish uchun
+        const hours = Math.min(Math.max(Number(b.hours) || 24, 1), 72);
+        const floor = Date.now() - hours * 3600_000, since = Date.parse(String(b.since ?? ""));
+        const { data, error } = await sb.from("case_answer_jobs")
+          .select("id, teacher_id, tg_chat_id, created_at, chat_kazus_text")
+          .eq("job_kind", "chat").eq("status", "error").is("deep_of", null).is("tg_delivered_at", null)
+          .gte("created_at", new Date(Math.max(floor, since || 0)).toISOString())
+          .order("created_at").limit(500);
+        if (error) throw new Error(error.message);
+        return json({ jobs: data ?? [] });
+      }
+      case "zahira": {
+        // Zahira javobni faqat xato bilan tugagan chat savoliga yozadi; bot foydalanuvchisiga javob alohida yuborilgan bo'ladi
+        const items = Array.isArray(b.items) ? b.items.slice(0, 500) : [];
+        const UUID = /^[0-9a-f-]{36}$/;
+        let yozildi = 0;
+        for (const it of items as any[]) {
+          if (!UUID.test(String(it?.id)) || typeof it?.answer !== "string" || !it.answer.trim() || it.answer.length > 20_000) continue;
+          const now = new Date().toISOString();
+          const { data, error } = await sb.from("case_answer_jobs")
+            .update({ status: "done", answer: it.answer, error: null, finished_at: now, tg_delivered_at: now })
+            .eq("id", it.id).eq("status", "error").eq("job_kind", "chat").select("id");
+          if (error) throw new Error(error.message);
+          yozildi += data?.length ?? 0;
+        }
+        return json({ yozildi, yuborildi: items.length });
+      }
       case "available_models": {
         // birinchi yoqilgan kalit ko'ra oladigan generateContent modellari — model nomini taxmin qilmaslik uchun
         const { data: k } = await sb.from("nasher_api_keys").select("api_key").eq("enabled", true).limit(1).maybeSingle();
