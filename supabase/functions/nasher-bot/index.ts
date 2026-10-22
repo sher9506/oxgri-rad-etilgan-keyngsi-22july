@@ -1,4 +1,4 @@
-// deploy 2026-10-22 mikrofon2
+// deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
 // deploy 2026-10-22 router-model
 // deploy 2026-10-22 router-havza
@@ -22,6 +22,7 @@ import { tg, verifyInitData } from "../_shared/nasher-telegram.ts";
 import { channelInfo } from "../_shared/nasher-channel.ts";
 import { geminiText, geminiWithPool, loadPool, PoolExhausted } from "../_shared/key-pool.ts";
 import { ROUTER_INSTRUCTION } from "../_shared/nasher-prompts.ts";
+import { chatQuota, quotaText } from "../_shared/nasher-quota.ts";
 import { toBase64, transcribeAudio, VOICE_BUSY, VOICE_MAX_SEC, VOICE_TOO_LONG } from "../_shared/nasher-voice.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -247,8 +248,11 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
       const user = await findUser(cq.from.id);
       const { data: job } = await sb.from("case_answer_jobs").select("chat_kazus_text, teacher_id")
         .eq("id", cq.data.slice(5)).maybeSingle();
+      const block = user ? await chatQuota(sb, user.id) : null;
       if (!user || !job?.chat_kazus_text || String(job.teacher_id) !== user.id) {
         await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "Savol topilmadi, uni qayta yozib yuboring." });
+      } else if (block) {
+        await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: quotaText(block).slice(0, 190), show_alert: true });
       } else {
         await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "🔎 Chuqur tahlil boshlandi" });
         const chat = await currentChat(cq.from.id, user.id);
@@ -290,6 +294,16 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
   if (gate.member === false) {
     await reply(GATE(name, gate.channel), { reply_markup: GATE_KEYBOARD(gate.channel) });
     return;
+  }
+
+  // Limit AI'dan oldin: tugagan bo'lsa ovoz matnga aylantirilmaydi, savol hech qayerga ketmaydi (kalit sarflanmaydi).
+  // Buyruqlar (/start, /yangi) limitga bog'liq emas; limit tiklangach keyingi xabar odatdagidek ishlaydi.
+  if (voice || (text && !text.startsWith("/"))) {
+    const block = await chatQuota(sb, user.id);
+    if (block) {
+      await reply(quotaText(block));
+      return;
+    }
   }
 
   if (voice && !(await allowed("NASHER_VOICE_USERS", user.id))) {

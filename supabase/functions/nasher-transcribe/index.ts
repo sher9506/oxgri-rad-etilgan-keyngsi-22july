@@ -1,4 +1,4 @@
-// deploy 2026-10-22 mikrofon2
+// deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
 // Sayt va Mini App mikrofoni: yozib olingan ovoz (≤2 daqiqa) → matn. Bot bilan bir xil Gemini "voice" havzasi.
 // Kirish: { ustoz_id, audio (base64), mime }. Faqat NASHER_VOICE_USERS ("*" yoki id'lar) ro'yxatidagilar.
@@ -6,6 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { PoolExhausted } from "../_shared/key-pool.ts";
 import { transcribeAudio, VOICE_BUSY } from "../_shared/nasher-voice.ts";
+import { chatQuota } from "../_shared/nasher-quota.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 // 2 daqiqalik opus/webm ~1–2 MB; base64 ≈ ×1.37 — 4 MB dan kattasi 2 daqiqadan uzun yoki yaroqsiz
@@ -33,6 +34,10 @@ Deno.serve(async (req) => {
   if (users !== "*" && !users.split(",").map((x) => x.trim()).includes(userId)) {
     return json({ error: "Ovozli savol tez orada qo'shiladi — hozircha yozib yuboring." }, 403);
   }
+
+  // limit tugagan bo'lsa ovoz matnga aylantirilmaydi (kalit sarflanmasin)
+  const block = await chatQuota(sb, userId);
+  if (block) return json(block, 429);
 
   try {
     const text = await transcribeAudio(sb, audio, mime.split(";")[0]);

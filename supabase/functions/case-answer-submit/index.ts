@@ -1,3 +1,4 @@
+// deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
 // deploy 2026-10-22 router-havza
 // deploy 2026-10-22 kvota-regex
@@ -12,7 +13,7 @@
 // Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
+import { chatQuota } from "../_shared/nasher-quota.ts";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
 import { getLexionConfig, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
@@ -39,8 +40,6 @@ const STORAGE_BUCKET = "case-sources";
 
 const MAX_CHAT_INPUT = 2500;
 const MIN_CHAT_INPUT = 10;
-const CHAT_LIMIT_COUNT = 8;
-const CHAT_LIMIT_WINDOW_HOURS = 5;
 
 interface SourceInput {
   type: 'text' | 'url' | 'file';
@@ -336,68 +335,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Standalone chat: 5 soatlik sirpanuvchi oyna limiti + faol so'rov tekshiruvi ──
+    // ── Standalone chat: 5 soatlik sirpanuvchi oyna limiti + faol so'rov tekshiruvi (bot ham shuni oldindan tekshiradi) ──
     if (isStandaloneChat) {
-      const windowMs = CHAT_LIMIT_WINDOW_HOURS * 60 * 60 * 1000;
-      const windowStart = new Date(Date.now() - windowMs).toISOString();
-
-      // Ustozlar uchun limit yo'q — talabalar jadvalidan tekshiramiz
-      const { data: talabaRow } = await supabaseAdmin
-        .from("talabalar")
-        .select("id")
-        .eq("id", ustoz_id)
-        .maybeSingle();
-
-      // Telegram (bot / Mini App) foydalanuvchilari ham talabalar kabi limitli
-      if (talabaRow || String(ustoz_id).startsWith("tg_")) {
-        // Faol so'rov tekshiruvi: oxirgi 20 daqiqada queued/running chat job bormi?
-        const activeWindowStart = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-        const { count: activeCount } = await supabaseAdmin
-          .from("case_answer_jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("job_kind", "chat")
-          .eq("teacher_id", ustoz_id)
-          .in("status", ["queued", "running"])
-          .is("deleted_at", null)   // o'chirilgan chatdagi job hech kim kuzatmaydi: talabani bloklamasin
-          .gte("created_at", activeWindowStart);
-        if ((activeCount ?? 0) > 0) {
-          return new Response(
-            JSON.stringify({ error: "Oldingi so'rovingiz hali bajarilmoqda. Iltimos javobni kuting.", code: "active_job" }),
-            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // 5 soatlik sirpanuvchi oynada done/queued/running chat joblar soni
-        const { count: windowCount } = await supabaseAdmin
-          .from("case_answer_jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("job_kind", "chat")
-          .eq("teacher_id", ustoz_id)
-          .in("status", ["queued", "running", "done"])
-          .gte("created_at", windowStart);
-        // Kanal a'zolariga +CHANNEL_BONUS (Telegram faqat asosiy limit tugaganda so'raladi)
-        const chatLimit = (windowCount ?? 0) >= CHAT_LIMIT_COUNT && (await channelInfo(supabaseAdmin, String(ustoz_id))).member
-          ? CHAT_LIMIT_COUNT + CHANNEL_BONUS : CHAT_LIMIT_COUNT;
-        if ((windowCount ?? 0) >= chatLimit) {
-          // Tiklanish vaqtini hisoblash: eng eski job created_at + window
-          const { data: oldestJob } = await supabaseAdmin
-            .from("case_answer_jobs")
-            .select("created_at")
-            .eq("job_kind", "chat")
-            .eq("teacher_id", ustoz_id)
-            .in("status", ["queued", "running", "done"])
-            .gte("created_at", windowStart)
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          const nextResetAt = oldestJob
-            ? new Date(new Date(oldestJob.created_at).getTime() + windowMs).toISOString()
-            : null;
-          return new Response(
-            JSON.stringify({ error: `Savol limiti tugadi. ${CHAT_LIMIT_WINDOW_HOURS} soatdan keyin yana yozishingiz mumkin.`, code: "quota_exceeded", next_reset_at: nextResetAt }),
-            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
+      const block = await chatQuota(supabaseAdmin, String(ustoz_id));
+      if (block) {
+        return new Response(JSON.stringify(block), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
