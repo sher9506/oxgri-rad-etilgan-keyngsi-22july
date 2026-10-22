@@ -202,6 +202,20 @@ const WAIT_TIPS = [
 ];
 const EXPECTED_SEC = 180;
 
+/** Tez rejim (Gemini, ~10–20 s): bot o'zi har 2–3 s da yangilaydi — foiz vaqt bo'yicha silliq o'sadi, 95% da to'xtaydi */
+const FAST_EXPECTED_SEC = 18;
+export function fastProgressText(elapsedSec: number, name = "", done = false): string {
+  const pct = done ? 100 : Math.min(95, Math.round(100 * (1 - Math.exp(-elapsedSec / (FAST_EXPECTED_SEC / 2.2)))));
+  const filled = Math.round(pct / 10);
+  const steps = [
+    "✅ Savol qabul qilindi",
+    elapsedSec < 5 && !done ? "🔎 Amaldagi qonunchilik tekshirilmoqda…" : "✅ Tegishli moddalar topildi",
+    done ? "✅ Javob tayyor" : elapsedSec < 5 ? "▫️ Javob yoziladi" : "✍️ Javob yozilmoqda…",
+  ];
+  return `⚡ <b>Tezkor javob tayyorlanmoqda${name ? ", " + esc(name) : ""}</b> · 0:${String(Math.min(elapsedSec, 59)).padStart(2, "0")}\n\n` +
+    `${"▰".repeat(filled)}${"▱".repeat(10 - filled)}  ${pct}%\n\n` + steps.join("\n");
+}
+
 export function progressText(elapsedSec: number, phase: "searching" | "reading", found = 0): string {
   const pct = Math.min(95, Math.round(100 * (1 - Math.exp(-elapsedSec / (EXPECTED_SEC / 2.2)))));
   const filled = Math.round(pct / 10);

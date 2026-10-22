@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } fro
 import {
   ArrowUp, Sparkles, Trash2, RotateCcw, Copy, Check,
   FileText, ExternalLink, AlertCircle, Clock, ChevronDown, Loader2,
-  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search, Target, Wrench,
+  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search, Target, Wrench, Mic, Square,
 } from 'lucide-react';
 import { TOOL_BUTTONS } from '../../../supabase/functions/_shared/nasher-tools';
 
@@ -19,6 +19,8 @@ import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
 import ChannelPrompt from './nexus/ChannelPrompt';
 import AnswerText from './nexus/AnswerText';
+import { useVoiceRecorder, VOICE_MAX_SEC } from './nexus/useVoiceRecorder';
+import { useTelegramBackButton } from '@/lib/telegramBackButton';
 import { stripSourceWords, prepareAnswer, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
 import './nexus-claude.css';
 
@@ -324,9 +326,12 @@ interface NexusMessageProps {
   onCopy: (id: string, text: string) => void;
   onRetry: (aiMsgId: string) => void;
   onOpenTool: OpenTool;
+  question?: string;   // Lo'nda javobi uchun: shu javob berilgan savol (Chuqurda qayta so'rash uchun)
+  onAskDeep: (q: string, fastJobId?: string) => void;
+  deepBlocked: boolean;
 }
 
-function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool }: NexusMessageProps) {
+function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool, question, onAskDeep, deepBlocked }: NexusMessageProps) {
   const isDone = msg.role === 'assistant' && msg.status === 'done';
   const answer = useMemo(() => prepareAnswer(msg.content), [msg.content]);
   const { shown, typing } = useTypewriter(msg.id, answer, isDone && !!msg.fresh);
@@ -423,6 +428,17 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool }: NexusMessa
           </div>
         </div>
       )}
+      {msg.mode === 'lunda' && question && !typing && (
+        <div className="nc-deep-offer">
+          <p>
+            <b>Batafsilroq tahlil kerakmi?</b> «Chuqur» rejim butun qonunchilik va Oliy sud Plenumlarini o'qib chiqadi,
+            har bir moddaga lex.uz havolasini beradi. Javob biroz ko'proq — 2–3 daqiqa vaqt oladi.
+          </p>
+          <button type="button" className="nc-deep-btn" onClick={() => onAskDeep(question, msg.jobId)} disabled={deepBlocked}>
+            <Search /> Chuqur rejimda so'rash
+          </button>
+        </div>
+      )}
       {!typing && (
         <div className="nc-tool-chips">
           {TOOL_BUTTONS.map((t) => (
@@ -456,7 +472,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool }: NexusMessa
 
 // Tezlik tartibida: eng qisqasidan eng chuqurigacha
 const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof Zap }[] = [
-  { id: 'lunda', label: "Lo'nda", hint: "Qisqa javob: qaysi modda, nima qilish kerak · ~1,5 daqiqa", Icon: Target },
+  { id: 'lunda', label: "Lo'nda", hint: "Tezkor javob: qaysi modda, nima qilish kerak · ~1 daqiqa", Icon: Target },
   { id: 'chuqur', label: 'Chuqur', hint: "Butun qonunchilik bo'yicha tahlil · ~2–3 daqiqa", Icon: Search },
 ];
 const MODE_KEY = 'nasher_mode';
@@ -485,13 +501,15 @@ interface NexusComposerProps {
   newChatBlocked: boolean;
   waitingElsewhere: boolean;
   onOpenTools: () => void;
+  voice: ReturnType<typeof useVoiceRecorder>;
+  voiceError: string | null;
 }
 
 function NexusComposer({
   input, setInput, onSend, onKeyDown, mode, onModeChange,
   isProcessing, canSend, inputBlocked, inputTooLong, inputTooShort,
   minInput, maxInput, resetText, inputRef, chatLimitError, onOpenChats, memoryNote,
-  chatExpired, onNewChat, newChatBlocked, waitingElsewhere, onOpenTools,
+  chatExpired, onNewChat, newChatBlocked, waitingElsewhere, onOpenTools, voice, voiceError,
 }: NexusComposerProps) {
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -544,6 +562,9 @@ function NexusComposer({
               Savol limiti tugadi. {resetText} yana yozishingiz mumkin.
             </div>
           )}
+          {voiceError && (
+            <div className="nc-input-warning">{voiceError}</div>
+          )}
           {inputTooShort && !inputBlocked && !chatLimitError && (
             <div className="nc-input-warning">
               Savol kamida {minInput} belgi bo'lishi kerak
@@ -553,6 +574,20 @@ function NexusComposer({
       )}
       <div className={`nc-composer ${focused ? 'nc-composer-focused' : ''}`}>
         <div className="nc-composer-inner">
+          {voice.state.phase === 'recording' ? (
+            <div className="nc-voice-bar" role="status">
+              <span className="nc-voice-dot" />
+              <span className="nc-voice-time">
+                {Math.floor(voice.state.sec / 60)}:{String(voice.state.sec % 60).padStart(2, '0')} / 2:00
+              </span>
+              <button type="button" className="nc-voice-cancel" onClick={voice.cancel} aria-label="Bekor qilish"><X /></button>
+            </div>
+          ) : voice.state.phase === 'transcribing' ? (
+            <div className="nc-voice-bar" role="status">
+              <Loader2 className="nc-spin" /> Ovoz matnga aylantirilmoqda…
+              <button type="button" className="nc-voice-cancel" onClick={voice.cancel} aria-label="Bekor qilish"><X /></button>
+            </div>
+          ) : (
           <textarea
             ref={(el) => { taRef.current = el; if (inputRef) (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el; }}
             value={input}
@@ -567,6 +602,25 @@ function NexusComposer({
             aria-label="Savol matni"
             style={{ fontSize: '16px' }}
           />
+          )}
+          {voice.state.phase === 'recording' ? (
+            <button type="button" onClick={() => voice.stop()} className="nc-send-btn nc-voice-stop" aria-label="Yozishni tugatib yuborish">
+              <Square />
+            </button>
+          ) : (
+          <>
+          {voice.supported && voice.state.phase === 'idle' && (
+            <button
+              type="button"
+              onClick={voice.start}
+              disabled={textareaDisabled}
+              className="nc-voice-btn"
+              aria-label={`Ovoz bilan so'rash (${VOICE_MAX_SEC / 60} daqiqagacha)`}
+              title="Ovoz bilan so'rash — 2 daqiqagacha"
+            >
+              <Mic />
+            </button>
+          )}
           <button
             onClick={onSend}
             disabled={sendDisabled}
@@ -575,6 +629,8 @@ function NexusComposer({
           >
             <ArrowUp />
           </button>
+          </>
+          )}
         </div>
         <div className="nc-composer-footer">
           <div className="nc-mode-switch" role="radiogroup" aria-label="Javob rejimi">
@@ -1022,6 +1078,8 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
 
   const [input, setInput] = useState('');
   const [openTool, setOpenTool] = useState<{ tool: string; sh?: string } | null>(null);
+  // Mini App: Telegram'ning "Orqaga" tugmasi — vosita → vositalar ro'yxati → chat (chatda yana "Yopish")
+  useTelegramBackButton(openTool ? () => setOpenTool(openTool.tool === 'menu' ? null : { tool: 'menu' }) : null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1083,6 +1141,35 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
     sendMessage(input, mode);
     setInput('');
   }, [input, isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId, mode]);
+
+  // Lo'nda javobi ostidagi «Chuqur rejimda so'rash»: o'sha savol Chuqur rejimda qayta yuboriladi (tanlangan rejim o'zgarmaydi)
+  // Chuqur qayta so'rovi savol limitidan olinmaydi — limit tugagan bo'lsa ham bosish mumkin
+  const deepBlocked = isProcessing || isChatExpired(activeChatId);
+  // tez javob id'si bilan: server bitta tez javobga bitta Chuqur beradi va uni savol limitiga qo'shmaydi
+  const askDeep = useCallback((q: string, fastJobId?: string) => {
+    if (!deepBlocked && q.trim()) sendMessage(q, 'chuqur', fastJobId);
+  }, [deepBlocked, sendMessage]);
+
+  // Ovozli savol: matnga aylangach darhol yuboriladi; yuborib bo'lmasa — matn yozish maydoniga qo'yiladi
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const sendVoice = useCallback((text: string) => {
+    setVoiceError(null);
+    const q = text.trim().slice(0, maxInput);
+    const blocked = isProcessing || q.length < minInput || isChatExpired(activeChatId) || (!!quota && !quota.is_unlimited && quota.remaining <= 0);
+    if (blocked) { setInput(q); return; }
+    sendMessage(q, mode);
+  }, [isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId, mode]);
+  const voice = useVoiceRecorder(userId, sendVoice, setVoiceError);
+  // Yozish yoki matnga aylantirish paytida suhbat almashtirilsa — savol boshqa suhbatga ketib qolmasin: bekor qilinadi
+  const voiceChatRef = useRef(activeChatId);
+  useEffect(() => {
+    if (voiceChatRef.current === activeChatId) return;
+    voiceChatRef.current = activeChatId;
+    if (voice.state.phase !== 'idle') {
+      voice.cancel();
+      setVoiceError("Suhbat almashtirildi — ovozli savol bekor qilindi. Kerak bo'lsa, qayta ayting.");
+    }
+  }, [activeChatId, voice]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -1274,7 +1361,7 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
                 <NexusEmptyState onPick={(q) => { setInput(q); inputRef.current?.focus(); }} disabled={chatExpired} />
               ) : (
                 <div className="nc-messages">
-                  {messages.map((msg) => (
+                  {messages.map((msg, i) => (
                     <NexusMessage
                       key={msg.id}
                       msg={msg}
@@ -1282,6 +1369,9 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
                       onCopy={handleCopy}
                       onRetry={retry}
                       onOpenTool={setOpenTool}
+                      question={msg.mode === 'lunda' ? messages.slice(0, i).reverse().find(m => m.role === 'user')?.content : undefined}
+                      onAskDeep={askDeep}
+                      deepBlocked={deepBlocked}
                     />
                   ))}
                   {chatExpired && (
@@ -1303,6 +1393,8 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
             setInput={setInput}
             onSend={handleSend}
             onKeyDown={handleKeyDown}
+            voice={voice}
+            voiceError={voiceError}
             mode={mode}
             onModeChange={changeMode}
             isProcessing={isProcessing}

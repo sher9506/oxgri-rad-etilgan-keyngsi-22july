@@ -1141,6 +1141,35 @@ ol.nc-answer-list {
 .nc-tools-btn svg { width: 13px; height: 13px; }
 .nc-tools-btn:hover { color: var(--nc-accent); }
 .nc-tool-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+/* Lo'nda javobi ostida: Chuqur rejim taklifi */
+.nc-deep-offer {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--nc-border);
+  border-radius: 12px;
+  background: var(--nc-surface-2);
+  font-family: var(--nc-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--nc-text-2);
+}
+.nc-deep-offer b { color: var(--nc-text); }
+.nc-deep-btn {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nc-deep-btn svg { width: 14px; height: 14px; }
+.nc-deep-btn:disabled { opacity: 0.5; cursor: default; }
 .nc-tool-chip {
   display: inline-flex;
   align-items: center;
@@ -1160,7 +1189,9 @@ ol.nc-answer-list {
   z-index: 60;
   overflow-y: auto;
   background: #fff;
-  padding-top: var(--tg-content-safe-area-inset-top, 0px);
+  /* Telegram to'liq ekranda: tizim satri + "Yopish / ⋯" tugmalari ostidan boshlanadi */
+  padding-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
+  padding-bottom: var(--tg-safe-area-inset-bottom, 0px);
 }
 
 .nc-mode-hint {
@@ -2330,3 +2361,41 @@ ol.nc-answer-list {
 .nasher-tg-full .nc-timer-pill { display: none; }
 .nasher-tg-full .nc-icon-btn,
 .nasher-tg-full .nc-chats-toggle { width: 32px; height: 32px; min-width: 32px; }
+
+/* Mikrofon: yozish paytida textarea o'rnida taymer */
+.nc-voice-btn {
+  width: 40px; height: 40px; flex-shrink: 0;
+  border: none; border-radius: 12px; background: transparent; color: #475569;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.nc-voice-btn:hover:not(:disabled) { background: #f1f5f9; color: var(--nc-accent); }
+.nc-voice-btn:disabled { opacity: .4; cursor: default; }
+.nc-voice-btn svg { width: 20px; height: 20px; }
+.nc-voice-stop { background: #dc2626; box-shadow: 0 4px 12px rgba(220, 38, 38, .3); }
+.nc-voice-stop:hover:not(:disabled) { background: #b91c1c; }
+.nc-voice-bar {
+  flex: 1;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: #334155;
+}
+.nc-voice-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #dc2626;
+  animation: nc-voice-pulse 1s ease-in-out infinite;
+}
+@keyframes nc-voice-pulse { 50% { opacity: .3; } }
+.nc-voice-time { font-variant-numeric: tabular-nums; }
+.nc-voice-cancel {
+  margin-left: auto;
+  border: none; background: transparent; color: #64748b;
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; border-radius: 8px;
+}
+.nc-voice-cancel:hover { background: #f1f5f9; }
+.nc-voice-bar .nc-spin, .nc-voice-cancel svg { width: 18px; height: 18px; }
+.nc-voice-bar .nc-spin { animation: nc-voice-spin 1s linear infinite; }
+@keyframes nc-voice-spin { to { transform: rotate(360deg); } }

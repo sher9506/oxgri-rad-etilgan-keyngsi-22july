@@ -99,7 +99,8 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
 }
 
 function boldLead(text: string, keyBase: string): ReactNode[] {
-  if (text.startsWith('http')) return renderInline(text, keyBase);
+  // "**Sarlavha:** matn" (tez javob) — qalinlikni ** o'zi beradi, aks holda yulduzchalar ko'rinib qoladi
+  if (text.startsWith('http') || text.startsWith('**')) return renderInline(text, keyBase);
   const colonIdx = text.replace(CITE_LINK, m => '_'.repeat(m.length)).indexOf(':');   // havola ichidagi "https:" hisoblanmaydi
   if (colonIdx > 0 && colonIdx <= 60 && !text.slice(0, colonIdx).includes('\n')) {
     const lead = text.slice(0, colonIdx + 1);

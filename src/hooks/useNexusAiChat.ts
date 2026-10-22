@@ -778,7 +778,7 @@ export function useNexusAiChat(userId: string | undefined) {
     setIsProcessing(!!pollingJobId.current);
   }, [userId, chatsStatus]);
 
-  const sendMessage = useCallback(async (text: string, mode: NasherMode = 'chuqur') => {
+  const sendMessage = useCallback(async (text: string, mode: NasherMode = 'chuqur', deepOf?: string) => {
     if (!userId || !text.trim() || isProcessing) return;
     const trimmed = text.trim();
     if (trimmed.length < MIN_CHAT_INPUT || trimmed.length > MAX_CHAT_INPUT) return;
@@ -823,6 +823,7 @@ export function useNexusAiChat(userId: string | undefined) {
         ...(mode === 'lunda' ? { answer_style: 'lunda' } : {}),
         lexion_preview: true,   // yangi (python-api) Lexion — preview'da sinalgan; eski Lexion faqat zaxira
         cite_links: true,   // javobdagi moddalar, qism/bandlar va Plenum bandlari lex.uz'dagi aniq joyga havola
+        ...(deepOf ? { deep_of: deepOf } : {}),   // «Chuqur rejimda so'rash»: limitga qo'shilmaydi, bitta tez javobga bitta
       };
       const data = await callEdgeFunction('case-answer-submit', payload);
 

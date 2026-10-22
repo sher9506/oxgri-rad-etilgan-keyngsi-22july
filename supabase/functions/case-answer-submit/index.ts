@@ -1,13 +1,25 @@
+// deploy 2026-10-22 xatolar-1-5b
+// deploy 2026-10-22 xatolar-1-5
+// deploy 2026-10-22 limit-oldin
+// deploy 2026-10-22 mikrofon
+// deploy 2026-10-22 router-havza
+// deploy 2026-10-22 kvota-regex
+// deploy 2026-10-22 tez-diag2
+// deploy 2026-10-22 tez-diag
+// deploy 2026-10-22 tez-fix
+// deploy 2026-10-22 ai-studio-avval
+// deploy 2026-10-22 vertex
 // deploy 2026-10-20 lexion-double
 // deploy 2026-10-19 lunda-lexion
 // deploy 2026-10-19 b
 // Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { channelInfo, CHANNEL_BONUS } from "../_shared/nasher-channel.ts";
+import { chatQuota, checkDeepOf } from "../_shared/nasher-quota.ts";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
 import { getLexionConfig, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
+import { answerFast, chatHistory, fastConfig } from "../_shared/nasher-fast.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,8 +42,6 @@ const STORAGE_BUCKET = "case-sources";
 
 const MAX_CHAT_INPUT = 2500;
 const MIN_CHAT_INPUT = 10;
-const CHAT_LIMIT_COUNT = 8;
-const CHAT_LIMIT_WINDOW_HOURS = 5;
 
 interface SourceInput {
   type: 'text' | 'url' | 'file';
@@ -300,6 +310,8 @@ Deno.serve(async (req: Request) => {
     const citeLinks = body.cite_links === true;           // faqat preview: [N] -> lex.uz moddasiga havola
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
     const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
+    // «Chuqur tahlil» qayta so'rovi: tez javob id'si — limitga qo'shilmaydi, bitta tez javobga bitta
+    const deepOf: string | null = isStandaloneChat && typeof body.deep_of === "string" ? body.deep_of : null;
 
     if (!kazus_text || !title || !ustoz_id) {
       return new Response(
@@ -327,68 +339,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Standalone chat: 5 soatlik sirpanuvchi oyna limiti + faol so'rov tekshiruvi ──
+    // ── Standalone chat: 5 soatlik sirpanuvchi oyna limiti + faol so'rov tekshiruvi (bot ham shuni oldindan tekshiradi) ──
     if (isStandaloneChat) {
-      const windowMs = CHAT_LIMIT_WINDOW_HOURS * 60 * 60 * 1000;
-      const windowStart = new Date(Date.now() - windowMs).toISOString();
-
-      // Ustozlar uchun limit yo'q — talabalar jadvalidan tekshiramiz
-      const { data: talabaRow } = await supabaseAdmin
-        .from("talabalar")
-        .select("id")
-        .eq("id", ustoz_id)
-        .maybeSingle();
-
-      // Telegram (bot / Mini App) foydalanuvchilari ham talabalar kabi limitli
-      if (talabaRow || String(ustoz_id).startsWith("tg_")) {
-        // Faol so'rov tekshiruvi: oxirgi 20 daqiqada queued/running chat job bormi?
-        const activeWindowStart = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-        const { count: activeCount } = await supabaseAdmin
-          .from("case_answer_jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("job_kind", "chat")
-          .eq("teacher_id", ustoz_id)
-          .in("status", ["queued", "running"])
-          .is("deleted_at", null)   // o'chirilgan chatdagi job hech kim kuzatmaydi: talabani bloklamasin
-          .gte("created_at", activeWindowStart);
-        if ((activeCount ?? 0) > 0) {
-          return new Response(
-            JSON.stringify({ error: "Oldingi so'rovingiz hali bajarilmoqda. Iltimos javobni kuting.", code: "active_job" }),
-            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+      if (deepOf) {
+        const d = await checkDeepOf(supabaseAdmin, String(ustoz_id), deepOf);
+        if (d !== "ok") {
+          return new Response(JSON.stringify(d === "used"
+            ? { error: "Bu savol bo'yicha Chuqur tahlil allaqachon so'ralgan.", code: "deep_used" }
+            : { error: "Savol topilmadi, uni qayta yozib yuboring.", code: "deep_invalid" }),
+            { status: d === "used" ? 409 : 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
-
-        // 5 soatlik sirpanuvchi oynada done/queued/running chat joblar soni
-        const { count: windowCount } = await supabaseAdmin
-          .from("case_answer_jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("job_kind", "chat")
-          .eq("teacher_id", ustoz_id)
-          .in("status", ["queued", "running", "done"])
-          .gte("created_at", windowStart);
-        // Kanal a'zolariga +CHANNEL_BONUS (Telegram faqat asosiy limit tugaganda so'raladi)
-        const chatLimit = (windowCount ?? 0) >= CHAT_LIMIT_COUNT && (await channelInfo(supabaseAdmin, String(ustoz_id))).member
-          ? CHAT_LIMIT_COUNT + CHANNEL_BONUS : CHAT_LIMIT_COUNT;
-        if ((windowCount ?? 0) >= chatLimit) {
-          // Tiklanish vaqtini hisoblash: eng eski job created_at + window
-          const { data: oldestJob } = await supabaseAdmin
-            .from("case_answer_jobs")
-            .select("created_at")
-            .eq("job_kind", "chat")
-            .eq("teacher_id", ustoz_id)
-            .in("status", ["queued", "running", "done"])
-            .gte("created_at", windowStart)
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          const nextResetAt = oldestJob
-            ? new Date(new Date(oldestJob.created_at).getTime() + windowMs).toISOString()
-            : null;
-          return new Response(
-            JSON.stringify({ error: `Savol limiti tugadi. ${CHAT_LIMIT_WINDOW_HOURS} soatdan keyin yana yozishingiz mumkin.`, code: "quota_exceeded", next_reset_at: nextResetAt }),
-            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
+      }
+      const block = await chatQuota(supabaseAdmin, String(ustoz_id), { skipWindow: !!deepOf });
+      if (block) {
+        return new Response(JSON.stringify(block), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
@@ -476,6 +440,42 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      // ── Tez rejim (Lo'nda): savol darhol Gemini'ga; hamma kalit band yoki xato bo'lsa — avtomatik Chuqur (Lexion) ──
+      const fast = answerStyle === 'lunda' && isStandaloneChat && !deepOf ? await fastConfig(supabaseAdmin, ustoz_id) : null;
+      if (fast) {
+        const { data: fastRow, error: fastErr } = await supabaseAdmin.from("case_answer_jobs").insert({
+          teacher_id: ustoz_id, status: "running", source_count: 0, source_file_paths: '[]',
+          answer_mode: 'fast', job_kind: jobKind, answer_style: 'lunda',
+          chat_kazus_text: kazus_text, chat_title: title, ...(chatId ? { chat_id: chatId } : {}),
+        }).select("id").single();
+        if (!fastErr && fastRow) {
+          const jobId = fastRow.id;
+          const run = (async () => {
+            const t0 = Date.now();
+            try {
+              const answer = await answerFast(supabaseAdmin, fast, kazus_text, await chatHistory(supabaseAdmin, chatId, jobId));
+              await supabaseAdmin.from("case_answer_jobs")
+                .update({ status: "done", answer, finished_at: new Date().toISOString() }).eq("id", jobId);
+              console.log(`[case-answer-submit] tez javob: job=${jobId} ms=${Date.now() - t0}`);
+            } catch (e) {
+              // foydalanuvchi javobsiz qolmasin: shu savol Chuqur rejimda (Lexion → NotebookLM) davom etadi
+              const reason = String(e).slice(0, 800);
+              console.log(`[case-answer-submit] tez rejim ishlamadi (${reason}), Chuqurga o'tildi: job=${jobId}`);
+              const lex = await sendToLexion(lexionCfg, { title: "Lexion", kazus_text, external_id: `${jobId}-lex` });
+              await supabaseAdmin.from("case_answer_jobs").update(lex.serviceJobId
+                ? { answer_mode: 'lexion', lexion_phase: 'lexion_searching', answer_style: 'normal', status: "queued",
+                    lexion_job_id: tagLexionJobId(lex.serviceJobId, lexionPreview), lexion_fallback_reason: `tez→chuqur: ${reason}` }
+                : { status: "error", error: "Xizmat vaqtincha band, birozdan keyin qayta urinib ko'ring.", finished_at: new Date().toISOString() },
+              ).eq("id", jobId);
+            }
+          })();
+          const rt = (globalThis as Record<string, unknown>).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+          if (rt?.waitUntil) rt.waitUntil(run); else await run;
+          return new Response(JSON.stringify({ id: jobId, fast: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        console.error("[case-answer-submit] tez rejim job yaratilmadi, oddiy yo'l:", fastErr?.message);
+      }
+
       const insertPayload: Record<string, unknown> = {
         teacher_id: ustoz_id,
         status: "queued",
@@ -490,6 +490,7 @@ Deno.serve(async (req: Request) => {
       if (chatId) insertPayload.chat_id = chatId;
       if (answerStyle === 'lunda') insertPayload.answer_style = 'lunda';   // 2-bosqich (case-answer-status) shundan biladi
       if (citeLinks) insertPayload.cite_links = true;
+      if (deepOf) insertPayload.deep_of = deepOf;
 
       const { data: jobRow, error: jobError } = await supabaseAdmin
         .from("case_answer_jobs")
@@ -497,6 +498,10 @@ Deno.serve(async (req: Request) => {
         .select("id")
         .single();
 
+      if (jobError?.code === "23505" && deepOf) {   // ikki marta bosish: ikkinchisini unikal indeks to'xtatdi
+        return new Response(JSON.stringify({ error: "Bu savol bo'yicha Chuqur tahlil allaqachon so'ralgan.", code: "deep_used" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
       if (jobError || !jobRow) {
         console.error("[case-answer-submit] Job yaratilmadi:", jobError?.message);
         return new Response(

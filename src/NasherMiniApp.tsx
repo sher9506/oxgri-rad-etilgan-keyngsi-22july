@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import NexusAI from '@/components/features/NexusAI';
 import ToolsPage from '@/components/features/nexus/tools/ToolsPage';
 import { supabase } from '@/lib/supabase';
+import { useTelegramBackButton } from '@/lib/telegramBackButton';
 
 interface TgWebApp {
   initData: string;
@@ -32,6 +33,8 @@ export default function NasherMiniApp() {
   const initialChatId = new URLSearchParams(window.location.search).get('chat') || undefined;
   // ?tool=menu|aliment|boj|shablon|sud — vositalar sahifasi (bot tugmalari shu bilan ochadi); bo'sh — chat
   const [tool, setTool] = useState(new URLSearchParams(window.location.search).get('tool') || '');
+  // Telegram "Orqaga": vosita → vositalar ro'yxati → NaSher AI chati (chatda tugma yana "Yopish" bo'ladi)
+  useTelegramBackButton(tool ? () => setTool(tool === 'menu' ? '' : 'menu') : null);
 
   useEffect(() => {
     document.title = 'NaSher AI';
@@ -69,7 +72,8 @@ export default function NasherMiniApp() {
   // Vositalar foydalanuvchiga bog'liq emas — Telegram'siz (oddiy brauzerda, ulashilgan havola orqali) ham ochiladi
   if (tool) {
     return (
-      <main style={{ minHeight: '100dvh', background: '#fff', paddingTop: 'var(--tg-content-safe-area-inset-top, 0px)' }}>
+      // to'liq ekranda vosita sarlavhasi Telegram tugmalari ("Yopish", "⋯") ostidan boshlanadi
+      <main style={{ minHeight: '100dvh', background: '#fff', paddingTop: 'calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))', paddingBottom: 'var(--tg-safe-area-inset-bottom, 0px)' }}>
         <ToolsPage tool={tool} sh={new URLSearchParams(window.location.search).get('sh') || undefined} onChange={setTool} onChat={() => setTool('')} />
       </main>
     );

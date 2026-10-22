@@ -7,7 +7,7 @@ import {
   Layers, Send, Library, ShieldAlert, ShieldCheck, MessageCircle,
   Edit, Lock, Info, Bot, Megaphone, HelpCircle, BarChart2, Brain, LogOut,
   BookMarked, ChevronDown, Settings, LayoutDashboard, Zap, Trophy, Newspaper, Activity, Server, Smartphone,
-  Gavel, MessageSquareText
+  Gavel, MessageSquareText, Key
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLang } from '@/contexts/LangContext';
@@ -76,6 +76,7 @@ const ADMIN_GROUPS = [
       { id: 'tg_login_bot', label: 'Telegram Login Bot', icon: Bot },
       { id: 'miniapp_bot', label: 'Mini App Bot', icon: Smartphone },
       { id: 'nasher_bot', label: 'NaSher AI Bot', icon: Smartphone },
+      { id: 'nasher_api', label: 'API kalitlari (NaSher)', icon: Key },
       { id: 'ai_mentor', label: 'AI Mentor', icon: Brain },
       { id: 'ai_kvota', label: 'AI Kvota (Tizim holati)', icon: Activity },
       { id: 'chunking', label: 'Chunking (AI Index)', icon: Database },

@@ -1,3 +1,9 @@
+// deploy 2026-10-22 xatolar-1-5b
+// deploy 2026-10-22 xatolar-1-5
+// deploy 2026-10-22 limit-oldin
+// deploy 2026-10-22 mikrofon
+// deploy 2026-10-22 kesilgan-javob
+// deploy 2026-10-22 tez-diag
 // deploy 2026-10-20 lexion-double
 // deploy 2026-10-19 lunda-lexion
 // deploy 2026-10-19 b
@@ -222,6 +228,16 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { id, ustoz_id } = body;
 
+    // Tashxis: shu foydalanuvchining oxirgi tez (Lo'nda) savollari — necha soniya va nega Chuqurga o'tgani (matn/kalitsiz)
+    if (body.diag === "fast" && typeof ustoz_id === "string" && ustoz_id) {
+      const { data } = await supabaseAdmin.from("case_answer_jobs")
+        .select("created_at, finished_at, status, answer_mode, lexion_fallback_reason, answer")
+        .eq("teacher_id", ustoz_id).or("answer_mode.eq.fast,lexion_fallback_reason.like.tez→chuqur*")
+        .order("created_at", { ascending: false }).limit(5);
+      const jobs = (data ?? []).map(({ answer, ...j }) => ({ ...j, answer_len: answer?.length ?? 0, answer_tail: String(answer ?? "").slice(-120) }));
+      return new Response(JSON.stringify({ jobs }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (!id || !ustoz_id) {
       return new Response(
         JSON.stringify({ error: "Majburiy maydonlar yetishmayapti" }),
@@ -259,7 +275,8 @@ Deno.serve(async (req: Request) => {
     // ── Stale job auto-cleanup: 30 daqiqadan eski queued/running ishlarni timeout qil ──
     if (job.status === "queued" || job.status === "running") {
       const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
-      const STALE_JOB_MS = 30 * 60 * 1000;
+      // tez javob (Gemini) 1 daqiqadan oshmaydi — 3 daqiqadan eski "running" tez job osilib qolgan
+      const STALE_JOB_MS = job.answer_mode === "fast" ? 3 * 60 * 1000 : 30 * 60 * 1000;
       // Render'ga yuborilgan ish u yerda 1 soat saqlanadi: sahifa yopilib keyin ochilsa, tayyor javob yo'qolmasin —
       // 55 daqiqagacha avval Render'dan so'raymiz (pastdagi oddiy yo'l; topilmasa 404 bo'yicha xato qaytadi).
       const RENDER_KEEP_MS = 55 * 60 * 1000;

@@ -1,3 +1,5 @@
+// deploy 2026-10-22 xatolar-1-5b
+// deploy 2026-10-22 xatolar-1-5
 // nexus-quota — Nexus AI uchun o'qish uchun limit ma'lumoti
 // Hech narsa yozmaydi. verify_jwt = false (anon front chaqira oladi)
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -67,6 +69,7 @@ Deno.serve(async (req: Request) => {
       .eq("job_kind", "chat")
       .eq("teacher_id", user_id)
       .in("status", ["queued", "running", "done"])
+      .is("deep_of", null)   // «Chuqur tahlil» qayta so'rovi limitga qo'shilmaydi
       .gte("created_at", windowStart);
 
     const used = windowCount ?? 0;
@@ -82,6 +85,7 @@ Deno.serve(async (req: Request) => {
         .eq("job_kind", "chat")
         .eq("teacher_id", user_id)
         .in("status", ["queued", "running", "done"])
+        .is("deep_of", null)   // «Chuqur tahlil» qayta so'rovi limitga qo'shilmaydi
         .gte("created_at", windowStart)
         .order("created_at", { ascending: true })
         .limit(1)
