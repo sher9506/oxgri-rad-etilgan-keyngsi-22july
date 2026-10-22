@@ -66,11 +66,18 @@ function latinWord(word: string): string {
 // NotebookLM ba'zan turkcha harf yozadi (parvariş): o'zbek lotin yozuviga o'tkaziladi (saytdagi nasherText.ts bilan bir xil)
 const TURKISH: Record<string, string> = { ş: "sh", Ş: "Sh", ç: "ch", Ç: "Ch", ğ: "g'", Ğ: "G'", ı: "i", İ: "I" };
 
+// Ruscha javob (NASHER_RU_ANSWER): havolalardan tashqari matnda kirill ko'p va ы/щ bor — lotinga o'girilmaydi.
+// O'zbekcha javob lotinda yoziladi, unga bu shart hech qachon to'g'ri kelmaydi.
+export function isRussianAnswer(t: string): boolean {
+  const plain = t.replace(/\[[^\]\n]*\]\([^)\s]*\)|https?:\/\/\S+/g, " ");
+  return /[ыщ]/i.test(plain) && (plain.match(/[а-яё]/gi) ?? []).length > (plain.match(/[a-z]/gi) ?? []).length;
+}
+
 export function prepareAnswer(raw: string): string {
   let t = raw.replace(/\r\n/g, "\n").replace(/[şŞçÇğĞıİ]/g, (c) => TURKISH[c]);
   const cyr = (t.match(/[а-яёўқғҳ]/gi) ?? []).length;
   const lat = (t.match(/[a-z]/gi) ?? []).length;
-  if (cyr > 0 && cyr <= lat) t = t.replace(/[а-яёўқғҳА-ЯЁЎҚҒҲ'ʼ]+/g, (w) => (/[а-яёўқғҳ]/i.test(w) ? latinWord(w) : w));
+  if (cyr > 0 && cyr <= lat && !isRussianAnswer(t)) t = t.replace(/[а-яёўқғҳА-ЯЁЎҚҒҲ'ʼ]+/g, (w) => (/[а-яёўқғҳ]/i.test(w) ? latinWord(w) : w));
   // AI so'z boshidagi "ye" ni "e" deb yozadi (echim, etarli, engil, etkaz-): imlo qoidasi — so'z boshida е → ye (saytdagi fixYe bilan bir xil)
   t = t.replace(/\b([Ee])(chim|tarli|ngil|tkaz)/g, (_m, e: string, rest: string) => (e === "E" ? "Ye" : "ye") + rest);
   // havola manzili ("#:~:text=…manba…") buzilmasin: "manba" faqat matnda almashtiriladi

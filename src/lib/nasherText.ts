@@ -34,7 +34,14 @@ function latinWord(word: string): string {
   return out;
 }
 
+// Ruscha javob: havolalardan tashqari matnda kirill ko'p va ы/щ bor — lotinga o'girilmaydi (botdagi nasher-telegram.ts bilan bir xil)
+export function isRussianAnswer(t: string): boolean {
+  const plain = t.replace(/\[[^\]\n]*\]\([^)\s]*\)|https?:\/\/\S+/g, ' ');
+  return /[ыщ]/i.test(plain) && (plain.match(/[а-яё]/gi) ?? []).length > (plain.match(/[a-z]/gi) ?? []).length;
+}
+
 export function latinizeMixed(text: string): string {
+  if (isRussianAnswer(text)) return text;
   const cyr = (text.match(/[а-яёўқғҳ]/gi) ?? []).length;
   const lat = (text.match(/[a-z]/gi) ?? []).length;
   if (cyr === 0 || cyr > lat) return text;
