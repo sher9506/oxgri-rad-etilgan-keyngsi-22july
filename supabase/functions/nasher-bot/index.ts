@@ -1,4 +1,4 @@
-// deploy 2026-10-22 tez-progress2
+// deploy 2026-10-22 xatolar-1-5
 // deploy 2026-10-22 tez-progress
 // deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
@@ -24,7 +24,7 @@ import { fastProgressText, tg, verifyInitData } from "../_shared/nasher-telegram
 import { channelInfo } from "../_shared/nasher-channel.ts";
 import { geminiText, geminiWithPool, loadPool, PoolExhausted } from "../_shared/key-pool.ts";
 import { ROUTER_INSTRUCTION } from "../_shared/nasher-prompts.ts";
-import { chatQuota, quotaText } from "../_shared/nasher-quota.ts";
+import { chatQuota, checkDeepOf, quotaText } from "../_shared/nasher-quota.ts";
 import { toBase64, transcribeAudio, VOICE_BUSY, VOICE_MAX_SEC, VOICE_TOO_LONG } from "../_shared/nasher-voice.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -250,15 +250,20 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
       const user = await findUser(cq.from.id);
       const { data: job } = await sb.from("case_answer_jobs").select("chat_kazus_text, teacher_id")
         .eq("id", cq.data.slice(5)).maybeSingle();
-      const block = user ? await chatQuota(sb, user.id) : null;
-      if (!user || !job?.chat_kazus_text || String(job.teacher_id) !== user.id) {
+      // Bitta tez javobga bitta Chuqur; u 5 soatlik savol limitiga qo'shilmaydi (faqat "oldingi savol bajarilmoqda" tekshiriladi)
+      const jobId = cq.data.slice(5);
+      const used = user && job ? await checkDeepOf(sb, user.id, jobId) : "invalid";
+      const block = used === "ok" && user ? await chatQuota(sb, user.id, { skipWindow: true }) : null;
+      if (!user || !job?.chat_kazus_text || String(job.teacher_id) !== user.id || used === "invalid") {
         await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "Savol topilmadi, uni qayta yozib yuboring." });
+      } else if (used === "used") {
+        await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "🔎 Bu savol bo'yicha Chuqur tahlil allaqachon so'ralgan — javob tayyor bo'lganda yuboraman." });
       } else if (block) {
         await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: quotaText(block).slice(0, 190), show_alert: true });
       } else {
-        await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "🔎 Chuqur tahlil boshlandi" });
+        await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "🔎 Chuqur tahlil boshlandi (savol limitingizdan olinmaydi)" });
         const chat = await currentChat(cq.from.id, user.id);
-        await submitQuestion(token, chatId, user.id, user.ism || cq.from.first_name || "", job.chat_kazus_text, chat.chatId, "deep");
+        await submitQuestion(token, chatId, user.id, user.ism || cq.from.first_name || "", job.chat_kazus_text, chat.chatId, "deep", jobId);
       }
     } else {
       await tg(token, "answerCallbackQuery", { callback_query_id: cq.id });
@@ -374,7 +379,7 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
 }
 
 /** Savolni case-answer-submit ga yuboradi va kutish xabarini ko'rsatadi (javobni nasher-bot-dispatch yetkazadi). */
-async function submitQuestion(token: string, chatId: number, userId: string, name: string, text: string, chatUuid: string, mode: "fast" | "deep") {
+async function submitQuestion(token: string, chatId: number, userId: string, name: string, text: string, chatUuid: string, mode: "fast" | "deep", deepOf?: string) {
   const reply = (t: string, extra: Record<string, unknown> = {}) =>
     tg(token, "sendMessage", { chat_id: chatId, text: t, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
   const progress = await reply(mode === "fast" ? fastProgressText(0, name)
@@ -391,7 +396,7 @@ async function submitQuestion(token: string, chatId: number, userId: string, nam
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
     body: JSON.stringify({
       kazus_text: text, title: text.slice(0, 60), ustoz_id: userId, answer_mode: "lexion", chat_id: chatUuid,
-      ...(mode === "fast" ? { answer_style: "lunda" } : {}), ...(cite ? { cite_links: true } : {}),
+      ...(mode === "fast" ? { answer_style: "lunda" } : {}), ...(cite ? { cite_links: true } : {}), ...(deepOf ? { deep_of: deepOf } : {}),
     }),
     signal: AbortSignal.timeout(100_000),
   }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: String(e) }) } as unknown as Response));

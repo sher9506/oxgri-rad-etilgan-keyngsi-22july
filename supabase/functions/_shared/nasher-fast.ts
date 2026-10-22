@@ -1,4 +1,4 @@
-// deploy 2026-10-22 kesilgan-javob
+// deploy 2026-10-22 xatolar-1-5
 // Tez rejim (Lo'nda): savol to'g'ridan-to'g'ri Gemini'ga ("fast" kalitlar havzasi), Render/NotebookLM'siz.
 // Yoqilgan: settings.NASHER_FAST_USERS ("*" yoki talaba id'lari) va havzada kamida bitta kalit bo'lsa.
 // NASHER_FAST_SEARCH = "off" bo'lmasa, Gemini Google qidiruvi bilan amaldagi qonun matnini tekshiradi (modda raqamlari aniqroq).
@@ -7,6 +7,7 @@ import { geminiText, geminiWithPool, loadPool, PoolExhausted, type PoolKey } fro
 import { FAST_INSTRUCTION } from "./nasher-prompts.ts";
 
 const FALLBACK_MODEL = "gemini-2.5-flash";
+const FAST_BUDGET_MS = 60_000;
 
 export interface FastCfg { keys: PoolKey[]; model: string; search: boolean }
 
@@ -66,13 +67,16 @@ export async function answerFast(sb: SupabaseClient, cfg: FastCfg, question: str
     [cfg.model, false, true], [cfg.model, false, false],
     ...(cfg.model !== FALLBACK_MODEL ? [[FALLBACK_MODEL, false, false]] as [string, boolean, boolean][] : []),
   ];
+  // Umumiy muddat: server funksiyasi ~150 s da to'xtatiladi — undan oldin Chuqurga o'tishga ulgurish kerak
+  const deadline = Date.now() + FAST_BUDGET_MS;
   const errors: string[] = [];
   let exhausted: PoolExhausted | null = null;
   let partial = "";   // MAX_TOKENS bilan kesilgan javob — boshqa urinishlar ham ishlamasa, oxirgi chora
   for (const [model, search, thinking] of attempts) {
     if (exhausted && model === cfg.model) continue;   // asosiy model kvotasi tugagan — darhol zaxiraga
+    if (deadline - Date.now() < 5_000) { errors.push("umumiy vaqt (60 s) tugadi"); break; }
     try {
-      const { data } = await geminiWithPool(sb, "fast", model, fastBody(contents, search, thinking), { keys: cfg.keys, timeoutMs: 40_000 });
+      const { data } = await geminiWithPool(sb, "fast", model, fastBody(contents, search, thinking), { keys: cfg.keys, timeoutMs: 40_000, deadline });
       const text = geminiText(data);
       const finish = data?.candidates?.[0]?.finishReason ?? "?";
       // kesilgan javob gap o'rtasida uziladi (o'ylash tokenlari chegarani yeydi) — keyingi urinish o'ylashsiz

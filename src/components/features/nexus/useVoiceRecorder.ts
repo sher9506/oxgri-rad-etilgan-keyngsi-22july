@@ -1,4 +1,5 @@
 // Mikrofon: ovozni yozib (ko'pi bilan 2 daqiqa — keyin o'zi to'xtaydi), nasher-transcribe orqali matnga aylantiradi.
+// Har yozuv o'z "avlod" raqamiga ega: bekor qilingan, sahifa yopilgan yoki suhbat almashgan yozuvning natijasi hech qayerga yuborilmaydi.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 
@@ -22,13 +23,20 @@ const toBase64 = (blob: Blob) => new Promise<string>((resolve, reject) => {
 export function useVoiceRecorder(userId: string, onText: (text: string) => void, onError: (msg: string) => void) {
   const [state, setState] = useState<VoiceState>({ phase: 'idle' });
   const recRef = useRef<MediaRecorder | null>(null);
-  const cancelledRef = useRef(false);
+  const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
+  const genRef = useRef(0);            // joriy yozuv raqami; bekor qilinsa oshadi — eski natija e'tiborsiz qoladi
+  // eng so'nggi qayta chaqiruvlar: yozuv tugaganda joriy suhbat/rejim ishlatiladi (eski qiymat emas)
+  const onTextRef = useRef(onText);
+  const onErrorRef = useRef(onError);
+  onTextRef.current = onText;
+  onErrorRef.current = onError;
   const supported = typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
 
   const clearTimer = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  const releaseMic = () => { streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null; };
 
-  const transcribe = useCallback(async (blob: Blob) => {
+  const transcribe = useCallback(async (blob: Blob, gen: number) => {
     setState({ phase: 'transcribing' });
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/nasher-transcribe`, {
@@ -38,43 +46,61 @@ export function useVoiceRecorder(userId: string, onText: (text: string) => void,
         signal: AbortSignal.timeout(100_000),
       });
       const data = await res.json().catch(() => ({}));
+      if (gen !== genRef.current) return;   // bekor qilingan / sahifa yopilgan / suhbat almashgan
       if (!res.ok || !data?.text) throw new Error(data?.error || `Ovoz o'qilmadi (${res.status})`);
-      onText(String(data.text));
+      onTextRef.current(String(data.text));
     } catch (e) {
+      if (gen !== genRef.current) return;
       console.error('[useVoiceRecorder] matnga aylantirish:', e);
-      onError(e instanceof Error && e.name !== 'TimeoutError' ? e.message : "Ovozni o'qib bo'lmadi. Savolingizni yozib yuboring.");
+      onErrorRef.current(e instanceof Error && e.name !== 'TimeoutError' ? e.message : "Ovozni o'qib bo'lmadi. Savolingizni yozib yuboring.");
     } finally {
-      setState({ phase: 'idle' });
+      if (gen === genRef.current) setState({ phase: 'idle' });
     }
-  }, [userId, onText, onError]);
+  }, [userId]);
 
-  const stop = useCallback((cancel = false) => {
-    cancelledRef.current = cancel;
+  /** Yozishni tugatib yuborish. */
+  const stop = useCallback(() => {
     clearTimer();
     if (recRef.current?.state === 'recording') recRef.current.stop();
   }, []);
 
+  /** Bekor qilish: yozuv, mikrofon ruxsati kutilishi yoki matnga aylantirish — natija yuborilmaydi. */
+  const cancel = useCallback(() => {
+    genRef.current++;
+    clearTimer();
+    if (recRef.current?.state === 'recording') recRef.current.stop();
+    recRef.current = null;
+    releaseMic();
+    setState({ phase: 'idle' });
+  }, []);
+
   const start = useCallback(async () => {
-    if (!supported || recRef.current?.state === 'recording') return;
+    if (!supported || recRef.current) return;
+    const gen = ++genRef.current;
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
+      if (gen !== genRef.current) return;
       console.error('[useVoiceRecorder] mikrofon:', e);
-      onError("Mikrofonga ruxsat berilmadi. Brauzer/Telegram sozlamalarida mikrofonni yoqing yoki savolni yozib yuboring.");
+      onErrorRef.current("Mikrofonga ruxsat berilmadi. Brauzer/Telegram sozlamalarida mikrofonni yoqing yoki savolni yozib yuboring.");
       return;
     }
+    // ruxsat kutilayotganda bekor qilingan yoki sahifa yopilgan — mikrofon darhol o'chadi, yozuv boshlanmaydi
+    if (gen !== genRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+    streamRef.current = stream;
     const mime = pickMime();
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     const chunks: Blob[] = [];
     rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    // yozuv qanday to'xtasa ham (tugma, 2 daqiqa, qo'ng'iroq, mikrofon uzilishi) — taymer va mikrofon to'xtaydi
     rec.onstop = () => {
-      stream.getTracks().forEach(t => t.stop());
-      recRef.current = null;
-      if (cancelledRef.current || !chunks.length) { setState({ phase: 'idle' }); return; }
-      transcribe(new Blob(chunks, { type: (rec.mimeType || mime || 'audio/webm').split(';')[0] }));
+      clearTimer();
+      releaseMic();
+      if (recRef.current === rec) recRef.current = null;
+      if (gen !== genRef.current || !chunks.length) { if (gen === genRef.current) setState({ phase: 'idle' }); return; }
+      transcribe(new Blob(chunks, { type: (rec.mimeType || mime || 'audio/webm').split(';')[0] }), gen);
     };
-    cancelledRef.current = false;
     recRef.current = rec;
     rec.start(1000);
     const t0 = Date.now();
@@ -84,10 +110,10 @@ export function useVoiceRecorder(userId: string, onText: (text: string) => void,
       if (sec >= VOICE_MAX_SEC) stop();   // 2 daqiqa — o'zi to'xtab, yuboriladi
       else setState({ phase: 'recording', sec });
     }, 250);
-  }, [supported, transcribe, stop, onError]);
+  }, [supported, transcribe, stop]);
 
-  // komponent yopilsa — yozuv bekor, mikrofon o'chadi
-  useEffect(() => () => stop(true), [stop]);
+  // sahifa/komponent yopilsa — har qanday holatda bekor (mikrofon o'chadi, hech narsa yuborilmaydi)
+  useEffect(() => cancel, [cancel]);
 
-  return { state, supported, start, stop };
+  return { state, supported, start, stop, cancel };
 }

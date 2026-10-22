@@ -1,3 +1,4 @@
+// deploy 2026-10-22 xatolar-1-5
 // Ovoz → matn (Gemini, "voice" kalitlar havzasi): bot (Telegram ovozi) va sayt/Mini App mikrofoni uchun umumiy.
 // Asosiy model band (503) yoki kvotasi tugasa — zaxira model; u ham ishlamasa xato chaqiruvchiga (PoolExhausted — "kuting").
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -27,13 +28,15 @@ export async function transcribeAudio(sb: SupabaseClient, audioBase64: string, m
     // Gemini 3: o'ylashsiz — tezroq va o'ylash tokenlari matnni kesib qo'ymaydi
     generationConfig: { temperature: 0, maxOutputTokens: 2000, ...(m.startsWith("gemini-3") ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}) },
   });
+  // umumiy muddat 60 s (zaxira model bilan birga): bot/server funksiyasi to'xtatilmasidan oldin foydalanuvchiga javob qaytsin
+  const deadline = Date.now() + 60_000;
   let data;
   try {
-    ({ data } = await geminiWithPool(sb, "voice", model, body(model), { timeoutMs: 45_000 }));
+    ({ data } = await geminiWithPool(sb, "voice", model, body(model), { timeoutMs: 45_000, deadline }));
   } catch (e) {
     if (model === VOICE_FALLBACK_MODEL) throw e;
     console.warn("[nasher-voice] zaxira modelga:", (e instanceof PoolExhausted ? e.detail : String(e)).slice(0, 200));
-    ({ data } = await geminiWithPool(sb, "voice", VOICE_FALLBACK_MODEL, body(VOICE_FALLBACK_MODEL), { timeoutMs: 45_000 }));
+    ({ data } = await geminiWithPool(sb, "voice", VOICE_FALLBACK_MODEL, body(VOICE_FALLBACK_MODEL), { timeoutMs: 45_000, deadline }));
   }
   const text = geminiText(data).trim();
   return text.length >= 3 ? text : null;

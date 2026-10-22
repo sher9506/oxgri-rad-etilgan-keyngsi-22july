@@ -1,4 +1,4 @@
-// deploy 2026-10-22 limit-oldin2
+// deploy 2026-10-22 xatolar-1-5
 // deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
 // deploy 2026-10-22 kesilgan-javob
@@ -274,7 +274,8 @@ Deno.serve(async (req: Request) => {
     // ── Stale job auto-cleanup: 30 daqiqadan eski queued/running ishlarni timeout qil ──
     if (job.status === "queued" || job.status === "running") {
       const jobAgeMs = Date.now() - new Date(job.created_at).getTime();
-      const STALE_JOB_MS = 30 * 60 * 1000;
+      // tez javob (Gemini) 1 daqiqadan oshmaydi — 3 daqiqadan eski "running" tez job osilib qolgan
+      const STALE_JOB_MS = job.answer_mode === "fast" ? 3 * 60 * 1000 : 30 * 60 * 1000;
       // Render'ga yuborilgan ish u yerda 1 soat saqlanadi: sahifa yopilib keyin ochilsa, tayyor javob yo'qolmasin —
       // 55 daqiqagacha avval Render'dan so'raymiz (pastdagi oddiy yo'l; topilmasa 404 bo'yicha xato qaytadi).
       const RENDER_KEEP_MS = 55 * 60 * 1000;

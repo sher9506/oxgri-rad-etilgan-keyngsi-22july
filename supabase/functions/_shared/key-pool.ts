@@ -1,4 +1,4 @@
-// deploy 2026-10-22 kvota-regex
+// deploy 2026-10-22 xatolar-1-5
 // Gemini kalitlari havzasi (nasher_api_keys): navbat bilan ishlatish, 429/kvotada keyingisiga o'tish, kunlik hisob.
 // Kalitlar faqat service_role orqali o'qiladi; loglarga hech qachon to'liq kalit yozilmaydi (faqat oxirgi 4 belgi).
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -55,9 +55,10 @@ const isQuota = (status: number, body: string) =>
 /**
  * Gemini generateContent: tasodifiy kalitdan boshlab navbat bilan (parallel so'rovlar kalitlarga teng tarqaladi).
  * 429/kvota yoki 5xx — keyingi kalit; 400 — so'rovning o'zi xato, boshqa kalit yordam bermaydi.
+ * deadline (epoch ms) — umumiy muddat: har kalitning kutishi qolgan vaqtdan oshmaydi, vaqt tugasa — xato (kvota emas).
  */
 export async function geminiWithPool(
-  sb: SupabaseClient, pool: Pool, model: string, body: unknown, opts: { keys?: PoolKey[]; timeoutMs?: number } = {},
+  sb: SupabaseClient, pool: Pool, model: string, body: unknown, opts: { keys?: PoolKey[]; timeoutMs?: number; deadline?: number } = {},
 ): Promise<{ data: any; key: PoolKey }> {
   const keys = opts.keys ?? await loadPool(sb, pool);
   if (!keys.length) throw new PoolExhausted(pool);
@@ -66,8 +67,14 @@ export async function geminiWithPool(
   let allQuota = true;
   for (let i = 0; i < keys.length; i++) {
     const key = keys[(start + i) % keys.length];
+    const left = opts.deadline ? opts.deadline - Date.now() : Infinity;
+    if (left < 3_000) {   // umumiy vaqt tugadi — qolgan kalitlarni kutmaymiz
+      allQuota = false;
+      lastErr = lastErr || "vaqt tugadi";
+      break;
+    }
     try {
-      const res = await fetchGemini(key.api_key, model, body, opts.timeoutMs ?? 60_000);
+      const res = await fetchGemini(key.api_key, model, body, Math.min(opts.timeoutMs ?? 60_000, left));
       const text = res.text;
       if (res.status < 400) {
         await recordUsage(sb, key.id, "ok", "200");

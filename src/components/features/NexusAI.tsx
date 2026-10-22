@@ -326,7 +326,7 @@ interface NexusMessageProps {
   onRetry: (aiMsgId: string) => void;
   onOpenTool: OpenTool;
   question?: string;   // Lo'nda javobi uchun: shu javob berilgan savol (Chuqurda qayta so'rash uchun)
-  onAskDeep: (q: string) => void;
+  onAskDeep: (q: string, fastJobId?: string) => void;
   deepBlocked: boolean;
 }
 
@@ -433,7 +433,7 @@ function NexusMessage({ msg, copiedId, onCopy, onRetry, onOpenTool, question, on
             <b>Batafsilroq tahlil kerakmi?</b> «Chuqur» rejim butun qonunchilik va Oliy sud Plenumlarini o'qib chiqadi,
             har bir moddaga lex.uz havolasini beradi. Javob biroz ko'proq — 2–3 daqiqa vaqt oladi.
           </p>
-          <button type="button" className="nc-deep-btn" onClick={() => onAskDeep(question)} disabled={deepBlocked}>
+          <button type="button" className="nc-deep-btn" onClick={() => onAskDeep(question, msg.jobId)} disabled={deepBlocked}>
             <Search /> Chuqur rejimda so'rash
           </button>
         </div>
@@ -579,10 +579,13 @@ function NexusComposer({
               <span className="nc-voice-time">
                 {Math.floor(voice.state.sec / 60)}:{String(voice.state.sec % 60).padStart(2, '0')} / 2:00
               </span>
-              <button type="button" className="nc-voice-cancel" onClick={() => voice.stop(true)} aria-label="Bekor qilish"><X /></button>
+              <button type="button" className="nc-voice-cancel" onClick={voice.cancel} aria-label="Bekor qilish"><X /></button>
             </div>
           ) : voice.state.phase === 'transcribing' ? (
-            <div className="nc-voice-bar" role="status"><Loader2 className="nc-spin" /> Ovoz matnga aylantirilmoqda…</div>
+            <div className="nc-voice-bar" role="status">
+              <Loader2 className="nc-spin" /> Ovoz matnga aylantirilmoqda…
+              <button type="button" className="nc-voice-cancel" onClick={voice.cancel} aria-label="Bekor qilish"><X /></button>
+            </div>
           ) : (
           <textarea
             ref={(el) => { taRef.current = el; if (inputRef) (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el; }}
@@ -1137,9 +1140,11 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
   }, [input, isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId, mode]);
 
   // Lo'nda javobi ostidagi «Chuqur rejimda so'rash»: o'sha savol Chuqur rejimda qayta yuboriladi (tanlangan rejim o'zgarmaydi)
-  const deepBlocked = isProcessing || isChatExpired(activeChatId) || (!!quota && !quota.is_unlimited && quota.remaining <= 0);
-  const askDeep = useCallback((q: string) => {
-    if (!deepBlocked && q.trim()) sendMessage(q, 'chuqur');
+  // Chuqur qayta so'rovi savol limitidan olinmaydi — limit tugagan bo'lsa ham bosish mumkin
+  const deepBlocked = isProcessing || isChatExpired(activeChatId);
+  // tez javob id'si bilan: server bitta tez javobga bitta Chuqur beradi va uni savol limitiga qo'shmaydi
+  const askDeep = useCallback((q: string, fastJobId?: string) => {
+    if (!deepBlocked && q.trim()) sendMessage(q, 'chuqur', fastJobId);
   }, [deepBlocked, sendMessage]);
 
   // Ovozli savol: matnga aylangach darhol yuboriladi; yuborib bo'lmasa — matn yozish maydoniga qo'yiladi
@@ -1152,6 +1157,16 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
     sendMessage(q, mode);
   }, [isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId, mode]);
   const voice = useVoiceRecorder(userId, sendVoice, setVoiceError);
+  // Yozish yoki matnga aylantirish paytida suhbat almashtirilsa — savol boshqa suhbatga ketib qolmasin: bekor qilinadi
+  const voiceChatRef = useRef(activeChatId);
+  useEffect(() => {
+    if (voiceChatRef.current === activeChatId) return;
+    voiceChatRef.current = activeChatId;
+    if (voice.state.phase !== 'idle') {
+      voice.cancel();
+      setVoiceError("Suhbat almashtirildi — ovozli savol bekor qilindi. Kerak bo'lsa, qayta ayting.");
+    }
+  }, [activeChatId, voice]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }

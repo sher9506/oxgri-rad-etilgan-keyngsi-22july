@@ -1,4 +1,4 @@
-// deploy 2026-10-22 limit-oldin2
+// deploy 2026-10-22 xatolar-1-5
 // deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
 // deploy 2026-10-22 router-havza
@@ -14,7 +14,7 @@
 // Lexion mode support — Nexus chat_id keep_notebook qo'shilgan
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { chatQuota } from "../_shared/nasher-quota.ts";
+import { chatQuota, checkDeepOf } from "../_shared/nasher-quota.ts";
 import { cleanChatId, getChatNotebook, getKeepCfg } from "../_shared/nexus-notebooks.ts";
 import { getLexionConfig, tagLexionJobId } from "../_shared/lexion-target.ts";
 import { KAZUS_INSTRUCTION as INSTRUCTION, chatInstruction, parseAnswerStyle } from "../_shared/nasher-prompts.ts";
@@ -309,6 +309,8 @@ Deno.serve(async (req: Request) => {
     const citeLinks = body.cite_links === true;           // faqat preview: [N] -> lex.uz moddasiga havola
     const jobKind: string = isStandaloneChat ? 'chat' : 'kazus';
     const chatId = isStandaloneChat ? cleanChatId(body.chat_id) : null;
+    // «Chuqur tahlil» qayta so'rovi: tez javob id'si — limitga qo'shilmaydi, bitta tez javobga bitta
+    const deepOf: string | null = isStandaloneChat && typeof body.deep_of === "string" ? body.deep_of : null;
 
     if (!kazus_text || !title || !ustoz_id) {
       return new Response(
@@ -338,7 +340,16 @@ Deno.serve(async (req: Request) => {
 
     // ── Standalone chat: 5 soatlik sirpanuvchi oyna limiti + faol so'rov tekshiruvi (bot ham shuni oldindan tekshiradi) ──
     if (isStandaloneChat) {
-      const block = await chatQuota(supabaseAdmin, String(ustoz_id));
+      if (deepOf) {
+        const d = await checkDeepOf(supabaseAdmin, String(ustoz_id), deepOf);
+        if (d !== "ok") {
+          return new Response(JSON.stringify(d === "used"
+            ? { error: "Bu savol bo'yicha Chuqur tahlil allaqachon so'ralgan.", code: "deep_used" }
+            : { error: "Savol topilmadi, uni qayta yozib yuboring.", code: "deep_invalid" }),
+            { status: d === "used" ? 409 : 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+      const block = await chatQuota(supabaseAdmin, String(ustoz_id), { skipWindow: !!deepOf });
       if (block) {
         return new Response(JSON.stringify(block), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -429,7 +440,7 @@ Deno.serve(async (req: Request) => {
       }
 
       // ── Tez rejim (Lo'nda): savol darhol Gemini'ga; hamma kalit band yoki xato bo'lsa — avtomatik Chuqur (Lexion) ──
-      const fast = answerStyle === 'lunda' && isStandaloneChat ? await fastConfig(supabaseAdmin, ustoz_id) : null;
+      const fast = answerStyle === 'lunda' && isStandaloneChat && !deepOf ? await fastConfig(supabaseAdmin, ustoz_id) : null;
       if (fast) {
         const { data: fastRow, error: fastErr } = await supabaseAdmin.from("case_answer_jobs").insert({
           teacher_id: ustoz_id, status: "running", source_count: 0, source_file_paths: '[]',
@@ -478,6 +489,7 @@ Deno.serve(async (req: Request) => {
       if (chatId) insertPayload.chat_id = chatId;
       if (answerStyle === 'lunda') insertPayload.answer_style = 'lunda';   // 2-bosqich (case-answer-status) shundan biladi
       if (citeLinks) insertPayload.cite_links = true;
+      if (deepOf) insertPayload.deep_of = deepOf;
 
       const { data: jobRow, error: jobError } = await supabaseAdmin
         .from("case_answer_jobs")
@@ -485,6 +497,10 @@ Deno.serve(async (req: Request) => {
         .select("id")
         .single();
 
+      if (jobError?.code === "23505" && deepOf) {   // ikki marta bosish: ikkinchisini unikal indeks to'xtatdi
+        return new Response(JSON.stringify({ error: "Bu savol bo'yicha Chuqur tahlil allaqachon so'ralgan.", code: "deep_used" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
       if (jobError || !jobRow) {
         console.error("[case-answer-submit] Job yaratilmadi:", jobError?.message);
         return new Response(
