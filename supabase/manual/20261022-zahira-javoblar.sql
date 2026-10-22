@@ -568,7 +568,8 @@ xarita(prefiks, kalit) as (values
   ('37b92672', 'Q33'),
   ('72d0e040', 'Q39'))
 update public.case_answer_jobs j
-set status = 'done', answer = javob.matn, error = null, finished_at = now()
+set status = 'done', answer = javob.matn, error = null, finished_at = now(),
+    tg_delivered_at = coalesce(j.tg_delivered_at, now())   -- bot foydalanuvchilariga javob allaqachon to'g'ridan-to'g'ri yuborilgan
 from xarita join javob on javob.kalit = xarita.kalit
 where j.id::text like xarita.prefiks || '%'
   and j.status = 'error' and j.job_kind = 'chat'
