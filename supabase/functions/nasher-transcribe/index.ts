@@ -1,3 +1,4 @@
+// deploy 2026-10-22 mikrofon2
 // deploy 2026-10-22 mikrofon
 // Sayt va Mini App mikrofoni: yozib olingan ovoz (≤2 daqiqa) → matn. Bot bilan bir xil Gemini "voice" havzasi.
 // Kirish: { ustoz_id, audio (base64), mime }. Faqat NASHER_VOICE_USERS ("*" yoki id'lar) ro'yxatidagilar.
