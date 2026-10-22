@@ -43,8 +43,8 @@ const WELCOME = (name: string, channel: string) =>
   `👋 ${hi(name)}\n\n` +
   "⚖️ <b>NaSher AI</b> — O'zbekiston qonunchiligi bo'yicha yordamchingiz.\n\n" +
   (channel ? `✅ Siz ${esc(channel)} kanalimizga a'zosiz — rahmat!\n\n` : "") +
-  "✍️ Vaziyatingizni oddiy so'zlar bilan shu yerga yozing (xohlasangiz — ilovada) — kerakli qonunlarni topib, moddalar bilan tushuntirib beraman.\n" +
-  "⏱ Javob 2–3 daqiqada keladi, tayyor bo'lganda o'zim yuboraman.\n" +
+  "✍️ Vaziyatingizni oddiy so'zlar bilan shu yerga yozing yoki 🎤 ovozli xabar qilib yuboring (2 daqiqagacha) — xohlasangiz, ilovada ham. Kerakli qonunlarni topib, moddalar bilan tushuntirib beraman.\n" +
+  "⏱ Oddiy savolga javob ~20 soniyada, murakkab savolga 2–3 daqiqada keladi — tayyor bo'lganda o'zim yuboraman.\n" +
   "💬 Suhbat 5 soat davom etadi: keyingi savollaringizda oldingilarini eslayman.";
 
 // Kanalga a'zo bo'lmaganlar uchun darvoza: savol qabul qilinmaydi
@@ -242,7 +242,7 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
       } else {
         await tg(token, "answerCallbackQuery", { callback_query_id: cq.id, text: "✅ Tasdiqlandi" });
         await tg(token, "sendMessage", { chat_id: chatId, parse_mode: "HTML",
-          text: `✅ Rahmat${name ? ", " + esc(name) : ""}! Siz ${esc(gate.channel)} kanalimizga a'zo bo'ldingiz.\n\n✍️ Endi savolingizni shu yerga yozing — yoki, xohlasangiz, ilovada davom eting 👇`,
+          text: `✅ Rahmat${name ? ", " + esc(name) : ""}! Siz ${esc(gate.channel)} kanalimizga a'zo bo'ldingiz.\n\n✍️ Endi savolingizni shu yerga yozing yoki 🎤 ovozli xabar qilib yuboring — yoki, xohlasangiz, ilovada davom eting 👇`,
           ...(miniUrl ? { reply_markup: { inline_keyboard: [[{ text: "📱 NaSher AI ilovasi", web_app: { url: miniUrl } }]] } } : {}) });
       }
     } else if (typeof cq.data === "string" && cq.data.startsWith("deep:") && chatId) {
