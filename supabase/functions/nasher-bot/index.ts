@@ -1,4 +1,4 @@
-// deploy 2026-10-22 limit-oldin2
+// deploy 2026-10-22 tez-progress
 // deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
 // deploy 2026-10-22 router-model
@@ -19,7 +19,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { tg, verifyInitData } from "../_shared/nasher-telegram.ts";
+import { fastProgressText, tg, verifyInitData } from "../_shared/nasher-telegram.ts";
 import { channelInfo } from "../_shared/nasher-channel.ts";
 import { geminiText, geminiWithPool, loadPool, PoolExhausted } from "../_shared/key-pool.ts";
 import { ROUTER_INSTRUCTION } from "../_shared/nasher-prompts.ts";
@@ -376,8 +376,8 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
 async function submitQuestion(token: string, chatId: number, userId: string, name: string, text: string, chatUuid: string, mode: "fast" | "deep") {
   const reply = (t: string, extra: Record<string, unknown> = {}) =>
     tg(token, "sendMessage", { chat_id: chatId, text: t, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
-  const head = mode === "fast" ? "⚡ <b>Tezkor javob tayyorlanmoqda" : "⏳ <b>Savolingiz qabul qilindi";
-  const progress = await reply(`${head}${name ? ", " + esc(name) : ""}</b>\n\n▱▱▱▱▱▱▱▱▱▱  0%\n🔎 Kerakli qonun hujjatlari izlanmoqda…`);
+  const progress = await reply(mode === "fast" ? fastProgressText(0, name)
+    : `⏳ <b>Savolingiz qabul qilindi${name ? ", " + esc(name) : ""}</b>\n\n▱▱▱▱▱▱▱▱▱▱  0%\n🔎 Kerakli qonun hujjatlari izlanmoqda…`);
   const progressId = progress.result?.message_id;
   await tg(token, "sendChatAction", { chat_id: chatId, action: "typing" });
 
@@ -406,6 +406,38 @@ async function submitQuestion(token: string, chatId: number, userId: string, nam
   await sb.from("case_answer_jobs")
     .update({ tg_chat_id: chatId, tg_progress_msg_id: progressId ?? null, tg_phase: "searching" })
     .eq("id", data.id);
+  if (data.fast && progressId) await followFast(token, chatId, progressId, data.id, name);
+  else await kickDispatch();   // Chuqur: progress keyingi cron daqiqasini kutmasdan darhol yura boshlaydi (fon ishi uzilmasin — await)
+}
+
+/** nasher-bot-dispatch'ni darhol ishga tushirish (odatda pg_cron daqiqada bir chaqiradi) */
+async function kickDispatch() {
+  const cron = (await settings(["CRON_SECRET"]))["CRON_SECRET"];
+  if (!cron) return;
+  await fetch(`${SUPABASE_URL}/functions/v1/nasher-bot-dispatch`, {
+    method: "POST", headers: { "x-cron-secret": cron, Authorization: `Bearer ${SERVICE_KEY}` }, signal: AbortSignal.timeout(60_000),
+  }).catch((e) => console.warn("[nasher-bot] dispatch chaqirilmadi:", String(e).slice(0, 120)));
+}
+
+/**
+ * Tez javobni kuzatish: dispatch daqiqada bir ishga tushadi — 10–20 s lik javob uchun foiz 0% da qotib, javob 60 s gacha kechikardi.
+ * Bot o'zi har 2,5 s da foizni yangilaydi; javob tayyor bo'lishi bilan dispatch'ni darhol chaqiradi (yuborish — dispatch'da, ikki marta yuborilmaydi).
+ * Chuqurga o'tsa — kuzatish to'xtaydi, progressni odatdagidek dispatch yuritadi.
+ */
+async function followFast(token: string, chatId: number, msgId: number, jobId: string, name: string) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 75_000) {
+    await new Promise((r) => setTimeout(r, 2_500));
+    const { data: job } = await sb.from("case_answer_jobs").select("status, answer_mode").eq("id", jobId).maybeSingle();
+    if (!job || job.answer_mode !== "fast") return;
+    const sec = Math.floor((Date.now() - t0) / 1000);
+    if (job.status === "done" || job.status === "error") {
+      await tg(token, "editMessageText", { chat_id: chatId, message_id: msgId, parse_mode: "HTML", text: fastProgressText(sec, name, true) });
+      await kickDispatch();
+      return;
+    }
+    await tg(token, "editMessageText", { chat_id: chatId, message_id: msgId, parse_mode: "HTML", text: fastProgressText(sec, name) });
+  }
 }
 
 Deno.serve(async (req) => {
