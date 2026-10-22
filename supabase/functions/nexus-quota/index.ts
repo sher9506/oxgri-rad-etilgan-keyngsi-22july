@@ -1,3 +1,4 @@
+// deploy 2026-10-22 xatolar-1-5b
 // deploy 2026-10-22 xatolar-1-5
 // nexus-quota — Nexus AI uchun o'qish uchun limit ma'lumoti
 // Hech narsa yozmaydi. verify_jwt = false (anon front chaqira oladi)
