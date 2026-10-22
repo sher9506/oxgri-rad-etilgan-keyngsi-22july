@@ -475,10 +475,10 @@ const NASHER_MODES: { id: NasherMode; label: string; hint: string; Icon: typeof 
   { id: 'lunda', label: "Lo'nda", hint: "Tezkor javob: qaysi modda, nima qilish kerak · ~1 daqiqa", Icon: Target },
   { id: 'chuqur', label: 'Chuqur', hint: "Butun qonunchilik bo'yicha tahlil · ~2–3 daqiqa", Icon: Search },
 ];
-// Hozircha hamma savol Chuqur rejimda (Lo'nda vaqtincha o'chirilgan). Qaytarish: ro'yxatga 'lunda' ni qo'shish.
-// NASHER_MODES to'liq qoladi — tarixdagi Lo'nda javoblarining belgisi uchun.
-const ACTIVE_MODES = NASHER_MODES.filter(m => m.id === 'chuqur');
-const MODE_KEY = 'nasher_mode';
+// Ikkala rejim; standart — Lo'nda (zahira/tez, Gemini): Chuqur (NotebookLM) akkauntlari limitga urilganda ham javob beradi.
+const ACTIVE_MODES = NASHER_MODES;
+// yangi kalit: "faqat Chuqur" davrida saqlangan tanlov hammani Chuqurda ushlab qolmasin
+const MODE_KEY = 'nasher_mode_v2';
 
 interface NexusComposerProps {
   input: string;
@@ -1128,7 +1128,7 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
   }, [isNearBottom, messages.length]);
 
   const [mode, setMode] = useState<NasherMode>(() => {
-    try { const v = localStorage.getItem(MODE_KEY); return ACTIVE_MODES.some(m => m.id === v) ? v as NasherMode : 'chuqur'; } catch { return 'chuqur'; }
+    try { const v = localStorage.getItem(MODE_KEY); return ACTIVE_MODES.some(m => m.id === v) ? v as NasherMode : 'lunda'; } catch { return 'lunda'; }
   });
   const changeMode = useCallback((m: NasherMode) => {
     setMode(m);
