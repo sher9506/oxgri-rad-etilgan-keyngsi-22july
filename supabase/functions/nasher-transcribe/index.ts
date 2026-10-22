@@ -1,3 +1,4 @@
+// deploy 2026-10-22 limit-oldin2
 // deploy 2026-10-22 limit-oldin
 // deploy 2026-10-22 mikrofon
 // Sayt va Mini App mikrofoni: yozib olingan ovoz (≤2 daqiqa) → matn. Bot bilan bir xil Gemini "voice" havzasi.
