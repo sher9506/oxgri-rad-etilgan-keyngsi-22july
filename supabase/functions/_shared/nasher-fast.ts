@@ -1,4 +1,4 @@
-// deploy 2026-10-22 tez-diag
+// deploy 2026-10-22 kesilgan-javob
 // Tez rejim (Lo'nda): savol to'g'ridan-to'g'ri Gemini'ga ("fast" kalitlar havzasi), Render/NotebookLM'siz.
 // Yoqilgan: settings.NASHER_FAST_USERS ("*" yoki talaba id'lari) va havzada kamida bitta kalit bo'lsa.
 // NASHER_FAST_SEARCH = "off" bo'lmasa, Gemini Google qidiruvi bilan amaldagi qonun matnini tekshiradi (modda raqamlari aniqroq).
@@ -42,7 +42,7 @@ function fastBody(contents: unknown[], search: boolean, thinking: boolean) {
     generationConfig: {
       temperature: 0.2,
       // "o'ylash" tokenlari ham shu chegaraga kiradi — kichik chegara bo'sh javobga olib keladi
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       ...(thinking ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
     },
   };
@@ -68,19 +68,24 @@ export async function answerFast(sb: SupabaseClient, cfg: FastCfg, question: str
   ];
   const errors: string[] = [];
   let exhausted: PoolExhausted | null = null;
+  let partial = "";   // MAX_TOKENS bilan kesilgan javob — boshqa urinishlar ham ishlamasa, oxirgi chora
   for (const [model, search, thinking] of attempts) {
     if (exhausted && model === cfg.model) continue;   // asosiy model kvotasi tugagan — darhol zaxiraga
     try {
       const { data } = await geminiWithPool(sb, "fast", model, fastBody(contents, search, thinking), { keys: cfg.keys, timeoutMs: 40_000 });
       const text = geminiText(data);
-      if (text) return text;
-      errors.push(`${model}: bo'sh javob (${data?.candidates?.[0]?.finishReason ?? "?"}, qidiruv=${search}, o'ylash=${thinking})`);
+      const finish = data?.candidates?.[0]?.finishReason ?? "?";
+      // kesilgan javob gap o'rtasida uziladi (o'ylash tokenlari chegarani yeydi) — keyingi urinish o'ylashsiz
+      if (text && finish !== "MAX_TOKENS") return text;
+      if (text && text.length > partial.length) partial = text;
+      errors.push(`${model}: ${text ? "kesilgan" : "bo'sh"} javob (${finish}, qidiruv=${search}, o'ylash=${thinking})`);
     } catch (e) {
       if (e instanceof PoolExhausted) exhausted = e;
       errors.push(`${model}: ${String(e).slice(0, 160)} (qidiruv=${search}, o'ylash=${thinking})`);
     }
   }
   console.warn("[nasher-fast]", errors.join(" | "));
+  if (partial) return partial + " …";
   if (exhausted && errors.every((x) => x.includes("kalitlar band"))) throw exhausted;
   throw new Error("Gemini javob bermadi: " + errors.join(" | "));
 }

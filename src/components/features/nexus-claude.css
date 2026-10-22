@@ -2361,3 +2361,41 @@ ol.nc-answer-list {
 .nasher-tg-full .nc-timer-pill { display: none; }
 .nasher-tg-full .nc-icon-btn,
 .nasher-tg-full .nc-chats-toggle { width: 32px; height: 32px; min-width: 32px; }
+
+/* Mikrofon: yozish paytida textarea o'rnida taymer */
+.nc-voice-btn {
+  width: 40px; height: 40px; flex-shrink: 0;
+  border: none; border-radius: 12px; background: transparent; color: #475569;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.nc-voice-btn:hover:not(:disabled) { background: #f1f5f9; color: var(--nc-accent); }
+.nc-voice-btn:disabled { opacity: .4; cursor: default; }
+.nc-voice-btn svg { width: 20px; height: 20px; }
+.nc-voice-stop { background: #dc2626; box-shadow: 0 4px 12px rgba(220, 38, 38, .3); }
+.nc-voice-stop:hover:not(:disabled) { background: #b91c1c; }
+.nc-voice-bar {
+  flex: 1;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: #334155;
+}
+.nc-voice-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #dc2626;
+  animation: nc-voice-pulse 1s ease-in-out infinite;
+}
+@keyframes nc-voice-pulse { 50% { opacity: .3; } }
+.nc-voice-time { font-variant-numeric: tabular-nums; }
+.nc-voice-cancel {
+  margin-left: auto;
+  border: none; background: transparent; color: #64748b;
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; border-radius: 8px;
+}
+.nc-voice-cancel:hover { background: #f1f5f9; }
+.nc-voice-bar .nc-spin, .nc-voice-cancel svg { width: 18px; height: 18px; }
+.nc-voice-bar .nc-spin { animation: nc-voice-spin 1s linear infinite; }
+@keyframes nc-voice-spin { to { transform: rotate(360deg); } }

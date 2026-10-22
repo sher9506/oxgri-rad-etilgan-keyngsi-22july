@@ -1,4 +1,4 @@
-// deploy 2026-10-22 ovoz-503
+// deploy 2026-10-22 mikrofon
 // deploy 2026-10-22 router-model
 // deploy 2026-10-22 router-havza
 // deploy 2026-10-22 tez-fix
@@ -21,6 +21,7 @@ import { tg, verifyInitData } from "../_shared/nasher-telegram.ts";
 import { channelInfo } from "../_shared/nasher-channel.ts";
 import { geminiText, geminiWithPool, loadPool, PoolExhausted } from "../_shared/key-pool.ts";
 import { ROUTER_INSTRUCTION } from "../_shared/nasher-prompts.ts";
+import { toBase64, transcribeAudio, VOICE_BUSY, VOICE_MAX_SEC, VOICE_TOO_LONG } from "../_shared/nasher-voice.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -60,46 +61,14 @@ async function channelGate(userId: string, tgId: number): Promise<{ channel: str
   return { channel: ch.channel ?? "", member: ch.channel ? ch.member : null };
 }
 // ── Ovozli xabar → matn (Gemini, "voice" kalitlar havzasi) ──
-const VOICE_MAX_SEC = 120;
-const VOICE_TOO_LONG = "🎤 Iltimos, 2 daqiqagacha gapiring yoki ikkiga bo'lib yuboring.";
-const VOICE_BUSY = "⏳ Xizmatdan foydalanuvchilar ko'pligi sababli vaqtincha kutishingizga to'g'ri keladi. Birozdan keyin qayta yuboring yoki savolingizni yozib yuboring.";
-const TRANSCRIBE_PROMPT =
-  "Bu ovozli xabarni so'zma-so'z matnga aylantir. Til o'zbek (ba'zan rus so'zlari aralashadi). " +
-  "O'zbek lotin yozuvida, tinish belgilari bilan yoz. Faqat aytilgan matnni qaytar — izoh, sarlavha, tarjima qo'shma. " +
-  "Agar nutq eshitilmasa, faqat bo'sh qator qaytar.";
-
-function toBase64(bytes: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(s);
-}
-
 /** Telegram ovozini yuklab, matnga aylantiradi. null — ovoz bo'sh/tushunarsiz. PoolExhausted — hamma kalit band. */
-const VOICE_FALLBACK_MODEL = "gemini-2.5-flash";
-
 async function transcribeVoice(token: string, fileId: string, mime: string): Promise<string | null> {
   const f = await tg(token, "getFile", { file_id: fileId });
   const path = f.result?.file_path;
   if (!f.ok || !path) throw new Error("getFile: " + (f.description ?? "fayl yo'q"));
   const audio = await fetch(`https://api.telegram.org/file/bot${token}/${path}`, { signal: AbortSignal.timeout(30_000) });
   if (!audio.ok) throw new Error("ovoz yuklanmadi: " + audio.status);
-  const bytes = new Uint8Array(await audio.arrayBuffer());
-  const model = (await settings(["NASHER_VOICE_MODEL"]))["NASHER_VOICE_MODEL"] || "gemini-3-flash-preview";
-  const body = {
-    contents: [{ role: "user", parts: [{ inline_data: { mime_type: mime, data: toBase64(bytes) } }, { text: TRANSCRIBE_PROMPT }] }],
-    generationConfig: { temperature: 0, maxOutputTokens: 1500 },
-  };
-  let data;
-  try {
-    ({ data } = await geminiWithPool(sb, "voice", model, body, { timeoutMs: 45_000 }));
-  } catch (e) {
-    // asosiy model kvotasi tugasa yoki Google "band" (503) desa — zaxira model; u ham ishlamasa foydalanuvchiga xabar
-    if (model === VOICE_FALLBACK_MODEL) throw e;
-    console.warn("[nasher-bot] ovoz zaxira modelga:", (e instanceof PoolExhausted ? e.detail : String(e)).slice(0, 200));
-    ({ data } = await geminiWithPool(sb, "voice", VOICE_FALLBACK_MODEL, body, { timeoutMs: 45_000 }));
-  }
-  const text = geminiText(data).trim();
-  return text.length >= 3 ? text : null;
+  return transcribeAudio(sb, toBase64(new Uint8Array(await audio.arrayBuffer())), mime);
 }
 
 // ── Yangi imkoniyatlar avval sinov ro'yxatida: settings kaliti "*" (hamma) yoki vergul bilan talaba id'lari ──

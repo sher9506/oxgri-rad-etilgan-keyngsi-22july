@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } fro
 import {
   ArrowUp, Sparkles, Trash2, RotateCcw, Copy, Check,
   FileText, ExternalLink, AlertCircle, Clock, ChevronDown, Loader2,
-  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search, Target, Wrench,
+  Plus, MessageCircle, Info, X, PanelLeft, Zap, Search, Target, Wrench, Mic, Square,
 } from 'lucide-react';
 import { TOOL_BUTTONS } from '../../../supabase/functions/_shared/nasher-tools';
 
@@ -19,6 +19,7 @@ import NexusErrorBoundary from './NexusErrorBoundary';
 import DocStack from './nexus/DocStack';
 import ChannelPrompt from './nexus/ChannelPrompt';
 import AnswerText from './nexus/AnswerText';
+import { useVoiceRecorder, VOICE_MAX_SEC } from './nexus/useVoiceRecorder';
 import { stripSourceWords, prepareAnswer, useLexNames, lexDocName, useTypewriter } from '@/lib/nasherText';
 import './nexus-claude.css';
 
@@ -499,13 +500,15 @@ interface NexusComposerProps {
   newChatBlocked: boolean;
   waitingElsewhere: boolean;
   onOpenTools: () => void;
+  voice: ReturnType<typeof useVoiceRecorder>;
+  voiceError: string | null;
 }
 
 function NexusComposer({
   input, setInput, onSend, onKeyDown, mode, onModeChange,
   isProcessing, canSend, inputBlocked, inputTooLong, inputTooShort,
   minInput, maxInput, resetText, inputRef, chatLimitError, onOpenChats, memoryNote,
-  chatExpired, onNewChat, newChatBlocked, waitingElsewhere, onOpenTools,
+  chatExpired, onNewChat, newChatBlocked, waitingElsewhere, onOpenTools, voice, voiceError,
 }: NexusComposerProps) {
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -558,6 +561,9 @@ function NexusComposer({
               Savol limiti tugadi. {resetText} yana yozishingiz mumkin.
             </div>
           )}
+          {voiceError && (
+            <div className="nc-input-warning">{voiceError}</div>
+          )}
           {inputTooShort && !inputBlocked && !chatLimitError && (
             <div className="nc-input-warning">
               Savol kamida {minInput} belgi bo'lishi kerak
@@ -567,6 +573,17 @@ function NexusComposer({
       )}
       <div className={`nc-composer ${focused ? 'nc-composer-focused' : ''}`}>
         <div className="nc-composer-inner">
+          {voice.state.phase === 'recording' ? (
+            <div className="nc-voice-bar" role="status">
+              <span className="nc-voice-dot" />
+              <span className="nc-voice-time">
+                {Math.floor(voice.state.sec / 60)}:{String(voice.state.sec % 60).padStart(2, '0')} / 2:00
+              </span>
+              <button type="button" className="nc-voice-cancel" onClick={() => voice.stop(true)} aria-label="Bekor qilish"><X /></button>
+            </div>
+          ) : voice.state.phase === 'transcribing' ? (
+            <div className="nc-voice-bar" role="status"><Loader2 className="nc-spin" /> Ovoz matnga aylantirilmoqda…</div>
+          ) : (
           <textarea
             ref={(el) => { taRef.current = el; if (inputRef) (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el; }}
             value={input}
@@ -581,6 +598,25 @@ function NexusComposer({
             aria-label="Savol matni"
             style={{ fontSize: '16px' }}
           />
+          )}
+          {voice.state.phase === 'recording' ? (
+            <button type="button" onClick={() => voice.stop()} className="nc-send-btn nc-voice-stop" aria-label="Yozishni tugatib yuborish">
+              <Square />
+            </button>
+          ) : (
+          <>
+          {voice.supported && voice.state.phase === 'idle' && (
+            <button
+              type="button"
+              onClick={voice.start}
+              disabled={textareaDisabled}
+              className="nc-voice-btn"
+              aria-label={`Ovoz bilan so'rash (${VOICE_MAX_SEC / 60} daqiqagacha)`}
+              title="Ovoz bilan so'rash — 2 daqiqagacha"
+            >
+              <Mic />
+            </button>
+          )}
           <button
             onClick={onSend}
             disabled={sendDisabled}
@@ -589,6 +625,8 @@ function NexusComposer({
           >
             <ArrowUp />
           </button>
+          </>
+          )}
         </div>
         <div className="nc-composer-footer">
           <div className="nc-mode-switch" role="radiogroup" aria-label="Javob rejimi">
@@ -1104,6 +1142,17 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
     if (!deepBlocked && q.trim()) sendMessage(q, 'chuqur');
   }, [deepBlocked, sendMessage]);
 
+  // Ovozli savol: matnga aylangach darhol yuboriladi; yuborib bo'lmasa — matn yozish maydoniga qo'yiladi
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const sendVoice = useCallback((text: string) => {
+    setVoiceError(null);
+    const q = text.trim().slice(0, maxInput);
+    const blocked = isProcessing || q.length < minInput || isChatExpired(activeChatId) || (!!quota && !quota.is_unlimited && quota.remaining <= 0);
+    if (blocked) { setInput(q); return; }
+    sendMessage(q, mode);
+  }, [isProcessing, minInput, maxInput, quota, sendMessage, isChatExpired, activeChatId, mode]);
+  const voice = useVoiceRecorder(userId, sendVoice, setVoiceError);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   }, [handleSend]);
@@ -1326,6 +1375,8 @@ function NexusAIInner({ userId, initialChatId }: { userId: string; initialChatId
             setInput={setInput}
             onSend={handleSend}
             onKeyDown={handleKeyDown}
+            voice={voice}
+            voiceError={voiceError}
             mode={mode}
             onModeChange={changeMode}
             isProcessing={isProcessing}
