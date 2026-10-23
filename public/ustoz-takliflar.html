@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>NaSher AI — takliflar</title>
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --ink:#1f2328; --muted:#5b6470; --line:#e3ded3; --accent:#1d5c4a;
+          --yes:#1e7a46; --no:#b3261e; --think:#9a6a00; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font: 19px/1.6 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+  header { margin-bottom: 18px; }
+  h1 { font-size: 30px; line-height: 1.25; margin: 0 0 10px; color: var(--accent); }
+  .lead { color: var(--muted); margin: 0 0 8px; }
+  .howto { background:#fff8e6; border:1px solid #f0dfb1; border-radius:14px; padding:14px 18px; margin:16px 0 22px; }
+  .howto b { color:#7a5200; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px 20px 16px; margin: 0 0 18px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+  .num { display:inline-block; min-width:34px; height:34px; line-height:34px; text-align:center; border-radius:50%;
+         background:var(--accent); color:#fff; font-weight:700; margin-right:10px; font-size:17px; }
+  h2 { display:flex; align-items:center; font-size: 23px; margin: 0 0 10px; line-height:1.3; }
+  .row { margin: 8px 0; }
+  .lbl { font-weight:700; color:var(--accent); }
+  .grow { background:#eef6f1; border-radius:12px; padding:10px 14px; margin:12px 0 4px; }
+  .grow .lbl { color: var(--yes); }
+  .meta { color:var(--muted); font-size:16px; margin-top:6px; }
+  .btns { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-top:14px; }
+  .btns button { font-size:18px; padding:14px 8px; border-radius:14px; border:2px solid var(--line); background:#fff; cursor:pointer; color:var(--ink); }
+  .btns button[data-v="ha"].on    { background:var(--yes);   border-color:var(--yes);   color:#fff; }
+  .btns button[data-v="yoq"].on   { background:var(--no);    border-color:var(--no);    color:#fff; }
+  .btns button[data-v="oylab"].on { background:var(--think); border-color:var(--think); color:#fff; }
+  textarea, input { width:100%; font: inherit; font-size:17px; padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin-top:10px; background:#fdfcf9; }
+  textarea { min-height: 54px; resize: vertical; }
+  .final { background:var(--card); border:2px solid var(--accent); border-radius:18px; padding:20px; }
+  .send { width:100%; margin-top:16px; font-size:21px; font-weight:700; padding:18px; border:0; border-radius:16px; background:var(--accent); color:#fff; cursor:pointer; }
+  .send:disabled { opacity:.6; cursor:default; }
+  .status { margin-top:12px; font-size:18px; text-align:center; }
+  .ok { color: var(--yes); font-weight:700; }
+  .err { color: var(--no); }
+  .count { color:var(--muted); font-size:16px; text-align:center; margin-top:8px; }
+  @media (max-width: 520px) { body { font-size:18px; } h1 { font-size:26px; } h2 { font-size:21px; } .btns { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Assalomu alaykum, ustoz!<br>NaSher AI uchun 12 ta taklif</h1>
+    <p class="lead">Boshqa yuridik botlar va saytlarni oʻrganib chiqdik. Ulardagi eng yaxshi narsalardan NaSher AI'ga qoʻshish mumkin boʻlgan 12 tasini tanladik. <b>Hammasi bepul</b> qilinadi, alohida pul talab qilmaydi.</p>
+  </header>
+
+  <div class="howto">
+    <b>Qanday belgilash kerak:</b> har bir taklif ostidagi uch tugmadan birini bosing:
+    <b>✅ Roziman</b>, <b>❌ Yoʻq</b> yoki <b>🤔 Oʻylab koʻrish kerak</b>. Xohlasangiz, fikringizni ham yozing.
+    Oxirida <b>«Yuborish»</b> tugmasini bosing — javobingiz Sherzodbekka Telegram orqali yetib boradi.
+  </div>
+
+  <div id="list"></div>
+
+  <div class="final">
+    <div class="lbl">Ismingiz</div>
+    <input id="ism" value="Azizov Nasimbek">
+    <div class="lbl" style="margin-top:14px">Umumiy fikringiz (ixtiyoriy)</div>
+    <textarea id="umumiy" placeholder="Masalan: avval hujjat tayyorlashni qilinglar…"></textarea>
+    <button class="send" id="send">Yuborish</button>
+    <div class="count" id="count"></div>
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<script>
+const T = [
+  { nomi: "Javob tezroq kelsin",
+    nima: "Hozir javob 2–3 daqiqada keladi. Serverlarni doim «uygʻoq» ushlab, tez-tez beriladigan savollar uchun topilgan qonunlarni eslab qolsak, javob 1–1,5 daqiqada keladi. Javob sifati oʻzgarmaydi.",
+    kimda: "SafeLaw.ai (10–30 soniyada javob beradi)",
+    foyda: "Kutib zerikib ketadigan foydalanuvchilar kamayadi.",
+    osish: "Taxminan qaytib keladiganlar 10–20% koʻpayadi.",
+    sabab: "Hozir savollarning katta qismi 2 daqiqadan uzoq kutadi. Uzoq kutgan odam keyingi safar qaytmasligi mumkin.",
+    vaqt: "1 kun" },
+  { nomi: "Kanalga obuna majburiy boʻlmasin",
+    nima: "Hozir botda kanalga aʼzo boʻlmasa savol berib boʻlmaydi. Taklif: savolni hamma bera olsin, kanalga aʼzo boʻlganlarga esa qoʻshimcha +2 savol beriladi.",
+    kimda: "Raqobatchi @shaxsiyadvokat_bot'da majburiy — bu ularning kamchiligi. Bizda bonus boʻlsa, ustunlik boʻladi.",
+    foyda: "Botga kirib, obuna boʻlmay chiqib ketayotganlar savol bera oladi.",
+    osish: "Taxminan botdagi faol foydalanuvchilar 20–30% koʻpayadi.",
+    sabab: "Hisobladik: botni ochgan 268 kishidan 90 tasi kanalga aʼzo boʻlmagani uchun savol bermay chiqib ketgan (bu — uchdan bir qism).",
+    vaqt: "1 soat" },
+  { nomi: "Halol ogohlantirish",
+    nima: "Jinoyat ishlari, sud kabi jiddiy masalalarda javob oxirida: «Bu maʼlumot uchun. Muhim qarordan oldin advokat bilan maslahatlashing» degan qisqa qator.",
+    kimda: "Dunyodagi yirik yuridik AI'larning hammasida bor. Bitta Amerika kompaniyasi buni qilmagani uchun jarimaga tortilgan.",
+    foyda: "Ishonch oshadi, loyiha huquqiy jihatdan himoyalanadi.",
+    osish: "Foydalanuvchi soniga taʼsiri kam, lekin ishonch va xavfsizlik uchun muhim.",
+    sabab: "Bu oʻsish uchun emas, himoya uchun.",
+    vaqt: "1 soat" },
+  { nomi: "Bot rus tilida ham ishlasin",
+    nima: "Hozir ruscha savolga ruscha javob beradi, lekin botning tugmalari va xabarlari faqat oʻzbekcha. Tilni tanlash (/til) qoʻshiladi.",
+    kimda: "@shaxsiyadvokat_bot, SafeLaw.ai, HuquqAi — hammasida rus tili bor.",
+    foyda: "Rus tilida gaplashadigan foydalanuvchilar ham bemalol foydalanadi.",
+    osish: "Taxminan yangi foydalanuvchilar 10–20% koʻpayadi.",
+    sabab: "Ruscha savollar hozir ham kelyapti, lekin interfeys oʻzbekcha boʻlgani uchun ularning bir qismi ketib qoladi.",
+    vaqt: "Yarim kun" },
+  { nomi: "Takror savollarga bir zumda javob",
+    nima: "«Aliment qanday undiriladi», «ishdan boʻshatishdi» kabi savollar har kuni koʻp beriladi. Ular uchun kerakli qonunlar qayta qidirilmaydi — avval topilgani ishlatiladi.",
+    kimda: "Katta xizmatlarda odatiy usul.",
+    foyda: "Takror savollarga javob ancha tez keladi.",
+    osish: "Toʻgʻridan-toʻgʻri oʻsish emas — tezlik va qulaylik.",
+    sabab: "Savollarning sezilarli qismi bir xil mavzularda takrorlanadi.",
+    vaqt: "Yarim kun" },
+  { nomi: "Tayyor hujjat (Word/PDF)",
+    nima: "Bot kerakli maʼlumotlarni soʻraydi (ism, manzil, voqea) va tayyor ariza, shikoyat yoki daʼvo arizasini Word/PDF faylida beradi. Hozir faqat namunalar bor.",
+    kimda: "@shaxsiyadvokat_bot (ovoz bilan ham), Maslahat AI, DoNotPay (Amerika).",
+    foyda: "Odam maslahat bilan birga tayyor hujjat oladi — eng koʻp soʻraladigan narsa.",
+    osish: "Taxminan qaytib keladiganlar 15–25% koʻpayadi.",
+    sabab: "Raqobatchilarda hujjat tayyorlash eng koʻp ishlatiladigan funksiya. Tayyor natija olgan odam yana qaytadi.",
+    vaqt: "2 kun" },
+  { nomi: "QR kodli tasdiqlangan hujjat",
+    nima: "Masalan, qarz tilxati. Bot hujjatni tayyorlaydi, ikkinchi tomonga yuboradi, u tasdiqlaydi. Hujjatga QR kod qoʻyiladi — uni istalgan payt telefonda tekshirib, hujjat haqiqiy ekanini koʻrish mumkin.",
+    kimda: "Faqat @shaxsiyadvokat_bot'da (21-oktabrda qoʻshgan). Bu ularning eng kuchli funksiyasi.",
+    foyda: "«Men bunday tilxat bermaganman» degan nizolar kamayadi.",
+    osish: "Har bir hujjat ikkinchi tomonga boradi — har 10 ta hujjatdan taxminan 1–3 yangi foydalanuvchi keladi.",
+    sabab: "Ikkinchi tomon hujjatni tasdiqlash uchun botga kirishi kerak — shu orqali botni bilib oladi. Bu reklamasiz oʻsish.",
+    vaqt: "2–3 kun" },
+  { nomi: "Shartnomani tekshirish",
+    nima: "Foydalanuvchi shartnoma (ijara, mehnat, oldi-sotdi) faylini yuboradi. NaSher xavfli bandlarni koʻrsatadi, 100 ballik baho beradi va qanday tuzatishni taklif qiladi.",
+    kimda: "LawyerAI.uz (pullik), HuquqAi (oyiga 390 000 soʻm), chet elda Spellbook.",
+    foyda: "Odam imzolashdan oldin xavfni biladi. Tadbirkorlar va ijarachilar uchun juda kerakli.",
+    osish: "Taxminan yangi foydalanuvchilar 10–20% koʻpayadi (yangi auditoriya — tadbirkorlar).",
+    sabab: "Raqobatchilar buni pullik qilgan. Bizda bepul boʻlsa, ularning foydalanuvchilari bizga oʻtishi mumkin.",
+    vaqt: "2 kun" },
+  { nomi: "Qonun hali kuchdami — belgisi",
+    nima: "Javobda havola berilgan har bir qonun yonida: «✅ amalda» yoki «⚠ kuchini yoʻqotgan» va oxirgi oʻzgartirish sanasi koʻrsatiladi.",
+    kimda: "Dunyodagi eng yaxshi yuridik tizimlar (Lexis, Doctrine).",
+    foyda: "Eskirgan qonunga tayanib xato qilish xavfi yoʻqoladi.",
+    osish: "Oʻsishga taʼsiri kam, lekin sifat va ishonch oshadi.",
+    sabab: "Bu yuristlar va talabalar uchun ishonch belgisi.",
+    vaqt: "1 kun" },
+  { nomi: "Qonun oʻzgarsa — xabar beradi",
+    nima: "Foydalanuvchi soʻragan modda oʻzgarsa, bot unga yozadi: «Siz soʻragan Mehnat kodeksining 161-moddasi oʻzgardi».",
+    kimda: "SafeLaw.ai, Rossiyadagi Konsultant Plyus.",
+    foyda: "Foydalanuvchi har doim yangilangan maʼlumotga ega boʻladi.",
+    osish: "Taxminan qaytib keladiganlar 10–15% koʻpayadi.",
+    sabab: "Bot oʻzi xabar yuborgani uchun odam botni unutmaydi.",
+    vaqt: "1–2 kun" },
+  { nomi: "«Mening ishlarim» va muddat eslatmasi",
+    nima: "Masalan, «Meni 20-oktabrda ishdan boʻshatishdi» desa, bot hisoblaydi: sudga murojaat muddati 3 oy — 20-yanvargacha. Keyin eslatadi: «30 kun qoldi», «7 kun qoldi». Hamma savol, hujjat va muddatlar bir joyda turadi.",
+    kimda: "LawyerAI.uz (eslatmalar), lekin fuqarolar uchun hech kimda yoʻq.",
+    foyda: "Odam muddatni oʻtkazib yuborib, huquqini yoʻqotmaydi.",
+    osish: "Taxminan qaytib keladiganlar 15–25% koʻpayadi.",
+    sabab: "Eslatma kelgan sari odam botga qaytadi.",
+    vaqt: "2 kun" },
+  { nomi: "Savol-javoblar saytda (Google orqali)",
+    nima: "Eng koʻp beriladigan savollar va tekshirilgan javoblar saytda alohida sahifa boʻladi (ism va shaxsiy maʼlumotsiz). Kimdir Google'da «aliment qanday undiriladi» deb qidirsa, bizning sahifa chiqadi.",
+    kimda: "advice.uz — 24 600 obunachini shu yoʻl bilan yigʻgan.",
+    foyda: "Reklamaga pul sarflamasdan yangi odamlar keladi.",
+    osish: "Sekin, lekin barqaror: 3–6 oyda oyiga yuzlab yangi tashrif boʻlishi mumkin.",
+    sabab: "Google natijasi bir marta chiqsa, oylab odam olib keladi. Lekin natija darhol emas — vaqt kerak.",
+    vaqt: "1 kun" }
+];
+
+const list = document.getElementById('list');
+const state = T.map(() => ({ tanlov: "", izoh: "" }));
+T.forEach((t, i) => {
+  const c = document.createElement('div');
+  c.className = 'card';
+  c.innerHTML = `
+    <h2><span class="num">${i + 1}</span>${t.nomi}</h2>
+    <div class="row"><span class="lbl">Bu nima:</span> ${t.nima}</div>
+    <div class="row"><span class="lbl">Kimlarda bor:</span> ${t.kimda}</div>
+    <div class="row"><span class="lbl">Foydasi:</span> ${t.foyda}</div>
+    <div class="grow"><span class="lbl">Foydalanuvchilar soni:</span> ${t.osish}<br><span class="meta">Nega: ${t.sabab}</span></div>
+    <div class="meta">Narxi: bepul · Ishga ketadigan vaqt: ${t.vaqt}</div>
+    <div class="btns">
+      <button data-v="ha">✅ Roziman</button>
+      <button data-v="yoq">❌ Yoʻq</button>
+      <button data-v="oylab">🤔 Oʻylab koʻrish kerak</button>
+    </div>
+    <textarea placeholder="Fikringiz (ixtiyoriy)"></textarea>`;
+  c.querySelectorAll('.btns button').forEach(b => b.onclick = () => {
+    c.querySelectorAll('.btns button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); state[i].tanlov = b.dataset.v; updateCount();
+  });
+  c.querySelector('textarea').oninput = e => { state[i].izoh = e.target.value; };
+  list.appendChild(c);
+});
+
+function updateCount() {
+  const n = state.filter(s => s.tanlov).length;
+  document.getElementById('count').textContent = `Belgilangan: ${n} / ${T.length}`;
+}
+updateCount();
+
+const URL_FN = "https://mrxdoeeyxawcwrndyrwp.supabase.co/functions/v1/ustoz-javob";
+document.getElementById('send').onclick = async () => {
+  const st = document.getElementById('status'), btn = document.getElementById('send');
+  const n = state.filter(s => s.tanlov).length;
+  if (!n) { st.className = 'status err'; st.textContent = "Hech boʻlmasa bitta taklifni belgilang."; return; }
+  if (n < T.length && !confirm(`${T.length - n} ta taklif belgilanmagan. Shunday yuboraveraymi?`)) return;
+  btn.disabled = true; st.className = 'status'; st.textContent = "Yuborilmoqda…";
+  try {
+    const r = await fetch(URL_FN, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ism: document.getElementById('ism').value, umumiy: document.getElementById('umumiy').value,
+        javoblar: T.map((t, i) => ({ n: i + 1, nomi: t.nomi, tanlov: state[i].tanlov, izoh: state[i].izoh })) }) });
+    if (!r.ok) throw new Error(r.status);
+    st.className = 'status ok'; st.textContent = "Rahmat, ustoz! Javobingiz yuborildi. ✅";
+  } catch (e) {
+    btn.disabled = false; st.className = 'status err';
+    st.textContent = "Yuborib boʻlmadi. Internetni tekshirib, qayta bosing.";
+  }
+};
+</script>
+</body>
+</html>
