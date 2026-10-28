@@ -9,7 +9,7 @@ export interface ToolButton {
 export const TOOL_BUTTONS: ToolButton[] = [
   { tool: "aliment", text: "👶 Aliment kalkulyatori" },
   { tool: "boj", text: "🧮 Davlat boji" },
-  { tool: "shablon", text: "📄 Ariza namunalari" },
+  // { tool: "shablon", text: "📄 Ariza namunalari" },   // vaqtincha yashirin (egasining so'rovi); kod joyida, ?tool=shablon ishlaydi
   { tool: "sud", text: "🏛 Sud manzillari" },
 ];
 

@@ -281,7 +281,7 @@ async function onUpdate(body: any, token: string, miniUrl: string) {
     tg(token, "sendMessage", { chat_id: chatId, text: t, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
   const appButton = miniUrl ? { inline_keyboard: [
     [{ text: "📱 NaSher AI ilovasi", web_app: { url: miniUrl } }],
-    [{ text: "🧰 Vositalar: kalkulyator, ariza namunalari, sud manzillari", web_app: { url: toolUrl(miniUrl, "menu") } }],
+    [{ text: "🧰 Vositalar: kalkulyatorlar, sud manzillari", web_app: { url: toolUrl(miniUrl, "menu") } }],
   ] } : undefined;
 
   let text: string = (msg.text ?? "").trim();

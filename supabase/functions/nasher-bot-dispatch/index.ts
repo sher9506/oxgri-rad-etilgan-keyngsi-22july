@@ -100,12 +100,12 @@ async function handle(job: BotJob, token: string, miniUrl: string) {
     const join = ch.channel && ch.member === false ? `https://t.me/${ch.channel.replace(/^@/, "")}` : null;
     if (join) parts.push(`📢 <b>${ch.channel}</b> kanalimizga qo'shiling — har 5 soatda <b>+${CHANNEL_BONUS} ta qo'shimcha savol</b> olasiz! Qo'shilganingizdan keyin bonus avtomatik ishlaydi.`);
     // Mini App aynan shu suhbatni ochadi; "Yangi suhbat" — keyingi savol yangi suhbatda
-    // 4 ta vosita har javob oxirida doim (2 qatorda), Mini App'da ochiladi
+    // Vositalar har javob oxirida doim (2 qatorda), Mini App'da ochiladi
     const tool = (b: (typeof TOOL_BUTTONS)[number]) => ({ text: b.text, web_app: { url: miniUrl + (miniUrl.includes("?") ? "&" : "?") + toolQuery(b) } });
     const markup = { inline_keyboard: [
       ...(isFast ? [[{ text: "🔎 Chuqur tahlil (batafsil)", callback_data: "deep:" + job.id }]] : []),
       ...(miniUrl ? [[{ text: "📱 To'liq ko'rish", web_app: { url: chatAppUrl(miniUrl, job.chat_id) } }]] : []),
-      ...(miniUrl ? [TOOL_BUTTONS.slice(0, 2).map(tool), TOOL_BUTTONS.slice(2, 4).map(tool)] : []),
+      ...(miniUrl ? [TOOL_BUTTONS.slice(0, 2).map(tool), TOOL_BUTTONS.slice(2).map(tool)] : []),
       ...(join ? [[{ text: "📢 Kanalga qo'shilish (+2 savol)", url: join }]] : []),
       [{ text: "🆕 Yangi suhbat", callback_data: "new_chat" }],
     ] };

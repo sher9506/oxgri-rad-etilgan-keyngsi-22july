@@ -36,7 +36,7 @@ export default function ToolsPage({ tool, sh, onChange, onChat }: { tool: string
       <h1 className="mb-1 text-xl font-bold">🧰 Vositalar</h1>
       <p className="mb-4 text-sm text-slate-500">Tez hisob-kitob va tayyor hujjatlar. Savol bo'lsa — NaSher AI chatiga yozing.</p>
       <div className="space-y-2">
-        {TOOLS.map((t) => (
+        {TOOLS.filter((t) => t.id !== 'shablon').map((t) => (   /* ariza namunalari vaqtincha yashirin */
           <button key={t.id} onClick={() => onChange(t.id)}
             className="flex w-full items-center gap-3 rounded-xl border bg-white p-3 text-left shadow-sm active:bg-slate-100">
             <span className="text-2xl">{t.icon}</span>

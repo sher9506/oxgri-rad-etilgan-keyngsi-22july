@@ -652,7 +652,7 @@ function NexusComposer({
               </button>
             ))}
           </div>
-          <button type="button" className="nc-tools-btn" onClick={onOpenTools} title="Kalkulyatorlar, ariza namunalari, sud manzillari">
+          <button type="button" className="nc-tools-btn" onClick={onOpenTools} title="Kalkulyatorlar, sud manzillari">
             <Wrench />
             Vositalar
           </button>
