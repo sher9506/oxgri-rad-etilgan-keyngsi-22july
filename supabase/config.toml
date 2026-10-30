@@ -159,3 +159,6 @@ verify_jwt = false
 
 [functions.ustoz-auth]
 verify_jwt = false
+
+[functions.ilmiy-ishlar]
+verify_jwt = false

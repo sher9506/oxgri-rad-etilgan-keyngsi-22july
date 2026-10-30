@@ -44,6 +44,8 @@ const YordamSahifa = lazy(() => import('@/components/features/YordamSahifa'));
 const SmartTalim = lazy(() => import('@/components/features/SmartTalim'));
 const BlogList = lazy(() => import('@/components/features/BlogList'));
 const BlogYozish = lazy(() => import('@/components/features/BlogYozish'));
+const IlmiyIshlarUstoz = lazy(() => import('@/components/features/IlmiyIshlarUstoz'));
+const IlmiyIshlarPublic = lazy(() => import('@/components/features/IlmiyIshlarPublic'));
 const BlogPostDetail = lazy(() => import('@/components/features/BlogPostDetail'));
 const BlogMuallif = lazy(() => import('@/components/features/BlogMuallif'));
 const TezOradaSahifa = lazy(() => import('@/components/features/TezOradaSahifa'));
@@ -258,7 +260,7 @@ function AppContent() {
       }
 
       if (isBlogOnly) {
-        const allowed = ['blog', 'blog_yozish', 'profil', 'haqida', 'yordam'];
+        const allowed = ['blog', 'blog_yozish', 'ilmiy_ishlar', 'profil', 'haqida', 'yordam'];
         if (!allowed.includes(activeTab)) {
           return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
         }
@@ -289,6 +291,7 @@ function AppContent() {
       case 'smart_talim': return <Suspense fallback={<LazyFallback />}><SmartTalim onNavigateToMaterial={(bolimId, bobId, materialId) => { handleTabChange('oqmatlar'); setTimeout(() => { window.dispatchEvent(new CustomEvent('deeplink-oqmat', { detail: { subPath: `${bolimId}/${bobId || ''}/${materialId || ''}` } })); }, 600); }} /></Suspense>;
       case 'blog': return <Suspense fallback={<LazyFallback />}><BlogList /></Suspense>;
       case 'blog_yozish': return <Suspense fallback={<LazyFallback />}><BlogYozish /></Suspense>;
+      case 'ilmiy_ishlar': return <Suspense fallback={<LazyFallback />}><IlmiyIshlarUstoz /></Suspense>;
       case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
       case 'lex_uz_qidiruvchi': return <Suspense fallback={<LazyFallback />}><LexUzQidiruvchi /></Suspense>;
@@ -441,6 +444,22 @@ function RouterRoot() {
           <GoogleCallback />
         </Suspense>
       </AuthProvider>
+    );
+  }
+  const ilmiyMatch = location.pathname.match(/^\/ilmiy(?:\/([a-z0-9-]+))?\/?$/);
+  if (ilmiyMatch) {
+    return (
+      <LangProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <div className="min-h-screen font-sans" style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
+              <Suspense fallback={<div className="flex min-h-[560px] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full" style={{ border: '2px solid var(--cobalt-1)', borderTopColor: 'transparent' }} /></div>}>
+                <IlmiyIshlarPublic slug={ilmiyMatch[1]} />
+              </Suspense>
+            </div>
+          </NotificationProvider>
+        </AuthProvider>
+      </LangProvider>
     );
   }
   const blogPostMatch = location.pathname.match(/^\/blog\/([^/]+)$/);

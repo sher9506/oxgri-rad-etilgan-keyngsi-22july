@@ -5,6 +5,7 @@
 // yoki { code, verify: true } — faqat kodni tekshirish.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { isAdminCode } from '../_shared/auth.ts';
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -17,25 +18,6 @@ const json = (data: unknown, status = 200) =>
 const COLUMNS = /^[\w\s,*]{1,200}$/;
 const FIELDS = new Set(['key', 'text_value', 'value', 'tavsif']);
 
-async function sha256Hex(s: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-async function isAdmin(code: unknown): Promise<boolean> {
-  if (typeof code !== 'string' || code.length < 8 || code.length > 200) return false;
-  const { data } = await supabaseAdmin.from('settings').select('text_value').eq('key', 'ADMIN_PANEL_CODE_HASH').maybeSingle();
-  const stored = (data?.text_value || '').trim().toLowerCase();
-  if (!stored) return false;
-  return timingSafeEqual(await sha256Hex(code), stored);
-}
 
 // Faqat settings ustunlari yoziladi, kalit bo'sh bo'lmasin.
 function cleanRow(r: unknown): Record<string, unknown> | null {
@@ -50,7 +32,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { code, verify, query } = await req.json();
-    if (!(await isAdmin(code))) {
+    if (!(await isAdminCode(supabaseAdmin, code))) {
       // shortcut: urinishlar soni cheklanmagan — kod tasodifiy va uzun bo'lgani uchun; kerak bo'lsa IP bo'yicha limit qo'shish.
       await new Promise((r) => setTimeout(r, 800));
       return json({ data: null, error: { message: "Admin kodi noto'g'ri" } }, 401);

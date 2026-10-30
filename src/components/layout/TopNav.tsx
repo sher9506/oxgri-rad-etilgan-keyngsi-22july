@@ -95,7 +95,7 @@ function buildNavGroups(
   if (isUstoz && isBlogOnly) {
     kabinetGroup = {
       label: 'Kabinetim',
-      items: [{ id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper, desc: 'Yangi maqola yozish' }],
+      items: [{ id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper, desc: 'Yangi maqola yozish' }, { id: 'ilmiy_ishlar', label: 'Ilmiy ishlarim', icon: GraduationCap, desc: 'Google Scholar uchun' }],
     };
   } else if (isUstoz && !isBlogOnly) {
     const allItems: NavItem[] = [
@@ -103,6 +103,7 @@ function buildNavGroups(
       { id: 'testlar', label: 'Test kabineti', icon: BookOpen, desc: 'Testlar boshqaruvi' },
       { id: 'oquvchilar', label: "O'quvchilarim", icon: GraduationCap, desc: "O'quvchilar ro'yxati" },
       { id: 'blog_yozish', label: 'Blog yozish', icon: Newspaper, desc: 'Yangi maqola yozish' },
+      { id: 'ilmiy_ishlar', label: 'Ilmiy ishlarim', icon: GraduationCap, desc: 'Google Scholar uchun' },
     ];
     if (ustozBotRuxsat) {
       allItems.push({ id: 'bot_yangilik', label: 'Bot Yangilik', icon: MessageCircle, desc: 'Bot xabarnomasi' });

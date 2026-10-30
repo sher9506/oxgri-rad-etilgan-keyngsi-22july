@@ -5,6 +5,7 @@
  */
 
 import { SITE_URL, fetchAuthorsOf, fetchAuthorsWithPhoto, fetchPublishedPosts, postImage, publicImageUrl } from "./_lib/blogData";
+import { fetchIlmiyIshlar } from "./_lib/ilmiyData";
 
 const xml = (s: string) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -22,12 +23,15 @@ export const onRequest: PagesFunction = async ({ env }) => {
   const blogAuthorCount = authors.size;
   for (const a of await fetchAuthorsWithPhoto(env as unknown as Record<string, unknown>)) if (a.muallif_slug) authors.set(a.id, a);
   const latest = day(posts[0]?.updated_at || posts[0]?.created_at);
+  const ilmiy = await fetchIlmiyIshlar(env as unknown as Record<string, unknown>);
 
   const entries: Entry[] = [
     { loc: `${SITE_URL}/` },
     { loc: `${SITE_URL}/nasher-ai` },
     { loc: `${SITE_URL}/blog`, lastmod: latest },
     ...(blogAuthorCount ? [{ loc: `${SITE_URL}/blog/mualliflar`, lastmod: latest }] : []),
+    ...(ilmiy.length ? [{ loc: `${SITE_URL}/ilmiy`, lastmod: day(ilmiy[0].tasdiqlangan_at || ilmiy[0].updated_at) }] : []),
+    ...ilmiy.map((i) => ({ loc: `${SITE_URL}/ilmiy/${encodeURIComponent(i.slug)}`, lastmod: day(i.updated_at) })),
     ...posts.map((p) => {
       const img = postImage(p);
       return {

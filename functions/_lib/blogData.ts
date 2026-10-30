@@ -38,7 +38,7 @@ const POST_FIELDS = "id,ustoz_id,ustoz_ismi,sarlavha,mazmun,slug,created_at,upda
 const AUTHOR_FIELDS = "id,full_name,muallif_slug,note,face_photo_url";
 
 /** Supabase REST'dan o'qish; xato bo'lsa bo'sh massiv (sahifa baribir ochiladi). */
-async function sb<T>(query: string, env: Record<string, unknown>): Promise<T[]> {
+export async function sb<T>(query: string, env: Record<string, unknown>): Promise<T[]> {
   const key = (env.SUPABASE_ANON_KEY as string | undefined) ?? SUPABASE_ANON_KEY_FALLBACK;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${query}`, {
     headers: { apikey: key, Authorization: `Bearer ${key}` },

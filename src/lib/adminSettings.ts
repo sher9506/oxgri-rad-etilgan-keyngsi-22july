@@ -16,6 +16,11 @@ export async function verifyAdminCode(code: string): Promise<boolean> {
   return true;
 }
 
+/** Admin kodi talab qiladigan boshqa edge funksiyalarga yuborish uchun (kod faqat xotirada). */
+export function withAdminCode<T extends object>(body: T): T & { code: string } {
+  return { ...body, code: adminCode };
+}
+
 export function forgetAdminCode() {
   adminCode = '';
 }

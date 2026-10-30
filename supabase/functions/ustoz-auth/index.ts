@@ -12,6 +12,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import bcrypt from 'npm:bcryptjs@2.4.3';
 import { corsHeaders } from '../_shared/cors.ts';
+import { sha256Hex, timingSafeEqual } from '../_shared/auth.ts';
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -28,22 +29,12 @@ const json = (data: unknown, status = 200) =>
 // Kutilgan xatolar 200 + { error } bilan qaytadi — brauzer supabase.functions.invoke'da data.error'dan o'qiydi.
 const xato = (message: string, _status?: number) => json({ error: message });
 
-async function sha256Hex(s: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
 
 function randomToken(): string {
   const b = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...b)).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' }[c]!));
 }
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
 
 /** Telefon/username: «+998...», «998...» variantlari — eski LoginModal bilan bir xil qidiruv. */
 function loginVariants(login: string): string[] {

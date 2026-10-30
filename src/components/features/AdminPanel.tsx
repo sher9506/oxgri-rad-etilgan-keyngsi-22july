@@ -13,6 +13,7 @@ import { Ustoz, approveUstoz, deleteUstoz } from '@/lib/auth';
 import { Textarea } from '@/components/ui/textarea';
 import JavobTahlil from './JavobTahlil';
 import ZahiraPanel from './ZahiraPanel';
+import IlmiyIshlarAdmin from './IlmiyIshlarAdmin';
 import FaceIdPanel from './FaceIdPanel';
 import AdminChatBoshqaruv from './AdminChatBoshqaruv';
 import BotSozlamalari from './BotSozlamalari';
@@ -1514,6 +1515,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
 
       {/* ─────────── ZAHIRA ─────────── */}
       {view === 'zahira' && <ZahiraPanel />}
+      {view === 'ilmiy_ishlar_admin' && <IlmiyIshlarAdmin />}
 
       {/* ─────────── BOT XABARNOMASI ─────────── */}
       {view === 'bot_xabarnoma' && <BotXabarnomasi />}
