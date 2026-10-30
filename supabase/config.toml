@@ -156,3 +156,6 @@ verify_jwt = false
 
 [functions.admin-settings]
 verify_jwt = false
+
+[functions.ustoz-auth]
+verify_jwt = false

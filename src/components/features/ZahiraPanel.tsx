@@ -7,6 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { USTOZ_OCHIQ_USTUNLAR } from '@/lib/ustozUstunlar';
 import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
@@ -153,7 +154,7 @@ async function jadvalniYukla(key: string): Promise<any[]> {
     case 'talabalar':
       return (await supabase.from('talabalar').select('*').order('created_at')).data || [];
     case 'ustoz':
-      return (await supabase.from('ustoz').select('*').order('created_at')).data || [];
+      return (await supabase.from('ustoz').select(USTOZ_OCHIQ_USTUNLAR).order('created_at')).data || [];
     case 'testlar':
       return (await supabase.from('testlar').select('*').order('created_at')).data || [];
     case 'test_javoblar':

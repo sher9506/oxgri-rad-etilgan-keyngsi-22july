@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
+import { USTOZ_OCHIQ_USTUNLAR } from '@/lib/ustozUstunlar';
 import { adminSettings, verifyAdminCode } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 import { Toplam, Javob } from '@/types';
@@ -442,7 +443,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
 
   const ustozlarniYuklash = async () => {
     try {
-      const { data, error } = await supabase.from('ustoz').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('ustoz').select(USTOZ_OCHIQ_USTUNLAR).order('created_at', { ascending: false });
       if (error) throw error;
       setUstozlar(data as Ustoz[] || []);
     } catch (error: any) {

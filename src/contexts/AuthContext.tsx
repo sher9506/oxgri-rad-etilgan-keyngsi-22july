@@ -18,6 +18,8 @@ export interface User {
   tasdiqlangan?: boolean;
   avatar_url?: string | null;
   bonus_urinish?: number;
+  /** ustoz-auth bergan sessiya tokeni (faqat ustoz); serverda sha256 bilan tekshiriladi. */
+  session_token?: string;
 }
 
 interface AuthContextType {
@@ -177,10 +179,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Doimiy saqlash — foydalanuvchi o'zi chiqmaguncha saqlanadi
     localStorage.setItem(PERSISTENT_KEY, userJson);
     sessionStorage.setItem(SESSION_FLAG, 'true');
-    console.log('✅ Foydalanuvchi tizimga kirdi:', userData);
+    console.log('✅ Foydalanuvchi tizimga kirdi:', { ...userData, session_token: userData.session_token ? '***' : undefined });
   };
 
   const logout = () => {
+    // Ustoz sessiyasini serverda ham bekor qilamiz (javobni kutmaymiz).
+    if (user?.session_token) {
+      supabase.functions.invoke('ustoz-auth', { body: { action: 'logout', token: user.session_token } }).catch(() => {});
+    }
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(PERSISTENT_KEY);

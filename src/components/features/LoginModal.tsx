@@ -16,13 +16,6 @@ interface LoginModalProps {
   onClose: () => void;
 }
 
-async function parolHashla(parol: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(parol + 'juris_salt_2024');
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
 function faceDistance(a: number[], b: number[]): number {
   if (!a || !b || a.length !== b.length) return 1;
   const faceapi = (window as any).faceapi;
@@ -282,6 +275,14 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setUstozResetPhone(formatPhone(raw));
   };
 
+  // Ustoz login'i va parol tiklash serverda (ustoz-auth): brauzer parol xeshini ko'rmaydi.
+  const ustozAuth = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke('ustoz-auth', { body });
+    if (error) throw new Error("Server bilan bog'lanib bo'lmadi. Qayta urinib ko'ring.");
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
   const handleUstozKirish = async () => {
     const loginId = getUstozLoginId();
     if (!isUstozPhoneValid() || !ustozKirishParol.trim()) {
@@ -289,29 +290,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     }
     setYuklanyapti(true);
     try {
-      const hash = await parolHashla(ustozKirishParol);
-      const loginVariants = [loginId, '+' + loginId];
-      const { data: ustozData } = await supabase
-        .from('ustoz')
-        .select('id, full_name, username, phone, status, parol_hash, blog_huquqi, ustoz_huquqi')
-        .or(`phone.in.(${loginVariants.map(v => `"${v}"`).join(',')}),username.in.(${loginVariants.map(v => `"${v}"`).join(',')})`)
-        .maybeSingle();
-      if (ustozData) {
-        if (ustozData.status !== 'approved') {
-          const msg = ustozData.status === 'pending' ? 'Hisobingiz hali admin tomonidan tasdiqlanmagan.' : "Hisobingiz rad etilgan.";
-          toast({ title: 'Kirish taqiqlangan', description: msg, variant: 'destructive' });
-          setYuklanyapti(false); return;
-        }
-        if (!ustozData.parol_hash || ustozData.parol_hash !== hash) {
-          toast({ title: 'Xato', description: "Telefon raqam yoki parol noto'g'ri", variant: 'destructive' });
-          setYuklanyapti(false); return;
-        }
-        const parts = (ustozData.full_name || '').split(' ');
-        authLogin({ ism: parts[0] || 'Ustoz', familiya: parts.slice(1).join(' ') || '', rol: 'ustoz', login: ustozData.phone || ustozData.username, ustoz_id: ustozData.id, blog_huquqi: ustozData.blog_huquqi ?? false, ustoz_huquqi: ustozData.ustoz_huquqi ?? false });
-        toast({ title: 'Xush kelibsiz!', description: `${ustozData.full_name} — Ustoz` });
-        onClose(); return;
-      }
-      toast({ title: 'Xato', description: "Telefon raqam yoki parol noto'g'ri.", variant: 'destructive' });
+      const { token, ustoz } = await ustozAuth({ action: 'login', login: loginId, parol: ustozKirishParol });
+      const parts = (ustoz.full_name || '').split(' ');
+      authLogin({ ism: parts[0] || 'Ustoz', familiya: parts.slice(1).join(' ') || '', rol: 'ustoz', login: ustoz.phone || ustoz.username, ustoz_id: ustoz.id, blog_huquqi: ustoz.blog_huquqi, ustoz_huquqi: ustoz.ustoz_huquqi, session_token: token });
+      toast({ title: 'Xush kelibsiz!', description: `${ustoz.full_name} — Ustoz` });
+      onClose();
     } catch (e: any) {
       toast({ title: 'Xato', description: e.message, variant: 'destructive' });
     } finally {
@@ -320,29 +303,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   };
 
   const handleUstozParolUnutildiOtp = async () => {
-    const loginId = getUstozResetLoginId();
     if (!isUstozResetPhoneValid()) {
       toast({ title: 'Xato', description: "To'liq telefon raqam kiriting", variant: 'destructive' }); return;
     }
     setYuklanyapti(true);
     try {
-      const loginVariants = [loginId, '+' + loginId];
-      const { data: ustoz } = await supabase.from('ustoz').select('id, full_name, phone, telegram_chat_id, username')
-        .or(`phone.in.(${loginVariants.map(v => `"${v}"`).join(',')}),username.in.(${loginVariants.map(v => `"${v}"`).join(',')})`)
-        .maybeSingle();
-      if (!ustoz) { toast({ title: 'Topilmadi', description: 'Bu telefon raqam bilan ustoz topilmadi', variant: 'destructive' }); setYuklanyapti(false); return; }
-      if (!ustoz.telegram_chat_id) { toast({ title: 'Telegram ulanmagan', variant: 'destructive' }); setYuklanyapti(false); return; }
-      const otpKod = Math.floor(10000 + Math.random() * 90000).toString();
-      await supabase.from('parol_reset_kodlar').insert({ login_id: loginId, kod: otpKod, faol: true });
-      const { data: sent } = await supabase.functions.invoke('telegram-api', {
-        body: {
-          bot: 'TELEGRAM_TOKEN', // token serverda — brauzer uni ko'rmaydi
-          method: 'sendMessage',
-          body: { chat_id: ustoz.telegram_chat_id, text: `🔐 <b>Parolni tiklash kodi (Ustoz)</b>\n\nKodingiz: <code>${otpKod}</code>\n\n⚠️ 10 daqiqa amal qiladi.`, parse_mode: 'HTML' },
-        },
-      });
-      if (!sent?.ok) { toast({ title: 'Bot sozlanmagan', variant: 'destructive' }); setYuklanyapti(false); return; }
-      setUstozResetObj(ustoz);
+      await ustozAuth({ action: 'reset_send', login: getUstozResetLoginId() });
+      setUstozResetObj({ login: getUstozResetLoginId() });
       setUstozLoginBosqich('otp_kiriting');
       toast({ title: '✅ Kod yuborildi!' });
     } catch (e: any) {
@@ -353,17 +320,14 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   };
 
   const handleUstozOtpTasdiqlash = async () => {
-    if (!ustozResetOtp || ustozResetOtp.length !== 5) { toast({ title: 'Xato', description: '5 xonali kodni kiriting', variant: 'destructive' }); return; }
+    if (!ustozResetOtp || ustozResetOtp.length !== 6) { toast({ title: 'Xato', description: '6 xonali kodni kiriting', variant: 'destructive' }); return; }
     setYuklanyapti(true);
     try {
-      const loginId = getUstozResetLoginId();
-      const { data: kod } = await supabase.from('parol_reset_kodlar').select('*')
-        .eq('login_id', loginId).eq('kod', ustozResetOtp).eq('faol', true).gte('expires_at', new Date().toISOString()).maybeSingle();
-      if (!kod) { toast({ title: "Kod noto'g'ri yoki muddati o'tgan", variant: 'destructive' }); setYuklanyapti(false); return; }
+      await ustozAuth({ action: 'reset_check', login: getUstozResetLoginId(), kod: ustozResetOtp });
       setUstozLoginBosqich('yangi_parol');
       toast({ title: '✅ Tasdiqlandi!' });
     } catch (e: any) {
-      toast({ title: 'Xato', description: e.message, variant: 'destructive' });
+      toast({ title: "Kod noto'g'ri yoki muddati o'tgan", description: e.message, variant: 'destructive' });
     } finally {
       setYuklanyapti(false);
     }
@@ -374,9 +338,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     if (!/[A-Z]/.test(ustozResetYangiParol) || !/[0-9]/.test(ustozResetYangiParol)) { toast({ title: 'Zaif parol', variant: 'destructive' }); return; }
     setYuklanyapti(true);
     try {
-      const hash = await parolHashla(ustozResetYangiParol);
-      await supabase.from('ustoz').update({ parol_hash: hash }).eq('id', ustozResetObj.id);
-      await supabase.from('parol_reset_kodlar').update({ faol: false }).eq('login_id', getUstozResetLoginId()).eq('faol', true);
+      await ustozAuth({ action: 'reset_set', login: getUstozResetLoginId(), kod: ustozResetOtp, yangi_parol: ustozResetYangiParol });
       toast({ title: '✅ Parol yangilandi!' });
       setUstozLoginBosqich('kirish');
       setUstozResetPhone(''); setUstozResetOtp(''); setUstozResetYangiParol(''); setUstozResetObj(null);
@@ -707,7 +669,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     </button>
                     <h2 className="text-xl font-bold text-gray-900">Parolni <span style={{ color: '#24A1DE' }}>tiklash</span></h2>
                     <div className="rounded-2xl p-3 text-xs" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af' }}>
-                      Telegramga bog'liq botga 5 xonali tasdiqlash kodi yuboriladi.
+                      Telegramga bog'liq botga 6 xonali tasdiqlash kodi yuboriladi.
                     </div>
                     <div className="space-y-3">
                       <div className="relative">
@@ -733,9 +695,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     <div className="space-y-3">
                       <div className="relative">
                         <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                        <input className={`${inputWithIcon} text-center text-2xl font-bold tracking-[0.5em]`} placeholder="_ _ _ _ _" value={ustozResetOtp} onChange={e => setUstozResetOtp(e.target.value.replace(/\D/g, '').slice(0, 5))} maxLength={5} inputMode="numeric" />
+                        <input className={`${inputWithIcon} text-center text-2xl font-bold tracking-[0.5em]`} placeholder="_ _ _ _ _ _" value={ustozResetOtp} onChange={e => setUstozResetOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} inputMode="numeric" />
                       </div>
-                      <button onClick={handleUstozOtpTasdiqlash} disabled={yuklanyapti || ustozResetOtp.length !== 5}
+                      <button onClick={handleUstozOtpTasdiqlash} disabled={yuklanyapti || ustozResetOtp.length !== 6}
                         className="w-full h-12 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                         style={{ background: 'linear-gradient(135deg, #1a73e8, #24A1DE)' }}>
                         {yuklanyapti ? <><Loader2 className="h-4 w-4 animate-spin" />Tekshirilmoqda...</> : <><KeyRound className="h-4 w-4" />Kodni tasdiqlash</>}

@@ -7,6 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { USTOZ_OCHIQ_USTUNLAR } from '@/lib/ustozUstunlar';
 import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
@@ -61,7 +62,7 @@ export default function UstozBotSozlamalari() {
   const kutayotganUstozlarniYuklash = async () => {
     setUstozlarYuklanyapti(true);
     try {
-      const { data } = await supabase.from('ustoz').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+      const { data } = await supabase.from('ustoz').select(USTOZ_OCHIQ_USTUNLAR).eq('status', 'pending').order('created_at', { ascending: false });
       setKutayotganUstozlar(data || []);
     } finally {
       setUstozlarYuklanyapti(false);
