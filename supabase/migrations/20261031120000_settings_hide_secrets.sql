@@ -35,3 +35,6 @@ USING (
   ])
   OR key LIKE 'USTOZ\_BOT\_RUXSAT\_%'
 );
+
+-- Qo'shimcha himoya: RLS TRUNCATE'ga ta'sir qilmaydi — yozish huquqlarini butunlay olib qo'yamiz.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON settings FROM anon, authenticated;
