@@ -19,9 +19,13 @@ export function truncateText(text: string, maxChars: number): string {
   return text.slice(0, maxChars).trimEnd() + '...';
 }
 
+// Brauzerlar uz-UZ lokalini to'liq bilmaydi («2026 M09 19» chiqaradi) — oy nomlari qo'lda.
+const OYLAR = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
+
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
-  return d.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long', year: 'numeric' });
+  if (isNaN(d.getTime())) return '';
+  return `${d.getDate()}-${OYLAR[d.getMonth()]}, ${d.getFullYear()}`;
 }
 
 export interface AuthorInfo {

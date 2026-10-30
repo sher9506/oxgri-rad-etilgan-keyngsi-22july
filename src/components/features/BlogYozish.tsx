@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, Edit3, Trash2, Eye, EyeOff, Save, X, Calendar, Newspaper, FileText, MessageCircle, Phone, AlertCircle, Upload, File as FileIcon, Download, Loader2, Search, ShieldCheck, FileSignature } from 'lucide-react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDate } from '@/lib/blogUtils';
 import { useToast } from '@/hooks/use-toast';
 
 interface BlogPost {
@@ -396,10 +397,6 @@ export default function BlogYozish() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
 
   // ── Preview mode ────────────────────────────────────────────────────────────
   if (mode === 'preview') {
