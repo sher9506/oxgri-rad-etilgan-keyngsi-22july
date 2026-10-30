@@ -260,7 +260,7 @@ function AppContent() {
       }
 
       if (isBlogOnly) {
-        const allowed = ['blog', 'blog_yozish', 'ilmiy_ishlar', 'profil', 'haqida', 'yordam'];
+        const allowed = ['blog', 'blog_yozish', 'ilmiy', 'ilmiy_ishlar', 'profil', 'haqida', 'yordam'];
         if (!allowed.includes(activeTab)) {
           return <Suspense fallback={<LazyFallback />}><SaytHaqida onNavigate={(tab) => handleTabChange(tab)} /></Suspense>;
         }
@@ -291,6 +291,7 @@ function AppContent() {
       case 'smart_talim': return <Suspense fallback={<LazyFallback />}><SmartTalim onNavigateToMaterial={(bolimId, bobId, materialId) => { handleTabChange('oqmatlar'); setTimeout(() => { window.dispatchEvent(new CustomEvent('deeplink-oqmat', { detail: { subPath: `${bolimId}/${bobId || ''}/${materialId || ''}` } })); }, 600); }} /></Suspense>;
       case 'blog': return <Suspense fallback={<LazyFallback />}><BlogList /></Suspense>;
       case 'blog_yozish': return <Suspense fallback={<LazyFallback />}><BlogYozish /></Suspense>;
+      case 'ilmiy': return <Suspense fallback={<LazyFallback />}><IlmiyIshlarPublic /></Suspense>;
       case 'ilmiy_ishlar': return <Suspense fallback={<LazyFallback />}><IlmiyIshlarUstoz /></Suspense>;
       case 'moot_court': return <Suspense fallback={<LazyFallback />}>{user?.rol === 'ustoz' ? <MootCourtUstoz /> : <MootCourtOquvchi />}</Suspense>;
       case 'qonun_bazasi': return <Suspense fallback={<LazyFallback />}><QonunlarBazasi /></Suspense>;
@@ -446,16 +447,19 @@ function RouterRoot() {
       </AuthProvider>
     );
   }
-  const ilmiyMatch = location.pathname.match(/^\/ilmiy(?:\/([a-z0-9-]+))?\/?$/);
+  const ilmiyMatch = location.pathname.match(/^\/ilmiy\/([a-z0-9-]+)\/?$/);
   if (ilmiyMatch) {
     return (
       <LangProvider>
         <AuthProvider>
           <NotificationProvider>
-            <div className="min-h-screen font-sans" style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
-              <Suspense fallback={<div className="flex min-h-[560px] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full" style={{ border: '2px solid var(--cobalt-1)', borderTopColor: 'transparent' }} /></div>}>
-                <IlmiyIshlarPublic slug={ilmiyMatch[1]} />
-              </Suspense>
+            <div className="flex flex-col font-sans ff-full-height" style={{ overflow: 'hidden', background: 'var(--bg)' }}>
+              <TopNav activeTab="ilmiy" onTabChange={() => {}} onOpenLogin={() => {}} onLogout={() => {}} />
+              <main className="flex-1 overflow-auto p-4 md:p-6" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as CSSProperties}>
+                <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 rounded-full animate-spin" style={{ border: '2px solid var(--cobalt-1)', borderTopColor: 'transparent' }} /></div>}>
+                  <IlmiyIshlarPublic slug={ilmiyMatch[1]} />
+                </Suspense>
+              </main>
             </div>
           </NotificationProvider>
         </AuthProvider>

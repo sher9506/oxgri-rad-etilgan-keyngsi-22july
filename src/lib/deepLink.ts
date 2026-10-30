@@ -23,6 +23,7 @@ export const TAB_PATHS: Record<string, string> = {
   yordam: 'yordam',
   nexus_ai: 'nasher-ai',   // ichki ID o'zgarmaydi, URL'da NaSher ko'rinadi
   blog: 'blog',
+  ilmiy: 'ilmiy',
 };
 
 // TESKARI XARITA: path → activeTab
@@ -49,6 +50,7 @@ export const PATH_TO_TAB: Record<string, string> = {
   'nasher-ai': 'nexus_ai',
   nasher: 'nexus_ai',
   blog: 'blog',
+  ilmiy: 'ilmiy',
 };
 
 // ── TOZA PATH OLISH ───────────────────────────────────────────────────────────

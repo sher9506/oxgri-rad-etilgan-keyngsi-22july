@@ -79,12 +79,15 @@ function buildNavGroups(
     label: 'Yana',
     items: isBlogOnly
       ? [
+          { id: 'ilmiy', label: 'Ilmiy ishlar', icon: GraduationCap, desc: 'Ustozlarning ilmiy maqolalari' },
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },
         ]
       : [
           { id: 'kurslar', label: 'Kurslar', icon: BookMarked, desc: "O'quv kurslari" },
           { id: 'savol_javob', label: 'Savol–javoblar', icon: Layers, desc: "Savollarga javoblar kutubxonasi" },
           { id: 'reyting', label: 'Reyting', icon: TrendingUp, desc: "O'quvchilar reytingi" },
+          { id: 'blog', label: 'Blog', icon: Newspaper, desc: 'Yuridik maqolalar va tahlillar' },
+          { id: 'ilmiy', label: 'Ilmiy ishlar', icon: GraduationCap, desc: 'Ustozlarning ilmiy maqolalari' },
           { id: 'yordam', label: 'Yordam', icon: HelpCircle, desc: 'Yordam markazi' },
         ],
   };

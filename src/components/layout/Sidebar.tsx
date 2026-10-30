@@ -109,12 +109,14 @@ function buildSections(
 
   const oqishItems = isHukmOnly ? [] : isBlogOnly ? [
     { id: 'blog', label: 'Blog', icon: Newspaper },
+    { id: 'ilmiy', label: 'Ilmiy ishlar', icon: GraduationCap },
   ] : [
     { id: 'kurslar', label: t('nav.kurslar'), icon: BookMarked },
     { id: 'oqmatlar', label: t('nav.oqmatlar'), icon: Library },
     { id: 'nexus_ai', label: 'NaSher AI', icon: MessageSquareText },
     { id: 'savol_javob', label: t('nav.savol_javob'), icon: Layers },
     { id: 'blog', label: 'Blog', icon: Newspaper },
+    { id: 'ilmiy', label: 'Ilmiy ishlar', icon: GraduationCap },
   ];
 
   const sinovItems = (isBlogOnly || isHukmOnly) ? [] : [
