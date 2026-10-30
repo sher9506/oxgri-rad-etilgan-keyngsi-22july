@@ -73,20 +73,6 @@ export async function sendUstozOtp(phone: string): Promise<{ success: boolean; m
     }
   }
 
-  // Bot orqali OTP yuborish
-  const { data: tokenData } = await supabase
-    .from('settings')
-    .select('text_value')
-    .eq('key', 'TELEGRAM_TOKEN')
-    .maybeSingle();
-
-  const botToken = tokenData?.text_value;
-  if (!botToken) {
-    // Bot ulangan bo'lmasa, test rejimi (konsolga chiqarish)
-    console.log(`[TEST MODE] OTP: ${otp} → ${cleanPhone}`);
-    return { success: true, message: 'OTP yuborildi (test rejimi)' };
-  }
-
   // Telegram chat_id ni topish (bot_sessions jadvalidan telefon raqam bo'yicha)
   const { data: botSession } = await supabase
     .from('bot_sessions')
@@ -105,7 +91,7 @@ export async function sendUstozOtp(phone: string): Promise<{ success: boolean; m
   // Bot orqali OTP yuborish
   const { data: msgResult, error: msgErr } = await supabase.functions.invoke('telegram-api', {
     body: {
-      token: botToken,
+      bot: 'TELEGRAM_TOKEN', // token serverda — brauzer uni ko'rmaydi
       method: 'sendMessage',
       body: {
         chat_id: botSession.chat_id,
@@ -179,24 +165,15 @@ export async function registerUstozWithOtp(params: {
 
   if (botSession?.chat_id) {
     // Bot API orqali username olish
-    const { data: tokenData } = await supabase
-      .from('settings')
-      .select('text_value')
-      .eq('key', 'TELEGRAM_TOKEN')
-      .maybeSingle();
-
-    const botToken = tokenData?.text_value;
-    if (botToken) {
-      const { data: chatData, error: chatErr } = await supabase.functions.invoke('telegram-api', {
-        body: {
-          token: botToken,
-          method: 'getChat',
-          body: { chat_id: botSession.chat_id },
-        },
-      });
-      if (!chatErr && chatData?.ok && chatData.result?.username) {
-        telegramUsername = '@' + chatData.result.username;
-      }
+    const { data: chatData, error: chatErr } = await supabase.functions.invoke('telegram-api', {
+      body: {
+        bot: 'TELEGRAM_TOKEN',
+        method: 'getChat',
+        body: { chat_id: botSession.chat_id },
+      },
+    });
+    if (!chatErr && chatData?.ok && chatData.result?.username) {
+      telegramUsername = '@' + chatData.result.username;
     }
   }
 

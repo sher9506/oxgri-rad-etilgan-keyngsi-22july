@@ -7,6 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
 interface JadvalNatija {
@@ -205,7 +206,7 @@ async function jadvalniYukla(key: string): Promise<any[]> {
     // ── Tizim + API kalitlar ──
     case 'settings':
       // BARCHA sozlamalar — API kalitlar, bot tokenlar, shablonlar
-      return (await supabase.from('settings').select('*')).data || [];
+      return (await adminSettings().select('*')).data || [];
     case 'yangiliklar':
       return (await supabase.from('yangiliklar').select('*').order('created_at')).data || [];
     case 'bildirishnomalar':

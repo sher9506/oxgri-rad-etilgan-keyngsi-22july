@@ -6,7 +6,7 @@
 import { supabase } from './supabase';
 
 interface BotConfig {
-  token: string;
+  bot: 'TELEGRAM_TOKEN' | 'USTOZ_BOT_TOKEN'; // token serverda (telegram-api), brauzer uni ko'rmaydi
   siteUrl: string;
   siteBtnText: string;
 }
@@ -16,8 +16,8 @@ async function getBotConfigs(): Promise<{ student: BotConfig; teacher: BotConfig
     .from('settings')
     .select('key, text_value')
     .in('key', [
-      'TELEGRAM_TOKEN', 'BOT_SITE_URL', 'BOT_SITE_BUTTON_TEXT',
-      'USTOZ_BOT_TOKEN', 'USTOZ_BOT_SITE_URL', 'USTOZ_BOT_SITE_BUTTON_TEXT',
+      'BOT_SITE_URL', 'BOT_SITE_BUTTON_TEXT',
+      'USTOZ_BOT_SITE_URL', 'USTOZ_BOT_SITE_BUTTON_TEXT',
     ]);
 
   const map: Record<string, string> = {};
@@ -25,20 +25,20 @@ async function getBotConfigs(): Promise<{ student: BotConfig; teacher: BotConfig
 
   return {
     student: {
-      token: map['TELEGRAM_TOKEN'] || '',
+      bot: 'TELEGRAM_TOKEN',
       siteUrl: map['BOT_SITE_URL'] || 'https://fanfaster.uz',
       siteBtnText: map['BOT_SITE_BUTTON_TEXT'] || '🌐 FanFaster.uz',
     },
     teacher: {
-      token: map['USTOZ_BOT_TOKEN'] || '',
+      bot: 'USTOZ_BOT_TOKEN',
       siteUrl: map['USTOZ_BOT_SITE_URL'] || 'https://fanfaster.uz',
       siteBtnText: map['USTOZ_BOT_SITE_BUTTON_TEXT'] || '🌐 Saytga kirish',
     },
   };
 }
 
-async function sendTelegramBroadcast(token: string, chatIds: number[], text: string, siteUrl: string, btnText: string): Promise<void> {
-  if (!token || chatIds.length === 0) return;
+async function sendTelegramBroadcast(bot: BotConfig['bot'], chatIds: number[], text: string, siteUrl: string, btnText: string): Promise<void> {
+  if (chatIds.length === 0) return;
 
   const keyboard = {
     inline_keyboard: [[{ text: btnText, url: siteUrl }]],
@@ -52,7 +52,7 @@ async function sendTelegramBroadcast(token: string, chatIds: number[], text: str
       batch.map((chatId) =>
         supabase.functions.invoke('telegram-api', {
           body: {
-            token,
+            bot,
             method: 'sendMessage',
             body: {
               chat_id: chatId,
@@ -146,12 +146,8 @@ export async function sendMaterialBotXabar(params: {
 
   // Parallel yuborish: o'quvchi boti + ustoz boti
   await Promise.allSettled([
-    configs.student.token
-      ? sendTelegramBroadcast(configs.student.token, studentIds, text, configs.student.siteUrl, configs.student.siteBtnText)
-      : Promise.resolve(),
-    configs.teacher.token
-      ? sendTelegramBroadcast(configs.teacher.token, teacherIds, text, configs.teacher.siteUrl, configs.teacher.siteBtnText)
-      : Promise.resolve(),
+    sendTelegramBroadcast(configs.student.bot, studentIds, text, configs.student.siteUrl, configs.student.siteBtnText),
+    sendTelegramBroadcast(configs.teacher.bot, teacherIds, text, configs.teacher.siteUrl, configs.teacher.siteBtnText),
   ]);
 }
 
@@ -203,12 +199,8 @@ export async function sendTestOmmaviyBotXabar(params: {
     .filter(Boolean) as number[];
 
   await Promise.allSettled([
-    configs.student.token
-      ? sendTelegramBroadcast(configs.student.token, studentIds, text, configs.student.siteUrl, configs.student.siteBtnText)
-      : Promise.resolve(),
-    configs.teacher.token
-      ? sendTelegramBroadcast(configs.teacher.token, teacherIds, text, configs.teacher.siteUrl, configs.teacher.siteBtnText)
-      : Promise.resolve(),
+    sendTelegramBroadcast(configs.student.bot, studentIds, text, configs.student.siteUrl, configs.student.siteBtnText),
+    sendTelegramBroadcast(configs.teacher.bot, teacherIds, text, configs.teacher.siteUrl, configs.teacher.siteBtnText),
   ]);
 }
 
@@ -260,11 +252,7 @@ export async function sendKazusOmmaviyBotXabar(params: {
     .filter(Boolean) as number[];
 
   await Promise.allSettled([
-    configs.student.token
-      ? sendTelegramBroadcast(configs.student.token, studentIds, text, configs.student.siteUrl, configs.student.siteBtnText)
-      : Promise.resolve(),
-    configs.teacher.token
-      ? sendTelegramBroadcast(configs.teacher.token, teacherIds, text, configs.teacher.siteUrl, configs.teacher.siteBtnText)
-      : Promise.resolve(),
+    sendTelegramBroadcast(configs.student.bot, studentIds, text, configs.student.siteUrl, configs.student.siteBtnText),
+    sendTelegramBroadcast(configs.teacher.bot, teacherIds, text, configs.teacher.siteUrl, configs.teacher.siteBtnText),
   ]);
 }

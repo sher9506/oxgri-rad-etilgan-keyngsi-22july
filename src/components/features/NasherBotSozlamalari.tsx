@@ -3,6 +3,7 @@ import { Scale, Loader2, CheckCircle, AlertCircle, Eye, EyeOff, Play, Key, Globe
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
 // Mini App faqat NaSher AI ni to'liq ekranda ochadi (src/main.tsx da ?nasher_app=1 tekshiriladi)
@@ -19,7 +20,7 @@ export default function NasherBotSozlamalari() {
   const [natija, setNatija] = useState<{ ok: boolean; text: string; username?: string } | null>(null);
 
   useEffect(() => {
-    supabase.from('settings').select('key, text_value').in('key', ['NASHER_BOT_TOKEN', 'NASHER_MINIAPP_URL'])
+    adminSettings().select('key, text_value').in('key', ['NASHER_BOT_TOKEN', 'NASHER_MINIAPP_URL'])
       .then(({ data, error }) => {
         if (error) console.error('[NasherBot] sozlamalar o\'qilmadi:', error.message);
         const m = Object.fromEntries((data ?? []).map(r => [r.key, r.text_value ?? '']));
@@ -44,7 +45,7 @@ export default function NasherBotSozlamalari() {
     try {
       const rows = [{ key: 'NASHER_MINIAPP_URL', text_value: miniAppUrl.trim(), value: true, tavsif: 'NaSher AI Mini App manzili' }];
       if (t) rows.push({ key: 'NASHER_BOT_TOKEN', text_value: t, value: true, tavsif: 'NaSher AI Telegram bot tokeni' });
-      const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'key' });
+      const { error } = await adminSettings().upsert(rows, { onConflict: 'key' });
       if (error) throw new Error(error.message);
       const { data, error: fnErr } = await supabase.functions.invoke('nasher-bot', { body: { action: 'activate' } });
       if (fnErr) throw new Error(fnErr.message);

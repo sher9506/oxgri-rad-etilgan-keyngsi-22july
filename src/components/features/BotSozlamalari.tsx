@@ -8,6 +8,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
 // ── Xabar shablonlari ──
@@ -63,8 +64,7 @@ export default function BotSozlamalari() {
   const yuklash = useCallback(async () => {
     setYuklanyapti(true);
     try {
-      const { data } = await supabase
-        .from('settings')
+      const { data } = await adminSettings()
         .select('key, text_value, tavsif')
         .in('key', SETTING_KEYS);
 
@@ -99,7 +99,7 @@ export default function BotSozlamalari() {
   const botLinkSaqla = async () => {
     setBotLinkSaqlanyapti(true);
     try {
-      await supabase.from('settings').upsert(
+      await adminSettings().upsert(
         { key: 'TELEGRAM_BOT_LINK', text_value: botLink.trim(), value: true, tavsif: "O'quvchilar ro'yxatdan o'tish uchun Telegram bot havolasi" },
         { onConflict: 'key' }
       );
@@ -139,7 +139,7 @@ export default function BotSozlamalari() {
       if (error) throw error;
 
       if (result.ok) {
-        await supabase.from('settings').upsert(
+        await adminSettings().upsert(
           { key: 'TELEGRAM_WEBHOOK_URL', text_value: targetUrl, value: true, tavsif: 'Bot Webhook URL' },
           { onConflict: 'key' }
         );
@@ -171,8 +171,7 @@ export default function BotSozlamalari() {
       const channelsStr = channels.map(c => c.trim()).filter(Boolean).join(',');
 
       // Avvalgi tokenni olish
-      const { data: eskiRow } = await supabase
-        .from('settings')
+      const { data: eskiRow } = await adminSettings()
         .select('text_value')
         .eq('key', 'TELEGRAM_TOKEN')
         .maybeSingle();
@@ -180,10 +179,10 @@ export default function BotSozlamalari() {
 
       // Sozlamalarni saqlash
       await Promise.all([
-        supabase.from('settings').upsert({ key: 'TELEGRAM_TOKEN', text_value: token.trim(), value: true, tavsif: 'Telegram Bot Token' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'TELEGRAM_CHANNEL_IDS', text_value: channelsStr, value: true, tavsif: 'Telegram Kanal IDlar' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'BOT_SITE_URL', text_value: siteUrl.trim(), value: true, tavsif: 'Sayt URL' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'BOT_SITE_BUTTON_TEXT', text_value: siteBtnText.trim(), value: true, tavsif: 'Sayt tugmasi matni' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'TELEGRAM_TOKEN', text_value: token.trim(), value: true, tavsif: 'Telegram Bot Token' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'TELEGRAM_CHANNEL_IDS', text_value: channelsStr, value: true, tavsif: 'Telegram Kanal IDlar' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'BOT_SITE_URL', text_value: siteUrl.trim(), value: true, tavsif: 'Sayt URL' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'BOT_SITE_BUTTON_TEXT', text_value: siteBtnText.trim(), value: true, tavsif: 'Sayt tugmasi matni' }, { onConflict: 'key' }),
       ]);
 
       // Webhook: eski tokenni o'chirib yangi tokenda o'rnatish
@@ -212,7 +211,7 @@ export default function BotSozlamalari() {
   const msgSaqlash = async (key: string) => {
     setMsgSaqlanyapti(p => ({ ...p, [key]: true }));
     try {
-      await supabase.from('settings').upsert(
+      await adminSettings().upsert(
         { key, text_value: msgs[key], value: true },
         { onConflict: 'key' }
       );
@@ -249,7 +248,7 @@ export default function BotSozlamalari() {
       });
       if (error) throw error;
       if (result?.ok) {
-        await supabase.from('settings').upsert(
+        await adminSettings().upsert(
           { key: 'TELEGRAM_WEBHOOK_URL', text_value: wUrl, value: true, tavsif: 'Bot Webhook URL' },
           { onConflict: 'key' }
         );

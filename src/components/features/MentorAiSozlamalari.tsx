@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
 const SETTING_KEYS = [
@@ -140,8 +141,7 @@ export default function MentorAiSozlamalari() {
   const yuklash = useCallback(async () => {
     setYuklanyapti(true);
     try {
-      const { data } = await supabase
-        .from('settings')
+      const { data } = await adminSettings()
         .select('key, text_value, value')
         .in('key', SETTING_KEYS);
 
@@ -264,7 +264,7 @@ export default function MentorAiSozlamalari() {
       const validKeys = apiKeys.filter(k => k.value.trim().startsWith('gsk_'));
       const keysJson = keysToJson(validKeys);
       await Promise.all([
-        supabase.from('settings').upsert(
+        adminSettings().upsert(
           {
             key: 'GROQ_API_KEYS',
             text_value: aiProvider === 'groq' ? keysJson : '[]',
@@ -273,7 +273,7 @@ export default function MentorAiSozlamalari() {
           },
           { onConflict: 'key' }
         ),
-        supabase.from('settings').upsert(
+        adminSettings().upsert(
           {
             key: 'GROQ_API_KEY',
             text_value: aiProvider === 'groq' && validKeys.length > 0 ? validKeys[0].value.trim() : '',
@@ -282,15 +282,15 @@ export default function MentorAiSozlamalari() {
           },
           { onConflict: 'key' }
         ),
-        supabase.from('settings').upsert(
+        adminSettings().upsert(
           { key: 'AI_MENTOR_MODEL', text_value: model.trim(), value: true, tavsif: 'AI Mentor modeli' },
           { onConflict: 'key' }
         ),
-        supabase.from('settings').upsert(
+        adminSettings().upsert(
           { key: 'AI_MENTOR_FAOL', text_value: null, value: faol, tavsif: 'AI Mentor chatbot faol/nofaol' },
           { onConflict: 'key' }
         ),
-        supabase.from('settings').upsert(
+        adminSettings().upsert(
           {
             key: 'AI_MENTOR_SYSTEM_INSTRUCTION',
             text_value: systemInstruction.trim(),

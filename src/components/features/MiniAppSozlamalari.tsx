@@ -6,6 +6,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
 const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/miniapp-bot`;
@@ -49,8 +50,7 @@ export default function MiniAppSozlamalari() {
   const yuklash = useCallback(async () => {
     setYuklanyapti(true);
     try {
-      const { data } = await supabase
-        .from('settings')
+      const { data } = await adminSettings()
         .select('key, text_value')
         .in('key', SETTING_KEYS);
 
@@ -109,8 +109,7 @@ export default function MiniAppSozlamalari() {
     setWebhookStatus(null);
     try {
       // Eski tokenni olib, agar o'zgargan bo'lsa deleteWebhook qilamiz
-      const { data: eskiRow } = await supabase
-        .from('settings')
+      const { data: eskiRow } = await adminSettings()
         .select('text_value')
         .eq('key', 'MINIAPP_BOT_TOKEN')
         .maybeSingle();
@@ -178,13 +177,13 @@ export default function MiniAppSozlamalari() {
 
       // Hamma settings'larni saqlash
       await Promise.all([
-        supabase.from('settings').upsert({ key: 'MINIAPP_BOT_TOKEN', text_value: token.trim(), value: true, tavsif: 'Mini App Bot Token' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'MINIAPP_BOT_USERNAME', text_value: autoUsername, value: true, tavsif: 'Mini App Bot Username' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'MINIAPP_URL', text_value: miniAppUrl.trim(), value: true, tavsif: 'Mini App URL' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'MINIAPP_WELCOME_TEXT', text_value: welcomeText, value: true, tavsif: 'Mini App Salomlashuv matni' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'MINIAPP_BUTTON_TEXT', text_value: buttonText.trim(), value: true, tavsif: 'Mini App Tugma matni' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'MINIAPP_WEBHOOK_SECRET', text_value: secret, value: true, tavsif: 'Mini App Webhook Secret' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'MINIAPP_LINK_CHANNEL', text_value: linkChannel.trim(), value: true, tavsif: 'Mini App birlashtirish kanali' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'MINIAPP_BOT_TOKEN', text_value: token.trim(), value: true, tavsif: 'Mini App Bot Token' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'MINIAPP_BOT_USERNAME', text_value: autoUsername, value: true, tavsif: 'Mini App Bot Username' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'MINIAPP_URL', text_value: miniAppUrl.trim(), value: true, tavsif: 'Mini App URL' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'MINIAPP_WELCOME_TEXT', text_value: welcomeText, value: true, tavsif: 'Mini App Salomlashuv matni' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'MINIAPP_BUTTON_TEXT', text_value: buttonText.trim(), value: true, tavsif: 'Mini App Tugma matni' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'MINIAPP_WEBHOOK_SECRET', text_value: secret, value: true, tavsif: 'Mini App Webhook Secret' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'MINIAPP_LINK_CHANNEL', text_value: linkChannel.trim(), value: true, tavsif: 'Mini App birlashtirish kanali' }, { onConflict: 'key' }),
       ]);
 
       // Kanal adminligini tekshirish (agar kanal kiritilgan bo'lsa)

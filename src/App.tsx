@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useRef, createContext, useContext, useMemo, lazy, Suspense, useCallback } from 'react';
+import { forgetAdminCode } from '@/lib/adminSettings';
 import type { CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import TelegramCallback from '@/pages/TelegramCallback';
@@ -128,7 +129,7 @@ function AppContent() {
   const [adminView, setAdminView] = useState('ustoz');
 
   const loginAdmin = useCallback(() => setIsAdmin(true), []);
-  const logoutAdmin = useCallback(() => { setIsAdmin(false); setAdminView('ustoz'); }, []);
+  const logoutAdmin = useCallback(() => { forgetAdminCode(); setIsAdmin(false); setAdminView('ustoz'); }, []);
 
   useEffect(() => {
     const checkHash = () => {

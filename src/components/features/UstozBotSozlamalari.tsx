@@ -7,6 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
 interface SettingRow { key: string; text_value: string; tavsif: string; }
@@ -41,7 +42,7 @@ export default function UstozBotSozlamalari() {
   const yuklash = useCallback(async () => {
     setYuklanyapti(true);
     try {
-      const { data } = await supabase.from('settings').select('key, text_value, tavsif').in('key', SETTING_KEYS);
+      const { data } = await adminSettings().select('key, text_value, tavsif').in('key', SETTING_KEYS);
       const map: Record<string, string> = {};
       (data || []).forEach((r: SettingRow) => { map[r.key] = r.text_value || ''; });
       setToken(map['USTOZ_BOT_TOKEN'] || '');
@@ -111,7 +112,7 @@ export default function UstozBotSozlamalari() {
       });
       if (error) throw error;
       if (result?.ok) {
-        await supabase.from('settings').upsert({ key: 'USTOZ_BOT_WEBHOOK_URL', text_value: targetUrl, value: true, tavsif: 'Ustoz Bot Webhook URL' }, { onConflict: 'key' });
+        await adminSettings().upsert({ key: 'USTOZ_BOT_WEBHOOK_URL', text_value: targetUrl, value: true, tavsif: 'Ustoz Bot Webhook URL' }, { onConflict: 'key' });
         setWebhookUrl(targetUrl);
         setWebhookInfo(targetUrl);
         setWebhookStatus('success');
@@ -135,12 +136,12 @@ export default function UstozBotSozlamalari() {
     }
     setSaqlanyapti(true);
     try {
-      const { data: eskiRow } = await supabase.from('settings').select('text_value').eq('key', 'USTOZ_BOT_TOKEN').maybeSingle();
+      const { data: eskiRow } = await adminSettings().select('text_value').eq('key', 'USTOZ_BOT_TOKEN').maybeSingle();
       const eskiToken = eskiRow?.text_value || '';
       await Promise.all([
-        supabase.from('settings').upsert({ key: 'USTOZ_BOT_TOKEN', text_value: token.trim(), value: true, tavsif: 'Ustoz Bot Token' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'USTOZ_BOT_SITE_URL', text_value: siteUrl.trim(), value: true, tavsif: 'Ustoz Sayt URL' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'USTOZ_BOT_SITE_BUTTON_TEXT', text_value: siteBtnText.trim(), value: true, tavsif: 'Ustoz Sayt tugmasi matni' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'USTOZ_BOT_TOKEN', text_value: token.trim(), value: true, tavsif: 'Ustoz Bot Token' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'USTOZ_BOT_SITE_URL', text_value: siteUrl.trim(), value: true, tavsif: 'Ustoz Sayt URL' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'USTOZ_BOT_SITE_BUTTON_TEXT', text_value: siteBtnText.trim(), value: true, tavsif: 'Ustoz Sayt tugmasi matni' }, { onConflict: 'key' }),
       ]);
       const webhookOk = await webhookAlmashtir(eskiToken, token.trim());
       await botMalumotOlish(token.trim());
@@ -159,7 +160,7 @@ export default function UstozBotSozlamalari() {
   const botLinkSaqla = async () => {
     setBotLinkSaqlanyapti(true);
     try {
-      await supabase.from('settings').upsert({ key: 'USTOZ_BOT_LINK', text_value: botLink.trim(), value: true, tavsif: 'Ustozlar ro\'yxatdan o\'tish uchun bot havolasi' }, { onConflict: 'key' });
+      await adminSettings().upsert({ key: 'USTOZ_BOT_LINK', text_value: botLink.trim(), value: true, tavsif: 'Ustozlar ro\'yxatdan o\'tish uchun bot havolasi' }, { onConflict: 'key' });
       toast({ title: '✅ Bot havola saqlandi!' });
     } catch (e: any) {
       toast({ title: 'Xato', description: e.message, variant: 'destructive' });
@@ -184,7 +185,7 @@ export default function UstozBotSozlamalari() {
       });
       if (error) throw error;
       if (result?.ok) {
-        await supabase.from('settings').upsert({ key: 'USTOZ_BOT_WEBHOOK_URL', text_value: wUrl, value: true, tavsif: 'Ustoz Bot Webhook URL' }, { onConflict: 'key' });
+        await adminSettings().upsert({ key: 'USTOZ_BOT_WEBHOOK_URL', text_value: wUrl, value: true, tavsif: 'Ustoz Bot Webhook URL' }, { onConflict: 'key' });
         setWebhookUrl(wUrl);
         setWebhookStatus('success');
         setWebhookInfo(wUrl);

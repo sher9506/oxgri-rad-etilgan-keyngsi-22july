@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
+import { adminSettings, verifyAdminCode } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 import { Toplam, Javob } from '@/types';
 import { Ustoz, approveUstoz, deleteUstoz } from '@/lib/auth';
@@ -30,7 +31,6 @@ import LexUzQidiruvchi from './LexUzQidiruvchi';
 import QidiruvJurnali from './QidiruvJurnali';
 import LmStudioPanel from './LmStudioPanel';
 
-const ADMIN_CODE = 'adminchit';
 
 interface AdminPanelProps {
   adminView?: string;
@@ -429,8 +429,9 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
     }
   };
 
-  const adminKirish = () => {
-    if (kod === ADMIN_CODE) {
+  // Kod serverda (admin-settings) tekshiriladi — brauzer kodida saqlanmaydi.
+  const adminKirish = async () => {
+    if (await verifyAdminCode(kod.trim())) {
       setKirish(true);
       onAdminLogin?.();
       toast({ title: 'Xush kelibsiz, Admin!', description: 'Admin paneliga kirildi' });
@@ -465,7 +466,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
       if (ustozData?.telegram_chat_id) {
         try {
           // Ustoz bot token va oquvchi bot token ni bir vaqtda olish
-          const { data: tokenSettings } = await supabase.from('settings').select('key, text_value').in('key', ['TELEGRAM_TOKEN', 'USTOZ_BOT_TOKEN', 'BOT_SITE_URL', 'BOT_SITE_BUTTON_TEXT']);
+          const { data: tokenSettings } = await adminSettings().select('key, text_value').in('key', ['TELEGRAM_TOKEN', 'USTOZ_BOT_TOKEN', 'BOT_SITE_URL', 'BOT_SITE_BUTTON_TEXT']);
           const siteMap: Record<string, string> = {};
           (tokenSettings || []).forEach((s: any) => { siteMap[s.key] = s.text_value || ''; });
 
@@ -567,7 +568,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const sozlamalarniYuklash = async () => {
     setSozlamaYuklanyapti(true);
     try {
-      const { data, error } = await supabase.from('settings').select('*').eq('key', 'aflotun_funksiya_faol');
+      const { data, error } = await adminSettings().select('*').eq('key', 'aflotun_funksiya_faol');
       if (error) { console.error('Sozlamalarni yuklash xatosi:', error); return; }
       (data || []).forEach((row: any) => {
         if (row.key === 'aflotun_funksiya_faol') setAflotunFaol(row.value ?? true);
@@ -580,7 +581,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const asosiySOzlamalarniYuklash = async () => {
     setSozlamaYuklanyapti(true);
     try {
-      const { data, error } = await supabase.from('settings').select('*').in('key', ['copy_protection_faol', 'screenshot_protection_faol', 'OTM_TEST_SANA']);
+      const { data, error } = await adminSettings().select('*').in('key', ['copy_protection_faol', 'screenshot_protection_faol', 'OTM_TEST_SANA']);
       if (error) { console.error('Asosiy sozlamalarni yuklash xatosi:', error); return; }
       (data || []).forEach((row: any) => {
         if (row.key === 'copy_protection_faol') setCopyProtectionFaol(row.value ?? false);
@@ -595,8 +596,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const otmSanaSaqlash = async () => {
     setOtmSanaSaqlanyapti(true);
     try {
-      const { error } = await supabase
-        .from('settings')
+      const { error } = await adminSettings()
         .upsert({ key: 'OTM_TEST_SANA', text_value: otmTestSana.trim(), value: true, tavsif: 'OTM qabul test sinovi sanasi' }, { onConflict: 'key' });
       if (error) throw error;
       toast({ title: '✅ Sana saqlandi!', description: otmTestSana ? `OTM test sanasi: ${new Date(otmTestSana).toLocaleDateString('uz-UZ', { year: 'numeric', month: 'long', day: 'numeric' })}` : 'Sana olib tashlandi' });
@@ -610,7 +610,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const aflotunToggle = async (yangiHolat: boolean) => {
     setSozlamaYuklanyapti(true);
     try {
-      const { error } = await supabase.from('settings').update({ value: yangiHolat }).eq('key', 'aflotun_funksiya_faol');
+      const { error } = await adminSettings().update({ value: yangiHolat }).eq('key', 'aflotun_funksiya_faol');
       if (error) throw error;
       setAflotunFaol(yangiHolat);
       toast({ title: 'Muvaffaqiyatli', description: `Aflotun funksiyasi ${yangiHolat ? 'faollashtirildi' : "o'chirildi"}` });
@@ -623,8 +623,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const copyProtectionToggle = async (yangiHolat: boolean) => {
     setSozlamaYuklanyapti(true);
     try {
-      const { error } = await supabase
-        .from('settings')
+      const { error } = await adminSettings()
         .upsert({ key: 'copy_protection_faol', value: yangiHolat, tavsif: "Matnni belgilash va nusxa ko'chirish himoyasi" }, { onConflict: 'key' });
       if (error) throw error;
       setCopyProtectionFaol(yangiHolat);
@@ -638,8 +637,7 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
   const screenshotProtectionToggle = async (yangiHolat: boolean) => {
     setSozlamaYuklanyapti(true);
     try {
-      const { error } = await supabase
-        .from('settings')
+      const { error } = await adminSettings()
         .upsert({ key: 'screenshot_protection_faol', value: yangiHolat, tavsif: 'Ekrani tasvirga olish (screenshot) taqiqlash himoyasi' }, { onConflict: 'key' });
       if (error) throw error;
       setScreenshotProtectionFaol(yangiHolat);
@@ -652,14 +650,14 @@ export default function AdminPanel({ adminView, onAdminViewChange, isAdminLogged
 
   const ustozBotRuxsatniYuklash = async () => {
     setUstozBotYuklanyapti(true);
-    const { data } = await supabase.from('settings').select('value').eq('key', 'USTOZ_BOT_YANGILIK_RUXSAT').maybeSingle();
+    const { data } = await adminSettings().select('value').eq('key', 'USTOZ_BOT_YANGILIK_RUXSAT').maybeSingle();
     setUstozBotRuxsat(data?.value ?? false);
     setUstozBotYuklanyapti(false);
   };
 
   const ustozBotRuxsatToggle = async (yangi: boolean) => {
     setUstozBotYuklanyapti(true);
-    await supabase.from('settings').upsert({ key: 'USTOZ_BOT_YANGILIK_RUXSAT', value: yangi, tavsif: 'Ustozlarga botga yangilik yuborish ruxsati' }, { onConflict: 'key' });
+    await adminSettings().upsert({ key: 'USTOZ_BOT_YANGILIK_RUXSAT', value: yangi, tavsif: 'Ustozlarga botga yangilik yuborish ruxsati' }, { onConflict: 'key' });
     setUstozBotRuxsat(yangi);
     setUstozBotYuklanyapti(false);
     toast({ title: yangi ? '✅ Ruxsat berildi' : "❌ Ruxsat olib tashlandi", description: `Ustozlar bot yangiligi ${yangi ? 'yoqildi' : "o'chirildi"}` });
@@ -2234,11 +2232,11 @@ function UstozBotRuxsatPanel() {
     try {
       const [ustozRes, sozRes] = await Promise.all([
         supabase.from('ustoz').select('id, full_name, username, status').order('created_at', { ascending: true }),
-        supabase.from('settings').select('key, value, text_value').in('key', ['USTOZ_BOT_YANGILIK_RUXSAT', ...[] ]),
+        adminSettings().select('key, value, text_value').in('key', ['USTOZ_BOT_YANGILIK_RUXSAT', ...[] ]),
       ]);
       setUstozlar(ustozRes.data || []);
       // Umumiy ruxsat
-      const { data: sozData } = await supabase.from('settings').select('value').eq('key', 'USTOZ_BOT_YANGILIK_RUXSAT').maybeSingle();
+      const { data: sozData } = await adminSettings().select('value').eq('key', 'USTOZ_BOT_YANGILIK_RUXSAT').maybeSingle();
       setUmumiyRuxsat(sozData?.value ?? false);
     } catch (e) {
       console.error(e);
@@ -2248,7 +2246,7 @@ function UstozBotRuxsatPanel() {
   };
 
   const getUstozRuxsat = async (ustozId: string): Promise<boolean> => {
-    const { data } = await supabase.from('settings').select('value').eq('key', `USTOZ_BOT_RUXSAT_${ustozId}`).maybeSingle();
+    const { data } = await adminSettings().select('value').eq('key', `USTOZ_BOT_RUXSAT_${ustozId}`).maybeSingle();
     return data?.value ?? umumiyRuxsat;
   };
 
@@ -2257,7 +2255,7 @@ function UstozBotRuxsatPanel() {
     setToggling(ustoz.id);
     const yangi = !joriyRuxsat;
     try {
-      await supabase.from('settings').upsert({
+      await adminSettings().upsert({
         key: `USTOZ_BOT_RUXSAT_${ustoz.id}`,
         value: yangi,
         tavsif: `${ustoz.full_name} uchun bot yangilik yuborish ruxsati`,
@@ -2275,7 +2273,7 @@ function UstozBotRuxsatPanel() {
   const toggleUmumiy = async (yangi: boolean) => {
     setToggling('umumiy');
     try {
-      await supabase.from('settings').upsert({ key: 'USTOZ_BOT_YANGILIK_RUXSAT', value: yangi, tavsif: 'Ustozlarga botga yangilik yuborish ruxsati' }, { onConflict: 'key' });
+      await adminSettings().upsert({ key: 'USTOZ_BOT_YANGILIK_RUXSAT', value: yangi, tavsif: 'Ustozlarga botga yangilik yuborish ruxsati' }, { onConflict: 'key' });
       setUmumiyRuxsat(yangi);
       toast({ title: yangi ? '✅ Barcha ustozlarga ruxsat berildi' : '❌ Barcha ustozlarga ruxsat olib tashlandi' });
     } catch (e: any) {
@@ -2296,7 +2294,7 @@ function UstozBotRuxsatPanel() {
     if (ustozlar.length === 0) return;
     // Har bir ustoz uchun ruxsatni yuklash
     const keys = ustozlar.map((u: any) => `USTOZ_BOT_RUXSAT_${u.id}`);
-    supabase.from('settings').select('key, value').in('key', keys).then(({ data }) => {
+    adminSettings().select('key, value').in('key', keys).then(({ data }) => {
       const map: Record<string, boolean> = {};
       (data || []).forEach((s: any) => {
         const ustozId = s.key.replace('USTOZ_BOT_RUXSAT_', '');

@@ -1,7 +1,19 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
-// telegram-api — generic Telegram API proxy (verify_jwt = false)
-// Allowed methods include setChatMenuButton for Mini App bot menu configuration.
+// telegram-api — Telegram API proxy (verify_jwt = false)
+// Ikki rejim:
+//  - { token, method, body } — chaqiruvchi tokenni o'zi biladi (admin panel: getMe, setWebhook...).
+//  - { bot, method, body } — token serverda settings'dan olinadi, brauzer uni ko'rmaydi;
+//    bu rejimda faqat xabar yuborish/o'qish metodlari (webhook'ni o'zgartirib bo'lmaydi).
+
+const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+);
+
+const BOT_KEYS = ['TELEGRAM_TOKEN', 'USTOZ_BOT_TOKEN'];
+const BOT_METHODS = ['sendMessage', 'sendPhoto', 'getChat', 'getChatMember'];
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -9,7 +21,25 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { token, method, body } = await req.json();
+    const { token: rawToken, bot, method, body } = await req.json();
+
+    let token = rawToken;
+    if (!token && bot) {
+      if (!BOT_KEYS.includes(bot) || !BOT_METHODS.includes(method)) {
+        return new Response(
+          JSON.stringify({ ok: false, description: 'Bu bot yoki metod ruxsat etilmagan' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      const { data } = await supabaseAdmin.from('settings').select('text_value').eq('key', bot).maybeSingle();
+      token = data?.text_value?.trim();
+      if (!token) {
+        return new Response(
+          JSON.stringify({ ok: false, description: 'Bot ulanmagan' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     if (!token || !method) {
       return new Response(

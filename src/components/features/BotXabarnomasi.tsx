@@ -14,7 +14,6 @@ export default function BotXabarnomasi({ onlyView = false }: BotXabarnomasiProps
   const [tugmaMatn, setTugmaMatn] = useState('');
   const [tugmaUrl, setTugmaUrl] = useState('');
   const [yuklanyapti, setYuklanyapti] = useState(false);
-  const [token, setToken] = useState('');
   const [siteUrl, setSiteUrl] = useState('https://fanfaster.uz');
   const [siteBtnText, setSiteBtnText] = useState('🌐 FanFaster.uz');
   const [yuborilganlar, setYuborilganlar] = useState<{ ism: string; familiya: string; chat_id: number }[]>([]);
@@ -27,10 +26,9 @@ export default function BotXabarnomasi({ onlyView = false }: BotXabarnomasiProps
       const { data } = await supabase
         .from('settings')
         .select('key, text_value')
-        .in('key', ['TELEGRAM_TOKEN', 'BOT_SITE_URL', 'BOT_SITE_BUTTON_TEXT']);
+        .in('key', ['BOT_SITE_URL', 'BOT_SITE_BUTTON_TEXT']);
       const map: Record<string, string> = {};
       (data || []).forEach((r: any) => { map[r.key] = r.text_value || ''; });
-      setToken(map['TELEGRAM_TOKEN'] || '');
       setSiteUrl(map['BOT_SITE_URL'] || 'https://fanfaster.uz');
       setSiteBtnText(map['BOT_SITE_BUTTON_TEXT'] || '🌐 FanFaster.uz saytiga kirish');
     };
@@ -53,10 +51,6 @@ export default function BotXabarnomasi({ onlyView = false }: BotXabarnomasiProps
       toast({ title: 'Xato', description: 'Xabar matni kiritilmagan', variant: 'destructive' });
       return;
     }
-    if (!token) {
-      toast({ title: 'Xato', description: 'Bot token sozlanmagan. Bot Sozlamalarini tekshiring.', variant: 'destructive' });
-      return;
-    }
 
     setYuklanyapti(true);
     setNatija(null);
@@ -77,7 +71,7 @@ export default function BotXabarnomasi({ onlyView = false }: BotXabarnomasiProps
         try {
           const { data: result, error: fnErr } = await supabase.functions.invoke('telegram-api', {
             body: {
-              token,
+              bot: 'TELEGRAM_TOKEN', // token serverda — brauzer uni ko'rmaydi
               method: 'sendMessage',
               body: {
                 chat_id: talaba.chat_id,

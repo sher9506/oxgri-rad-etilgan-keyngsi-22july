@@ -7,6 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 import { useToast } from '@/hooks/use-toast';
 
 const AUTO_WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-login`;
@@ -40,8 +41,7 @@ export default function TelegramLoginSozlamalari() {
   const yuklash = useCallback(async () => {
     setYuklanyapti(true);
     try {
-      const { data } = await supabase
-        .from('settings')
+      const { data } = await adminSettings()
         .select('key, text_value')
         .in('key', SETTING_KEYS);
 
@@ -111,7 +111,7 @@ export default function TelegramLoginSozlamalari() {
       });
       if (error) throw error;
       if (result.ok) {
-        await supabase.from('settings').upsert(
+        await adminSettings().upsert(
           { key: 'TELEGRAM_LOGIN_BOT_WEBHOOK_URL', text_value: targetUrl, value: true, tavsif: 'Login Bot Webhook URL' },
           { onConflict: 'key' }
         );
@@ -139,18 +139,17 @@ export default function TelegramLoginSozlamalari() {
     try {
       const channelsStr = channels.map((c) => c.trim()).filter(Boolean).join(',');
 
-      const { data: eskiRow } = await supabase
-        .from('settings')
+      const { data: eskiRow } = await adminSettings()
         .select('text_value')
         .eq('key', 'TELEGRAM_LOGIN_BOT_TOKEN')
         .maybeSingle();
       const eskiToken = eskiRow?.text_value || '';
 
       await Promise.all([
-        supabase.from('settings').upsert({ key: 'TELEGRAM_LOGIN_BOT_TOKEN', text_value: token.trim(), value: true, tavsif: 'Login Bot Token' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'TELEGRAM_LOGIN_CHANNEL_IDS', text_value: channelsStr, value: true, tavsif: 'Login Bot Kanallar' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'TELEGRAM_LOGIN_BOT_LINK', text_value: botLink.trim(), value: true, tavsif: 'Login Bot Havolasi' }, { onConflict: 'key' }),
-        supabase.from('settings').upsert({ key: 'TELEGRAM_LOGIN_SITE_URL', text_value: siteUrl.trim(), value: true, tavsif: 'Login Bot Sayt URL' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'TELEGRAM_LOGIN_BOT_TOKEN', text_value: token.trim(), value: true, tavsif: 'Login Bot Token' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'TELEGRAM_LOGIN_CHANNEL_IDS', text_value: channelsStr, value: true, tavsif: 'Login Bot Kanallar' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'TELEGRAM_LOGIN_BOT_LINK', text_value: botLink.trim(), value: true, tavsif: 'Login Bot Havolasi' }, { onConflict: 'key' }),
+        adminSettings().upsert({ key: 'TELEGRAM_LOGIN_SITE_URL', text_value: siteUrl.trim(), value: true, tavsif: 'Login Bot Sayt URL' }, { onConflict: 'key' }),
       ]);
 
       const webhookOk = await webhookAlmashtir(eskiToken, token.trim());
@@ -186,7 +185,7 @@ export default function TelegramLoginSozlamalari() {
       });
       if (error) throw error;
       if (result.ok) {
-        await supabase.from('settings').upsert(
+        await adminSettings().upsert(
           { key: 'TELEGRAM_LOGIN_BOT_WEBHOOK_URL', text_value: wUrl, value: true },
           { onConflict: 'key' }
         );

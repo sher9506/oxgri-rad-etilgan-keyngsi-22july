@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
+import { adminSettings } from '@/lib/adminSettings';
 
 interface JobRow {
   id: string;
@@ -180,8 +181,7 @@ export default function LmStudioPanel() {
           .select('id, case_id, teacher_id, status, backend, service_job_id, source_count, created_at, finished_at, error, answer, answer_mode, lexion_job_id, lexion_urls, lexion_fallback, lexion_phase, lexion_fallback_reason, fallback_count, job_kind, chat_kazus_text, moot_court_cases(case_id:sarlavha)')
           .order('created_at', { ascending: false })
           .limit(100),
-        supabase
-          .from('settings')
+        adminSettings()
           .select('key, text_value')
           .in('key', ['ANSWER_SERVICE_URL', 'ANSWER_SERVICE_URL_2', 'ANSWER_SERVICE_URL_3']),
       ]);
