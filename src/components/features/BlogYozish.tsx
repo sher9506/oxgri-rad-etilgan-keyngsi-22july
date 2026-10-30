@@ -25,6 +25,7 @@ type InputMethod = 'text' | 'file';
 
 const ACCEPTED_TYPES = '.pdf,.docx,.html,.htm';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_COVER_SIZE = 5 * 1024 * 1024; // 5MB
 
 export default function BlogYozish() {
   const { user } = useAuth();
@@ -43,6 +44,7 @@ export default function BlogYozish() {
   const [rasmUrl, setRasmUrl] = useState('');
   const [status, setStatus] = useState<'draft' | 'published'>('published');
   const [saving, setSaving] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
 
   // File upload state
   const [inputMethod, setInputMethod] = useState<InputMethod>('text');
@@ -231,9 +233,9 @@ export default function BlogYozish() {
     }
   };
 
-  const uploadFileToStorage = async (file: File): Promise<string | null> => {
+  const uploadFileToStorage = async (file: File, name?: string): Promise<string | null> => {
     try {
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file.name}`;
+      const fileName = name || `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file.name}`;
       const { error } = await supabase.storage
         .from('blog-files')
         .upload(fileName, file, { contentType: file.type || 'application/octet-stream' });
@@ -249,6 +251,26 @@ export default function BlogYozish() {
       console.error('Storage upload xatosi:', err);
       return null;
     }
+  };
+
+  // Muqova rasmi saytning o'z omborida, maqola nomi bilan saqlanadi — Google Images uchun.
+  const handleCoverUpload = async (file: File | undefined) => {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      toast({ title: 'Xatolik', description: 'Faqat JPG, PNG yoki WEBP rasm yuklang', variant: 'destructive' });
+      return;
+    }
+    if (file.size > MAX_COVER_SIZE) {
+      toast({ title: 'Xatolik', description: "Rasm 5 MB dan katta bo'lmasin", variant: 'destructive' });
+      return;
+    }
+    setCoverUploading(true);
+    const base = sarlavha.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'maqola';
+    const ext = file.type.split('/')[1].replace('jpeg', 'jpg');
+    const url = await uploadFileToStorage(file, `muqova/${base}-${Date.now().toString(36)}.${ext}`);
+    setCoverUploading(false);
+    if (url) setRasmUrl(url);
+    else toast({ title: 'Xatolik', description: "Rasmni yuklab bo'lmadi, qayta urinib ko'ring", variant: 'destructive' });
   };
 
   const canPublish = sarlavha.trim().length > 0 && mazmun.trim().length > 0 && metaDescription.trim().length > 0 && !parsing && !parseError;
@@ -593,15 +615,29 @@ export default function BlogYozish() {
           {/* Rasm URL */}
           <div>
             <label className="block text-xs font-bold text-gray-700 mb-1.5">
-              Rasm URL <span className="text-gray-400 font-normal">(ixtiyoriy)</span>
+              Muqova rasmi <span className="text-gray-400 font-normal">(tavsiya etiladi — Google'da maqola rasmi bilan chiqadi)</span>
             </label>
-            <input
-              type="text"
-              value={rasmUrl}
-              onChange={(e) => setRasmUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all"
-            />
+            <div className="flex gap-2">
+              <label className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl border border-blue-200 bg-blue-50 text-blue-600 transition-all ${coverUploading ? 'opacity-60' : 'cursor-pointer hover:bg-blue-100'}`}>
+                {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {coverUploading ? 'Yuklanmoqda…' : 'Rasm yuklash'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  disabled={coverUploading}
+                  onChange={(e) => { handleCoverUpload(e.target.files?.[0]); e.target.value = ''; }}
+                />
+              </label>
+              <input
+                type="text"
+                value={rasmUrl}
+                onChange={(e) => setRasmUrl(e.target.value)}
+                placeholder="yoki rasm havolasi: https://…"
+                className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all"
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">JPG, PNG yoki WEBP, 5 MB gacha. Eng yaxshisi — kengligi 1200 px dan katta, yotiq rasm.</p>
             {rasmUrl && (
               <div className="mt-2 w-full h-32 rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
                 <img

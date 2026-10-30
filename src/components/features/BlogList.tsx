@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { Calendar, Search, BookOpen, Newspaper, Clock, Eye, ChevronRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { setDocumentTitle, setMetaDescription, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
@@ -90,6 +90,7 @@ export default function BlogList() {
   };
 
   const handleAuthorClick = (e: React.MouseEvent, ustozId: string | null) => {
+    e.preventDefault(); // karta <a> ichida — maqolaga o'tib ketmasin
     e.stopPropagation();
     if (!ustozId) return;
     const a = authorMap[ustozId];
@@ -131,6 +132,8 @@ export default function BlogList() {
       return (
         <div className={`w-full ${height} overflow-hidden bg-gray-100 ${rounded}`}>
           <img
+            loading="lazy"
+            decoding="async"
             src={post.rasm_url}
             alt={post.sarlavha}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -228,9 +231,8 @@ export default function BlogList() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {matchingAuthors.map((author) => (
-              <button
-                key={author.id}
-                onClick={() => author.muallif_slug && navigate(`/blog/muallif/${author.muallif_slug}`)}
+              <Link
+                key={author.id} to={`/blog/muallif/${author.muallif_slug}`}
                 className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
               >
                 {renderAvatar(author, 'h-12 w-12 text-sm')}
@@ -239,7 +241,7 @@ export default function BlogList() {
                   <span className="mt-1 block truncate text-xs text-gray-500">{author.note || 'FanFaster muallifi'}</span>
                 </span>
                 <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-blue-500" />
-              </button>
+              </Link>
             ))}
           </div>
         </section>
@@ -250,8 +252,7 @@ export default function BlogList() {
         <div className="space-y-8">
           {/* Featured (latest) post */}
           {featuredPost && (
-            <button
-              onClick={() => navigate(`/blog/${featuredPost.slug}`)}
+            <Link to={`/blog/${featuredPost.slug}`}
               className="w-full text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 transition-all duration-300 group flex flex-col md:flex-row"
             >
               <div className="md:w-1/2">
@@ -291,7 +292,7 @@ export default function BlogList() {
                   </span>
                 </div>
               </div>
-            </button>
+            </Link>
           )}
 
           {/* Grid of remaining posts */}
@@ -300,9 +301,8 @@ export default function BlogList() {
               {restPosts.map((post) => {
                 const author = post.ustoz_id ? authorMap[post.ustoz_id] : undefined;
                 return (
-                  <button
-                    key={post.id}
-                    onClick={() => navigate(`/blog/${post.slug}`)}
+                  <Link
+                    key={post.id} to={`/blog/${post.slug}`}
                     className="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 hover:-translate-y-1 transition-all duration-300 group flex flex-col"
                   >
                     {renderCoverImage(post, 'h-44')}
@@ -347,7 +347,7 @@ export default function BlogList() {
                         </span>
                       </div>
                     </div>
-                  </button>
+                  </Link>
                 );
               })}
             </div>

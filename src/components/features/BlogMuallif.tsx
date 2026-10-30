@@ -21,29 +21,18 @@ import {
   Send,
   UserPlus,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import {
   setDocumentTitle,
   setMetaDescription,
-  setJsonLd,
   removeJsonLd,
   resetDocumentTitle,
   resetMetaDescription,
 } from '@/lib/seo';
 
-function toSeoImageUrl(url: string): string {
-  if (!url) return url;
-  const renderUrl = url.replace(
-    '/storage/v1/object/public/',
-    '/storage/v1/render/image/public/'
-  );
-  if (renderUrl === url) return url;
-  const sep = renderUrl.includes('?') ? '&' : '?';
-  return `${renderUrl}${sep}format=origin&width=1200&height=1200&resize=cover&quality=80`;
-}
 import {
   getInitials,
   estimateReadingTime,
@@ -182,48 +171,13 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
           .maybeSingle();
         setObunaBorgan(!!existing);
       }
-      setDocumentTitle(`${aInfo.full_name} — FanFaster ustozi | Barcha maqolalar`);
+      setDocumentTitle(`${aInfo.full_name} — FanFaster muallifi | Barcha maqolalar`);
       const notePart = isValidNote(aInfo.note) ? aInfo.note! : '';
       setMetaDescription(
         truncateText(
           `${aInfo.full_name}ning FanFaster platformasidagi maqolalari. ${postData?.length ?? 0} ta maqola${notePart ? `, ${notePart}` : ''}`,
           160,
         ),
-      );
-      const pageUrl = `https://fanfaster.uz/blog/muallif/${aInfo.muallif_slug}`;
-      const personEntity: Record<string, unknown> = {
-        '@type': 'Person',
-        '@id': `${pageUrl}#person`,
-        name: aInfo.full_name,
-        url: pageUrl,
-        jobTitle: 'FanFaster Ustozi',
-        worksFor: {
-          '@type': 'Organization',
-          name: 'FanFaster',
-          url: 'https://fanfaster.uz',
-        },
-        ...(notePart ? { description: notePart } : {}),
-        ...(aInfo.face_photo_url
-          ? {
-              image: {
-                '@type': 'ImageObject',
-                url: toSeoImageUrl(aInfo.face_photo_url),
-                contentUrl: toSeoImageUrl(aInfo.face_photo_url),
-                caption: `${aInfo.full_name} — FanFaster muallifi`,
-                width: '1200',
-                height: '1200',
-              },
-            }
-          : {}),
-      };
-
-      setJsonLd(
-        {
-          '@context': 'https://schema.org',
-          '@type': 'ProfilePage',
-          mainEntity: personEntity,
-        },
-        'page-jsonld',
       );
     } catch (err) {
       console.error('Muallif sahifasi xatosi:', err);
@@ -287,7 +241,9 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
     if (post.rasm_url) {
       return (
         <img
-          src={post.rasm_url}
+          loading="lazy"
+            decoding="async"
+            src={post.rasm_url}
           alt={post.sarlavha}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           onError={(event) => {
@@ -354,8 +310,8 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
             <span className="text-xl font-extrabold tracking-tight text-[#10245b]">FanFaster</span>
           </button>
           <nav className="hidden items-center gap-7 text-[13px] font-bold text-slate-500 md:flex">
-            <button onClick={() => navigate('/blog')} className="relative py-6 text-blue-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-blue-600">Maqolalar</button>
-            <button onClick={() => navigate('/blog/mualliflar')} className="py-6 transition hover:text-blue-600">Mualliflar</button>
+            <Link to="/blog" className="relative py-6 text-blue-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-blue-600">Maqolalar</Link>
+            <Link to="/blog/mualliflar" className="py-6 transition hover:text-blue-600">Mualliflar</Link>
             <button onClick={() => navigate('/blog/mavzular')} className="py-6 transition hover:text-blue-600">Mavzular</button>
           </nav>
           <div className="relative ml-auto hidden max-w-[395px] flex-1 lg:block">
@@ -466,7 +422,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
               ) : filteredPosts.map((post) => {
                 const label = getPostLabel(post);
                 return (
-                  <button key={post.id} onClick={() => navigate(`/blog/${post.slug}`)} className="group flex w-full flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(43,98,220,0.10)] sm:flex-row sm:p-4">
+                  <Link key={post.id} to={`/blog/${post.slug}`} className="group flex w-full flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(43,98,220,0.10)] sm:flex-row sm:p-4">
                     <div className="h-44 w-full shrink-0 overflow-hidden rounded-xl bg-slate-100 sm:h-[142px] sm:w-[142px]">{renderPostCover(post)}</div>
                     <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
                       <div>
@@ -478,7 +434,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
                         <span className="flex items-center gap-1"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[8px] font-extrabold text-white">{getInitials(author.full_name).slice(0, 2)}</span>{author.full_name}</span><span>·</span><span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(post.created_at)}</span><span>·</span><span className="flex items-center gap-1"><Clock3 className="h-3 w-3" /> {estimateReadingTime(post.mazmun)} daqiqa</span><span className="flex items-center gap-1 sm:ml-auto"><Eye className="h-3 w-3" /> {post.views || 0}</span>
                       </div>
                     </div>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -493,7 +449,7 @@ export default function BlogMuallif({ muallif_slug: slugProp }: { muallif_slug?:
 
           <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_28px_rgba(31,75,140,0.06)]">
             <div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-extrabold text-[#10245b]">O‘xshash maqolalar</h3><button onClick={() => setActiveFilter('all')} className="flex items-center gap-1 text-[11px] font-bold text-blue-600">Barchasi <ArrowRight className="h-3 w-3" /></button></div>
-            <div className="divide-y divide-slate-100">{popularPosts.map((post) => <button key={post.id} onClick={() => navigate(`/blog/${post.slug}`)} className="group flex w-full gap-3 py-3 text-left first:pt-0 last:pb-0"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">{renderPostCover(post)}</div><div className="min-w-0"><p className="line-clamp-2 text-xs font-bold leading-5 text-[#10245b] group-hover:text-blue-600">{post.sarlavha}</p><p className="mt-1 text-[10px] text-slate-400">{formatDate(post.created_at)}</p></div><ArrowRight className="mt-1 h-4 w-4 shrink-0 text-blue-500 opacity-0 transition group-hover:opacity-100" /></button>)}</div>
+            <div className="divide-y divide-slate-100">{popularPosts.map((post) => <Link key={post.id} to={`/blog/${post.slug}`} className="group flex w-full gap-3 py-3 text-left first:pt-0 last:pb-0"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">{renderPostCover(post)}</div><div className="min-w-0"><p className="line-clamp-2 text-xs font-bold leading-5 text-[#10245b] group-hover:text-blue-600">{post.sarlavha}</p><p className="mt-1 text-[10px] text-slate-400">{formatDate(post.created_at)}</p></div><ArrowRight className="mt-1 h-4 w-4 shrink-0 text-blue-500 opacity-0 transition group-hover:opacity-100" /></Link>)}</div>
           </section>
 
           <section className="overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50 p-5 shadow-[0_8px_28px_rgba(31,75,140,0.06)]"><Bookmark className="h-6 w-6 text-blue-600" /><h3 className="mt-4 text-sm font-extrabold text-[#10245b]">Sizga qiziq bo‘lishi mumkin</h3><p className="mt-2 text-xs leading-5 text-slate-500">Bizning tavsiyalarimiz orqali yana ko‘plab foydali maqolalarni kashf eting.</p><button onClick={() => navigate('/blog')} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-[11px] font-extrabold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700">Mashhur mavzularni ko‘rish <ArrowRight className="h-4 w-4" /></button></section>

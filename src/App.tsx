@@ -46,6 +46,7 @@ const BlogYozish = lazy(() => import('@/components/features/BlogYozish'));
 const BlogPostDetail = lazy(() => import('@/components/features/BlogPostDetail'));
 const BlogMuallif = lazy(() => import('@/components/features/BlogMuallif'));
 const TezOradaSahifa = lazy(() => import('@/components/features/TezOradaSahifa'));
+const BlogMualliflar = lazy(() => import('@/components/features/BlogMualliflar'));
 const MootCourtUstoz = lazy(() => import('@/components/features/MootCourtUstoz'));
 const MootCourtOquvchi = lazy(() => import('@/components/features/MootCourtOquvchi'));
 const HukmKabineti = lazy(() => import('@/components/features/HukmKabineti'));
@@ -442,7 +443,7 @@ function RouterRoot() {
     );
   }
   const blogPostMatch = location.pathname.match(/^\/blog\/([^/]+)$/);
-  if (blogPostMatch && blogPostMatch[1] !== 'muallif') {
+  if (blogPostMatch && !['muallif', 'mualliflar', 'mavzular'].includes(blogPostMatch[1])) {
     return (
       <LangProvider>
         <AuthProvider>
@@ -472,7 +473,7 @@ function RouterRoot() {
           <NotificationProvider>
             <div className="min-h-screen font-sans" style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
               <Suspense fallback={<div className="flex min-h-[560px] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full" style={{ border: '2px solid var(--cobalt-1)', borderTopColor: 'transparent' }} /></div>}>
-                <TezOradaSahifa sarlavha="Mualliflar" />
+                <BlogMualliflar />
               </Suspense>
             </div>
           </NotificationProvider>

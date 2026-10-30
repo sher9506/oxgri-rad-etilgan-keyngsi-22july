@@ -1,21 +1,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Calendar, User, ArrowLeft, BookOpen, Clock, Eye, Send, Link2, Check, Heart, Phone, MessageCircle, ChevronRight, Download, FileText, Flag, X, AlertTriangle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { setDocumentTitle, setMetaDescription, setJsonLd, removeJsonLd, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
+import { setDocumentTitle, setMetaDescription, removeJsonLd, resetDocumentTitle, resetMetaDescription } from '@/lib/seo';
 
-function toSeoImageUrl(url: string): string {
-  if (!url) return url;
-  const renderUrl = url.replace(
-    '/storage/v1/object/public/',
-    '/storage/v1/render/image/public/'
-  );
-  if (renderUrl === url) return url;
-  const sep = renderUrl.includes('?') ? '&' : '?';
-  return `${renderUrl}${sep}format=origin&width=1200&height=1200&resize=cover&quality=80`;
-}
 import { getInitials, estimateReadingTime, formatDate, type AuthorInfo, extractErrorMessage, isValidNote, gradientForTitle } from '@/lib/blogUtils';
 import { AuthorAvatar } from '@/components/features/AuthorAvatar';
 
@@ -207,32 +197,8 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
       const authorSlug = authorData?.muallif_slug || '';
 
       setDocumentTitle(`${data.sarlavha} — ${authorName} | FanFaster`);
-      setMetaDescription(data.meta_description || data.mazmun.slice(0, 160));
+      setMetaDescription((data.meta_description || data.mazmun.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 160));
 
-      setJsonLd({
-        '@context': 'https://schema.org',
-        '@type': 'Article',
-        headline: data.sarlavha,
-        author: {
-          '@type': 'Person',
-          name: authorName,
-          ...(authorSlug ? { url: `https://fanfaster.uz/blog/muallif/${authorSlug}` } : {}),
-          ...(author?.face_photo_url
-            ? {
-                image: {
-                  '@type': 'ImageObject',
-                  url: toSeoImageUrl(author.face_photo_url),
-                  contentUrl: toSeoImageUrl(author.face_photo_url),
-                  caption: `${authorName} — FanFaster muallifi`,
-                },
-              }
-            : {}),
-        },
-        datePublished: data.created_at ? new Date(data.created_at).toISOString() : new Date().toISOString(),
-        publisher: { '@type': 'Organization', name: 'FanFaster' },
-        mainEntityOfPage: `https://fanfaster.uz/blog/${data.slug}`,
-        ...(author?.face_photo_url ? { image: toSeoImageUrl(author.face_photo_url) } : {}),
-      }, 'page-jsonld');
     } catch (err) {
       console.error('Blog post yuklash xatosi:', err);
       setError(extractErrorMessage(err, "Blog postni yuklab bo'lmadi"));
@@ -377,9 +343,9 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
       <div className="max-w-6xl mx-auto">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 mb-6 text-xs text-gray-400">
-          <button onClick={() => navigate('/blog')} className="hover:text-blue-600 transition-colors font-medium">
+          <Link to="/blog" className="hover:text-blue-600 transition-colors font-medium">
             Blog
-          </button>
+          </Link>
           <ChevronRight className="h-3 w-3" />
           <span className="text-gray-600 font-medium truncate max-w-[200px]">{post.sarlavha}</span>
         </nav>
@@ -440,12 +406,11 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
                   )}
                   <div className="flex-1">
                     {authorName && (
-                      <button
-                        onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
+                      <Link to={`/blog/muallif/${authorSlug}`}
                         className="block text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors text-left"
                       >
                         {authorName}
-                      </button>
+                      </Link>
                     )}
                     <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                       <span className="flex items-center gap-1">
@@ -579,15 +544,16 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
                   {relatedPosts.map((rp) => {
                     const rpGradient = gradientForTitle(rp.sarlavha);
                     return (
-                      <button
-                        key={rp.id}
-                        onClick={() => navigate(`/blog/${rp.slug}`)}
+                      <Link
+                        key={rp.id} to={`/blog/${rp.slug}`}
                         className="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-blue-200 hover:-translate-y-0.5 transition-all duration-300 group"
                       >
                         <div className="w-full h-32 overflow-hidden bg-gray-100">
                           {rp.rasm_url ? (
                             <img
-                              src={rp.rasm_url}
+                              loading="lazy"
+            decoding="async"
+            src={rp.rasm_url}
                               alt={rp.sarlavha}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                               onError={(e) => {
@@ -610,7 +576,7 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
                           </h3>
                           <p className="text-[11px] text-gray-400">{formatDate(rp.created_at)}</p>
                         </div>
-                      </button>
+                      </Link>
                     );
                   })}
                 </div>
@@ -692,12 +658,11 @@ export default function BlogPostDetail({ slug: slugProp }: { slug?: string }) {
                     </div>
                   )}
 
-                  <button
-                    onClick={() => authorSlug && navigate(`/blog/muallif/${authorSlug}`)}
+                  <Link to={`/blog/muallif/${authorSlug}`}
                     className="w-full mt-4 px-4 py-2.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-all"
                   >
                     Barcha maqolalarini ko'rish
-                  </button>
+                  </Link>
                 </div>
               )}
             </div>
