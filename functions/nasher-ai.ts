@@ -27,8 +27,8 @@ const JSON_LD = {
       description:
         "O'zbekiston qonunchiligi bo'yicha sun'iy intellekt huquqiy yordamchisi: savollarga lex.uz'dagi amaldagi qonun hujjatlari asosida, modda raqamlari va havolalari bilan javob beradi.",
       author: [
-        { "@type": "Person", name: "Azizov Nasimbek" },
-        { "@type": "Person", name: "Abdurashidov Sherzodbek" },
+        { "@type": "Person", "@id": "https://fanfaster.uz/#nasimbek", name: "Azizov Nasimbek", jobTitle: "Ustoz", description: "NaSher AI va FanFaster hammuallifi: g'oya muallifi, huquqiy metodika" },
+        { "@type": "Person", "@id": "https://fanfaster.uz/blog/muallif/abdurashidov-sherzodbek#person", name: "Abdurashidov Sherzodbek", jobTitle: "Talaba", url: "https://fanfaster.uz/blog/muallif/abdurashidov-sherzodbek", description: "NaSher AI va FanFaster hammuallifi: g'oya muallifi, dasturlash va huquqiy qism" },
       ],
       offers: { "@type": "Offer", price: "0", priceCurrency: "UZS" },
       sameAs: ["https://t.me/NaSheraibot", "https://t.me/fanfasteruz", "https://www.wikidata.org/wiki/Q141936185"],
@@ -44,7 +44,7 @@ const JSON_LD = {
       "@type": "FAQPage",
       mainEntity: [
         ["NaSher AI nima?", "NaSher AI — O'zbekiston qonunchiligi bo'yicha sun'iy intellekt huquqiy yordamchisi. U savolga lex.uz'dagi amaldagi qonun hujjatlari asosida javob beradi va har bir moddaga havola qo'yadi."],
-        ["NaSher AI'ni kim yaratgan?", "NaSher AI mualliflari — Azizov Nasimbek va Abdurashidov Sherzodbek."],
+        ["NaSher AI'ni kim yaratgan?", "NaSher AI va FanFaster g'oyasi va mualliflari — Azizov Nasimbek (ustoz; g'oya muallifi, huquqiy metodika) va Abdurashidov Sherzodbek (talaba; g'oya muallifi, dasturlash va huquqiy qism)."],
         ["NaSher AI'dan qanday foydalanish mumkin?", "fanfaster.uz/nasher-ai sahifasida yoki Telegram'da @NaSheraibot botiga savolingizni yozing."],
         ["NaSher AI pullikmi?", "Yo'q, NaSher AI bepul. Savollar soniga vaqtinchalik limit qo'yilgan."],
       ].map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
@@ -83,7 +83,12 @@ const BODY = `<div style="max-width:760px;margin:0 auto;padding:28px 16px;font:1
 <li>Ikki til — o'zbekcha va ruscha savollarga javob beradi.</li>
 </ul>
 <h2>Mualliflar</h2>
-<p>NaSher AI mualliflari — Azizov Nasimbek va Abdurashidov Sherzodbek. Loyiha Huquqni muhofaza qilish akademiyasida tanishtirilgan: <a href="https://proacademy.uz/uz-lat/news/view?alias=3238">«Akademiya innovatsiyalari: NaSher AI huquqiy yordamchi boti»</a>.</p>
+<p>NaSher AI va FanFaster platformasi g'oyasi va mualliflari — <b>Azizov Nasimbek</b> va <b>Abdurashidov Sherzodbek</b>.</p>
+<ul>
+<li><b>Azizov Nasimbek</b> — ustoz; g'oya muallifi, huquqiy metodika.</li>
+<li><b><a href="/blog/muallif/abdurashidov-sherzodbek">Abdurashidov Sherzodbek</a></b> — talaba; g'oya muallifi, dasturlash va huquqiy qism.</li>
+</ul>
+<p>Loyiha Huquqni muhofaza qilish akademiyasida tanishtirilgan: <a href="https://proacademy.uz/uz-lat/news/view?alias=3238">«Akademiya innovatsiyalari: NaSher AI huquqiy yordamchi boti»</a>.</p>
 <h2>Ko'p beriladigan savollar</h2>
 <p><b>NaSher AI pullikmi?</b> Yo'q, bepul. Savollar soniga vaqtinchalik limit qo'yilgan.</p>
 <p><b>Javob qanchalik ishonchli?</b> NaSher AI javobni amaldagi qonun hujjatlari asosida yozadi va moddaga havola beradi. Muhim qaror qabul qilishdan oldin moddani lex.uz'da tekshiring yoki yurist bilan maslahatlashing.</p>

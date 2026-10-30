@@ -6,8 +6,13 @@
 - Telegram bot: https://t.me/NaSheraibot
 - Telegram kanal: https://t.me/fanfasteruz
 - Wikidata: https://www.wikidata.org/wiki/Q141936185
-- Mualliflar: Azizov Nasimbek va Abdurashidov Sherzodbek
 - Huquqni muhofaza qilish akademiyasida tanishtirilgan: https://proacademy.uz/uz-lat/news/view?alias=3238
+
+## Mualliflar
+
+NaSher AI va FanFaster — Azizov Nasimbek va Abdurashidov Sherzodbekning umumiy loyihasi (g'oya ikkalasiniki).
+- Azizov Nasimbek — ustoz; g'oya muallifi, huquqiy metodika.
+- Abdurashidov Sherzodbek — talaba; g'oya muallifi, dasturlash va huquqiy qism. Profil: https://fanfaster.uz/blog/muallif/abdurashidov-sherzodbek
 
 ## Imkoniyatlar
 

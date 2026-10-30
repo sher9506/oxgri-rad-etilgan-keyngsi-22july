@@ -31,10 +31,27 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "FanFaster",
-      "url": "https://fanfaster.uz",
-      "description": "Huquq sohasida bilimingizni sun'iy intellekt yordamida yuksaltiring. Kazus toplamlarini yarating, yeching va professional baholang."
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "name": "FanFaster",
+          "url": "https://fanfaster.uz",
+          "description": "Huquq sohasida bilimingizni sun'iy intellekt yordamida yuksaltiring. Kazus toplamlarini yarating, yeching va professional baholang.",
+          "publisher": { "@id": "https://fanfaster.uz/#organization" }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://fanfaster.uz/#organization",
+          "name": "FanFaster",
+          "url": "https://fanfaster.uz",
+          "logo": "https://fanfaster.uz/favicon.png",
+          "founder": [
+            { "@type": "Person", "@id": "https://fanfaster.uz/#nasimbek", "name": "Azizov Nasimbek", "jobTitle": "Ustoz" },
+            { "@type": "Person", "@id": "https://fanfaster.uz/blog/muallif/abdurashidov-sherzodbek#person", "name": "Abdurashidov Sherzodbek", "jobTitle": "Talaba", "url": "https://fanfaster.uz/blog/muallif/abdurashidov-sherzodbek" }
+          ],
+          "sameAs": ["https://t.me/fanfasteruz", "https://t.me/NaSheraibot"]
+        }
+      ]
     }
     </script>
   </head>
