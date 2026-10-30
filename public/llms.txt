@@ -1,0 +1,20 @@
+# NaSher AI
+
+> NaSher AI — O'zbekiston qonunchiligi bo'yicha sun'iy intellekt huquqiy yordamchisi. Savollarga lex.uz'dagi amaldagi qonun hujjatlari asosida, modda raqamlari va havolalari bilan javob beradi. Bepul.
+
+- Chat: https://fanfaster.uz/nasher-ai
+- Telegram bot: https://t.me/NaSheraibot
+- Telegram kanal: https://t.me/fanfasteruz
+- Mualliflar: Azizov Nasimbek va Abdurashidov Sherzodbek
+- Huquqni muhofaza qilish akademiyasida tanishtirilgan: https://proacademy.uz/uz-lat/academy-publications
+
+## Imkoniyatlar
+
+- Huquqiy savolga javob: mehnat, oila, meros, uy-joy, jinoyat, ma'muriy va boshqa sohalar
+- Konstitutsiya, kodekslar, qonunlar va Oliy sud Plenumi qarorlaridan aniq modda yoki band
+- Talabalar uchun kazus tahlili
+- Ovozli savol (Telegram)
+- Aliment va davlat boji kalkulyatorlari, sud manzillari
+- O'zbekcha va ruscha savollar
+
+NaSher AI — FanFaster (https://fanfaster.uz) platformasining huquqiy yordamchisi.
