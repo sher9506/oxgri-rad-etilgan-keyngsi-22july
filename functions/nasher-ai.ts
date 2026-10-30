@@ -32,6 +32,13 @@ const JSON_LD = {
       ],
       offers: { "@type": "Offer", price: "0", priceCurrency: "UZS" },
       sameAs: ["https://t.me/NaSheraibot", "https://t.me/fanfasteruz"],
+      // Akademiya yangiligi NaSher haqida (u faqat botga havola beradi) — Google bot, sayt va yangilikni bitta loyiha deb bog'lasin.
+      subjectOf: {
+        "@type": "NewsArticle",
+        headline: "Akademiya innovatsiyalari: NaSher AI huquqiy yordamchi boti",
+        url: "https://proacademy.uz/uz-lat/news/view?alias=3238",
+        publisher: { "@type": "EducationalOrganization", name: "O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi", url: "https://proacademy.uz" },
+      },
     },
     {
       "@type": "FAQPage",
@@ -76,7 +83,7 @@ const BODY = `<div style="max-width:760px;margin:0 auto;padding:28px 16px;font:1
 <li>Ikki til — o'zbekcha va ruscha savollarga javob beradi.</li>
 </ul>
 <h2>Mualliflar</h2>
-<p>NaSher AI mualliflari — Azizov Nasimbek va Abdurashidov Sherzodbek. Loyiha Huquqni muhofaza qilish akademiyasida tanishtirilgan: <a href="https://proacademy.uz/uz-lat/academy-publications">«Akademiya innovatsiyalari: NaSher AI huquqiy yordamchi boti»</a>.</p>
+<p>NaSher AI mualliflari — Azizov Nasimbek va Abdurashidov Sherzodbek. Loyiha Huquqni muhofaza qilish akademiyasida tanishtirilgan: <a href="https://proacademy.uz/uz-lat/news/view?alias=3238">«Akademiya innovatsiyalari: NaSher AI huquqiy yordamchi boti»</a>.</p>
 <h2>Ko'p beriladigan savollar</h2>
 <p><b>NaSher AI pullikmi?</b> Yo'q, bepul. Savollar soniga vaqtinchalik limit qo'yilgan.</p>
 <p><b>Javob qanchalik ishonchli?</b> NaSher AI javobni amaldagi qonun hujjatlari asosida yozadi va moddaga havola beradi. Muhim qaror qabul qilishdan oldin moddani lex.uz'da tekshiring yoki yurist bilan maslahatlashing.</p>
