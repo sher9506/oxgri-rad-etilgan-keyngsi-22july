@@ -31,7 +31,7 @@ const JSON_LD = {
         { "@type": "Person", name: "Abdurashidov Sherzodbek" },
       ],
       offers: { "@type": "Offer", price: "0", priceCurrency: "UZS" },
-      sameAs: ["https://t.me/NaSheraibot", "https://t.me/fanfasteruz"],
+      sameAs: ["https://t.me/NaSheraibot", "https://t.me/fanfasteruz", "https://www.wikidata.org/wiki/Q141936185"],
       // Akademiya yangiligi NaSher haqida (u faqat botga havola beradi) — Google bot, sayt va yangilikni bitta loyiha deb bog'lasin.
       subjectOf: {
         "@type": "NewsArticle",
