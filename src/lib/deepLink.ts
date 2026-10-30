@@ -98,7 +98,9 @@ export interface DeepLinkResult {
 export function parseDeepLink(): DeepLinkResult | null {
   try {
     const url = new URL(window.location.href);
-    const tabParam = url.searchParams.get('tab');
+    // ?tab=... bo'lmasa toza path ham ishlaydi: fanfaster.uz/nasher-ai → NaSher chati
+    const pathTab = url.pathname.replace(/^\/+|\/+$/g, '');
+    const tabParam = url.searchParams.get('tab') || (PATH_TO_TAB[pathTab.split('/')[0]] ? pathTab : null);
     if (!tabParam) return null;
 
     const parts = tabParam.split('/').filter(Boolean);
