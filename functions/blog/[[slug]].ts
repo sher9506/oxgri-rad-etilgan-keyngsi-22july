@@ -142,7 +142,7 @@ async function postPage(slug: string, env: Record<string, unknown>): Promise<Pag
     },
     body: wrap(`${nav}<article>
 <h1>${escapeHtml(post.sarlavha)}</h1>
-<p>Muallif: ${author ? `<a href="/blog/muallif/${escapeHtml(author.muallif_slug)}" rel="author">${escapeHtml(authorName)}</a>` : escapeHtml(authorName)} · <time datetime="${isoDate(post.created_at)}">${fmtDate(post.created_at)}</time></p>
+<p>${authorPhoto ? `<img src="${escapeHtml(authorPhoto)}" alt="${escapeHtml(authorName)} — FanFaster muallifi" width="48" height="48" decoding="async" style="border-radius:50%;object-fit:cover;vertical-align:middle"> ` : ""}Muallif: ${author ? `<a href="/blog/muallif/${escapeHtml(author.muallif_slug)}" rel="author">${escapeHtml(authorName)}</a>` : escapeHtml(authorName)} · <time datetime="${isoDate(post.created_at)}">${fmtDate(post.created_at)}</time></p>
 ${cover ? `<figure><img src="${escapeHtml(cover)}" alt="${escapeHtml(post.sarlavha)}" decoding="async" style="max-width:100%;height:auto"></figure>` : ""}
 <div>${safeContent(post.mazmun)}</div>
 </article>${
@@ -170,8 +170,8 @@ async function authorPage(slug: string, env: Record<string, unknown>): Promise<P
     canonical: url,
     image: photo ?? DEFAULT_OG_IMAGE,
     ogType: "profile",
-    // Maqolasi yo'q profil — Google'ga yupqa sahifa bermaslik uchun noindex.
-    noindex: posts.length === 0,
+    // Na maqola, na rasm — bo'sh profil Google'ga berilmaydi. Rasmi borlari rasmi uchun indekslanadi.
+    noindex: posts.length === 0 && !photo,
     jsonLd: {
       "@context": "https://schema.org",
       "@graph": [

@@ -1,10 +1,10 @@
 /**
  * Cloudflare Pages Function — /sitemap.xml har so'rovda bazadan yasaladi:
  * yangi maqola darhol kiradi, maqola va muallif rasmlari <image:image> bilan.
- * Faqat kamida bitta maqolasi bor mualliflar kiradi (bo'sh profillar emas).
+ * Mualliflar: maqolasi bor yoki profil rasmi bor (rasmi Google Images'ga chiqsin); bo'sh profillar kirmaydi.
  */
 
-import { SITE_URL, fetchAuthorsOf, fetchPublishedPosts, postImage, publicImageUrl } from "./_lib/blogData";
+import { SITE_URL, fetchAuthorsOf, fetchAuthorsWithPhoto, fetchPublishedPosts, postImage, publicImageUrl } from "./_lib/blogData";
 
 const xml = (s: string) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -19,13 +19,15 @@ interface Entry {
 export const onRequest: PagesFunction = async ({ env }) => {
   const posts = await fetchPublishedPosts(env as unknown as Record<string, unknown>);
   const authors = await fetchAuthorsOf(posts, env as unknown as Record<string, unknown>);
+  const blogAuthorCount = authors.size;
+  for (const a of await fetchAuthorsWithPhoto(env as unknown as Record<string, unknown>)) if (a.muallif_slug) authors.set(a.id, a);
   const latest = day(posts[0]?.updated_at || posts[0]?.created_at);
 
   const entries: Entry[] = [
     { loc: `${SITE_URL}/` },
     { loc: `${SITE_URL}/nasher-ai` },
     { loc: `${SITE_URL}/blog`, lastmod: latest },
-    ...(authors.size ? [{ loc: `${SITE_URL}/blog/mualliflar`, lastmod: latest }] : []),
+    ...(blogAuthorCount ? [{ loc: `${SITE_URL}/blog/mualliflar`, lastmod: latest }] : []),
     ...posts.map((p) => {
       const img = postImage(p);
       return {

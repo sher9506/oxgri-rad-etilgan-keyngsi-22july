@@ -59,6 +59,10 @@ export const fetchPost = async (slug: string, env: Record<string, unknown>) =>
 export const fetchAuthorBySlug = async (slug: string, env: Record<string, unknown>) =>
   (await sb<Author>(`ustoz?muallif_slug=eq.${encodeURIComponent(slug)}&select=${AUTHOR_FIELDS}&limit=1`, env))[0] ?? null;
 
+/** Profil rasmi bor mualliflar (maqolasi bo'lmasa ham) — rasmlari Google Images'ga chiqsin. */
+export const fetchAuthorsWithPhoto = (env: Record<string, unknown>) =>
+  sb<Author>(`ustoz?muallif_slug=not.is.null&face_photo_url=not.is.null&select=${AUTHOR_FIELDS}`, env);
+
 /** Kamida bitta e'lon qilingan maqolasi bor mualliflar (bo'sh profillar Google'ga berilmaydi). */
 export async function fetchAuthorsOf(posts: BlogPost[], env: Record<string, unknown>) {
   const ids = [...new Set(posts.map((p) => p.ustoz_id).filter((x): x is string => !!x && /^[0-9a-f-]{36}$/i.test(x)))];
