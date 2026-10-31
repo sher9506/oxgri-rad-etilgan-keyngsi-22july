@@ -60,24 +60,51 @@
     <script>
       (function () {
         var err = '';
+        // Deploy paytida /assets/* o'rniga index.html kelsa, brauzer uni 1 yilga JS deb keshlaydi (immutable).
+        // Kod fayllarini keshni chetlab qayta yuklab, sahifani bir marta yangilaymiz (30 s ichida takrorlanmaydi).
+        function heal() {
+          try {
+            if (Date.now() - (+sessionStorage.getItem('ff-asset-heal') || 0) < 30000) return false;
+            sessionStorage.setItem('ff-asset-heal', String(Date.now()));
+          } catch (x) { return false; }
+          var urls = [].slice.call(document.querySelectorAll('script[type=module][src],link[rel=modulepreload]'))
+            .map(function (el) { return el.src || el.href; });
+          var m = err.match(/https?:\/\/\S+?\.js/);
+          if (m) urls.push(m[0]);
+          Promise.all(urls.map(function (u) { return fetch(u, { cache: 'reload' }).catch(function () {}); }))
+            .then(function () { location.reload(); });
+          return true;
+        }
+        var mounted = function (root) { return Object.keys(root).some(function (k) { return k.indexOf('__reactContainer') === 0; }); };
         window.addEventListener('error', function (e) {
           var t = e.target;
-          if (t && t !== window && (t.src || t.href)) err = 'Fayl yuklanmadi: ' + String(t.src || t.href).split('/').slice(-2).join('/');
+          if (t && t !== window && (t.src || t.href)) {
+            err = 'Fayl yuklanmadi: ' + String(t.src || t.href).split('/').slice(-2).join('/');
+            if (t.tagName === 'SCRIPT' && /\/assets\//.test(t.src)) heal();
+          }
           else if (e.message) err = e.message;
         }, true);
         window.addEventListener('unhandledrejection', function (e) { err = String((e.reason && e.reason.message) || e.reason || ''); });
+        window.addEventListener('vite:preloadError', function (e) {
+          err = String((e.payload && e.payload.message) || '');
+          if (heal()) e.preventDefault();
+        });
         setTimeout(function () {
           var root = document.getElementById('root');
-          if (!root || root.childNodes.length) return;
+          // Blog/ilmiy sahifalarda root'da server matni bor — bo'shlikni emas, React ulanganini tekshiramiz.
+          if (!root || mounted(root)) return;
           var box = document.createElement('div');
           box.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#fff;font:15px/1.5 system-ui,sans-serif;color:#333;text-align:center;z-index:99999';
           box.innerHTML = '<div style="max-width:320px"><p style="margin:0 0 14px">Sahifa ochilmadi. Iltimos, qayta yuklang.</p>' +
             '<button style="background:#2563EB;color:#fff;border:0;border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;width:100%">Qayta yuklash</button>' +
             '<p style="margin:14px 0 0;font-size:12px;color:#888;word-break:break-all"></p></div>';
           box.querySelector('p:last-child').textContent = err;
-          box.querySelector('button').onclick = function () { location.reload(); };
+          box.querySelector('button').onclick = function () {
+            try { sessionStorage.removeItem('ff-asset-heal'); } catch (x) {}
+            if (!heal()) location.reload();
+          };
           document.body.appendChild(box);
-          new MutationObserver(function (_, o) { if (root.childNodes.length) { box.remove(); o.disconnect(); } }).observe(root, { childList: true });
+          new MutationObserver(function (_, o) { if (mounted(root)) { box.remove(); o.disconnect(); } }).observe(root, { childList: true });
         }, 10000);
       })();
     </script>

@@ -95,6 +95,21 @@ export function useAdmin() {
   return useContext(AdminContext);
 }
 
+/** Blog maqolasi va ilmiy ish sahifalari asosiy ilovadan tashqarida — menyu bosilganda ilovaning o'sha bo'limiga o'tadi. */
+function StandaloneTopNav({ activeTab }: { activeTab: string }) {
+  const { logout } = useAuth();
+  const openTab = (tab: string, subPath?: string) =>
+    window.location.assign(`/?tab=${encodeURIComponent(subPath ? `${tab}/${subPath}` : tab)}`);
+  return (
+    <TopNav
+      activeTab={activeTab}
+      onTabChange={openTab}
+      onOpenLogin={() => window.location.assign('/')}
+      onLogout={() => { logout(); window.location.assign('/'); }}
+    />
+  );
+}
+
 function AppContent() {
   const getInitialTab = () => {
     const deepLink = parseDeepLink();
@@ -454,7 +469,7 @@ function RouterRoot() {
         <AuthProvider>
           <NotificationProvider>
             <div className="flex flex-col font-sans ff-full-height" style={{ overflow: 'hidden', background: 'var(--bg)' }}>
-              <TopNav activeTab="ilmiy" onTabChange={() => {}} onOpenLogin={() => {}} onLogout={() => {}} />
+              <StandaloneTopNav activeTab="ilmiy" />
               <main className="flex-1 overflow-auto p-4 md:p-6" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as CSSProperties}>
                 <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 rounded-full animate-spin" style={{ border: '2px solid var(--cobalt-1)', borderTopColor: 'transparent' }} /></div>}>
                   <IlmiyIshlarPublic slug={ilmiyMatch[1]} />
@@ -473,12 +488,7 @@ function RouterRoot() {
         <AuthProvider>
           <NotificationProvider>
             <div className="flex flex-col font-sans ff-full-height" style={{ overflow: 'hidden', background: 'var(--bg)' }}>
-              <TopNav
-                activeTab="blog"
-                onTabChange={() => {}}
-                onOpenLogin={() => {}}
-                onLogout={() => {}}
-              />
+              <StandaloneTopNav activeTab="blog" />
               <main className="flex-1 overflow-auto p-4 md:p-6" style={{ minHeight: 0, overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as CSSProperties}>
                 <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-7 w-7 rounded-full animate-spin" style={{ border: '2px solid var(--cobalt-1)', borderTopColor: 'transparent' }} /></div>}>
                   <BlogPostDetail slug={blogPostMatch[1]} />
